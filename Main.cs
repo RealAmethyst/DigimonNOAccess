@@ -21,6 +21,13 @@ namespace DigimonNOAccess
         private DialogChoiceHandler _dialogChoiceHandler;
         private CommonYesNoHandler _commonYesNoHandler;
         private AudioNavigationHandler _audioNavigationHandler;
+        private CampCommandHandler _campCommandHandler;
+        private CommonSelectWindowHandler _commonSelectWindowHandler;
+        private TradePanelHandler _tradePanelHandler;
+        private RestaurantPanelHandler _restaurantPanelHandler;
+        private TrainingPanelHandler _trainingPanelHandler;
+        private ColosseumPanelHandler _colosseumPanelHandler;
+        private FarmPanelHandler _farmPanelHandler;
         private HarmonyLib.Harmony _harmony;
         private bool _initialized = false;
 
@@ -59,6 +66,13 @@ namespace DigimonNOAccess
             _dialogChoiceHandler = new DialogChoiceHandler();
             _commonYesNoHandler = new CommonYesNoHandler();
             _audioNavigationHandler = new AudioNavigationHandler();
+            _campCommandHandler = new CampCommandHandler();
+            _commonSelectWindowHandler = new CommonSelectWindowHandler();
+            _tradePanelHandler = new TradePanelHandler();
+            _restaurantPanelHandler = new RestaurantPanelHandler();
+            _trainingPanelHandler = new TrainingPanelHandler();
+            _colosseumPanelHandler = new ColosseumPanelHandler();
+            _farmPanelHandler = new FarmPanelHandler();
 
             _initialized = true;
             LoggerInstance.Msg("DigimonNOAccess initialized");
@@ -82,6 +96,13 @@ namespace DigimonNOAccess
             _dialogChoiceHandler.Update();
             _commonYesNoHandler.Update();
             _audioNavigationHandler.Update();
+            _campCommandHandler.Update();
+            _commonSelectWindowHandler.Update();
+            _tradePanelHandler.Update();
+            _restaurantPanelHandler.Update();
+            _trainingPanelHandler.Update();
+            _colosseumPanelHandler.Update();
+            _farmPanelHandler.Update();
 
             // Global hotkeys
             HandleGlobalKeys();
@@ -148,6 +169,34 @@ namespace DigimonNOAccess
             else if (_messageWindowHandler.IsOpen())
             {
                 _messageWindowHandler.AnnounceStatus();
+            }
+            else if (_campCommandHandler.IsOpen())
+            {
+                _campCommandHandler.AnnounceStatus();
+            }
+            else if (_commonSelectWindowHandler.IsOpen())
+            {
+                _commonSelectWindowHandler.AnnounceStatus();
+            }
+            else if (_tradePanelHandler.IsOpen())
+            {
+                _tradePanelHandler.AnnounceStatus();
+            }
+            else if (_restaurantPanelHandler.IsOpen())
+            {
+                _restaurantPanelHandler.AnnounceStatus();
+            }
+            else if (_trainingPanelHandler.IsOpen())
+            {
+                _trainingPanelHandler.AnnounceStatus();
+            }
+            else if (_colosseumPanelHandler.IsOpen())
+            {
+                _colosseumPanelHandler.AnnounceStatus();
+            }
+            else if (_farmPanelHandler.IsOpen())
+            {
+                _farmPanelHandler.AnnounceStatus();
             }
             else
             {

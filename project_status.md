@@ -34,7 +34,7 @@
 ```
 
 ## Current Phase
-New game flow complete through Digi-Egg selection with confirmation dialogs. Dialog choices now track properly using TalkMain.m_cursor. Voice detection filters voiced dialog from TTS. **3D positional audio navigation fully working** using NAudio (bypasses game's CRI audio system). Press F6 to track nearest object with continuous directional audio. Ready for gameplay testing and sound design improvements.
+New game flow complete through Digi-Egg selection with confirmation dialogs. Dialog choices now track properly using TalkMain.m_cursor. Voice detection filters voiced dialog from TTS. **3D positional audio navigation fully working** using NAudio (bypasses game's CRI audio system). Press F6 to track nearest object with continuous directional audio. **NPC menu accessibility handlers added** for Camp, Shop, Restaurant, Training, Colosseum, and Farm panels.
 
 ## Known Issues
 
