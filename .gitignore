@@ -1,0 +1,26 @@
+# Build outputs
+bin/
+obj/
+
+# Debug logs
+*.log
+
+# IDE and editor files
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Claude Code session files
+.claude/
+
+# Decompiled game code (copyrighted - not for distribution)
+decompiled/
+
+# Temporary files
+*.tmp
+nul
+
+# OS files
+Thumbs.db
+.DS_Store
