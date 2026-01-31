@@ -34,7 +34,17 @@
 ```
 
 ## Current Phase
-New game flow complete through Digi-Egg selection with confirmation dialogs. Dialog choices now track properly using TalkMain.m_cursor. Voice detection filters voiced dialog from TTS. **3D positional audio navigation fully working** using NAudio (bypasses game's CRI audio system). Press F6 to track nearest object with continuous directional audio. **NPC menu accessibility handlers added** for Camp, Shop, Restaurant, Training, Colosseum, and Farm panels.
+New game flow complete through Digi-Egg selection with confirmation dialogs. Dialog choices now track properly using TalkMain.m_cursor. Voice detection filters voiced dialog from TTS. **3D positional audio navigation fully working** using NAudio (bypasses game's CRI audio system). Press F6 to track nearest object with continuous directional audio.
+
+### NPC Menu Accessibility (COMPLETE)
+All major NPC dialog menus now have accessibility handlers:
+- **CampCommandHandler** - Camp menu commands (Rest, Train, etc.)
+- **CommonSelectWindowHandler** - Generic selection windows (items, locations)
+- **TradePanelHandler** - Shop buy/sell menus
+- **RestaurantPanelHandler** - Restaurant and camp cooking menus
+- **TrainingPanelHandler** - Gym training selection (HP, MP, STR, STA, WIS, SPD)
+- **ColosseumPanelHandler** - Battle arena selection
+- **FarmPanelHandler** - Farm goods management
 
 ## Known Issues
 
@@ -255,6 +265,13 @@ Two approaches found in game:
 - `AudioNavigationHandler.cs` - Audio navigation controller (F3-F6 keys, object detection, tracking)
 - `PositionalAudio.cs` - NAudio-based 3D positional audio system (stereo panning, volume, pitch)
 - `ToneGenerator.cs` - Legacy programmatic audio tone generation (not currently used)
+- `CampCommandHandler.cs` - Camp menu accessibility
+- `CommonSelectWindowHandler.cs` - Generic selection window accessibility
+- `TradePanelHandler.cs` - Shop/trade menu accessibility
+- `RestaurantPanelHandler.cs` - Restaurant/cooking menu accessibility
+- `TrainingPanelHandler.cs` - Training gym menu accessibility
+- `ColosseumPanelHandler.cs` - Colosseum battle selection accessibility
+- `FarmPanelHandler.cs` - Farm management menu accessibility
 - `docs/game-api.md` - Documented game API reference
 
 ### Audio Navigation System (WORKING)

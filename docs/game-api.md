@@ -846,3 +846,330 @@ using (var audioFile = new AudioFileReader("sound.wav"))
     // ... rest of chain
 }
 ```
+
+## NPC Menu Panels
+
+### Camp Command Panel (uCampPanelCommand)
+
+**Class:** `uCampPanelCommand` (extends `uPanelBase`)
+
+Used for: Camp menu when talking to the camp NPC.
+
+**Key Properties:**
+- `m_state` (State enum) - Panel state
+- `m_KeyCursorController` (KeyCursorController) - Cursor position tracking
+- `m_CampCommandContents` (CampCommandContent[]) - Array of menu items
+
+**State Enum:**
+- None, Main, Close, Wait
+
+**CampCommandContent Structure:**
+- `m_name` (Text) - Command name text
+
+**Detection:** `FindObjectOfType<uCampPanelCommand>()`, check `m_state != None`
+
+**Example:**
+```csharp
+var panel = FindObjectOfType<uCampPanelCommand>();
+if (panel != null && panel.m_state == uCampPanelCommand.State.Main)
+{
+    int cursor = panel.m_KeyCursorController.m_DataIndex;
+    int total = panel.m_KeyCursorController.m_DataMax;
+    string itemName = panel.m_CampCommandContents[cursor].m_name.text;
+}
+```
+
+### Common Select Window (uCommonSelectWindow)
+
+**Class:** `uCommonSelectWindow` (extends `uCommonWindowBase`)
+
+Used for: Generic selection menus (item selection, location selection, etc.)
+
+**Key Properties:**
+- `m_state` (State enum) - Panel state
+- `m_uCommonSelectWindowPanelItem` (uCommonSelectWindowPanelItem) - Item panel component
+
+**State Enum:**
+- NONE, MAIN, CLOSE
+
+**uCommonSelectWindowPanelItem:**
+- Extends `uItemBase`
+- `m_selectNo` (int) - Current cursor position (from uItemBase)
+- `m_maxListNum` (int) - Total number of items
+- `GetSelectItemParam()` - Returns `ParameterItemData` for current selection
+
+**Detection:** `FindObjectOfType<uCommonSelectWindow>()`, check `m_state == State.MAIN`
+
+**Example:**
+```csharp
+var panel = FindObjectOfType<uCommonSelectWindow>();
+if (panel != null && panel.m_state == uCommonSelectWindow.State.MAIN)
+{
+    var itemPanel = panel.m_uCommonSelectWindowPanelItem;
+    int cursor = itemPanel.m_selectNo;
+    int total = itemPanel.m_maxListNum;
+    var paramData = itemPanel.GetSelectItemParam();
+    string name = paramData?.GetName() ?? "";
+}
+```
+
+### Trade Panel (uTradePanelCommand)
+
+**Class:** `uTradePanelCommand` (extends `uPanelBase`)
+
+Used for: Shop/trade menus when buying or selling items.
+
+**Key Properties:**
+- `m_state` (State enum) - Panel state
+- `m_tradePanelItem` (uTradePanelItem) - Item panel component
+- `m_tradeDescription` (uTradeDescription) - Description panel
+
+**State Enum:**
+- None, Main, Close, Wait, NumInput, etc.
+
+**uTradePanelItem:**
+- Extends `uItemBase`
+- `m_selectNo` (int) - Current cursor position
+- `m_itemList` (List<ItemData>) - Item list (use Count for total)
+- `GetSelectItemParam()` - Returns `ParameterItemData` for current selection
+
+**uTradeDescription:**
+- `m_name` (Text) - Item name display
+- `m_price` (Text) - Price display
+- `m_description` (Text) - Item description
+
+**Detection:** `FindObjectOfType<uTradePanelCommand>()`, check `m_state != None`
+
+**Example:**
+```csharp
+var panel = FindObjectOfType<uTradePanelCommand>();
+if (panel != null && panel.m_state == uTradePanelCommand.State.Main)
+{
+    var itemPanel = panel.m_tradePanelItem;
+    int cursor = itemPanel.m_selectNo;
+    int total = itemPanel.m_itemList?.Count ?? 0;
+
+    // Get name from description panel (preferred)
+    string name = panel.m_tradeDescription?.m_name?.text ?? "";
+    string price = panel.m_tradeDescription?.m_price?.text ?? "";
+}
+```
+
+### Restaurant Panel (uRestaurantPanel)
+
+**Class:** `uRestaurantPanel` (extends `MonoBehaviour`)
+
+Used for: Restaurant/cooking menus.
+
+**Key Properties:**
+- `m_state` (State enum) - Panel state
+- `m_type` (Type enum) - Restaurant or CampCooking
+
+**State Enum:**
+- None, ItemWait, UseItemMessageWait, ItemEatCheck, CampCookingSEWait, CampCookingFadeInWait, CampCookingSelectDigimonUpdate, etc.
+
+**Type Enum:**
+- Restaurant = 0
+- CampCooking = 1
+
+**uRestaurantPanelItem:**
+- Extends `uItemBase`
+- `m_selectNo` (int) - Current cursor position
+- `m_maxListNum` (int) - Total number of items
+- `GetSelectItem()` - Returns `ItemData` for current selection
+- `GetSelectItemParam()` - Returns `ParameterItemData` for current selection (use this for name!)
+
+**Detection:** `FindObjectOfType<uRestaurantPanel>()`, check `m_state != None`
+
+**Example:**
+```csharp
+var panel = FindObjectOfType<uRestaurantPanel>();
+if (panel != null && panel.m_state != uRestaurantPanel.State.None)
+{
+    var itemPanel = FindObjectOfType<uRestaurantPanelItem>();
+    int cursor = itemPanel.m_selectNo;
+    int total = itemPanel.m_maxListNum;
+
+    // Use GetSelectItemParam() for item name (NOT GetSelectItem().m_name!)
+    var paramData = itemPanel.GetSelectItemParam();
+    string name = paramData?.GetName() ?? "";
+}
+```
+
+### Training Panel (uTrainingPanelCommand)
+
+**Class:** `uTrainingPanelCommand` (extends `MonoBehaviour`)
+
+Used for: Gym training selection menu.
+
+**Key Properties:**
+- `m_state` (State enum) - Panel state
+- `m_trainingCursors` (TrainingCursor[]) - Cursor objects
+- `m_trainingContents` (TrainingContent[]) - Training slot data
+
+**State Enum:**
+- None, Main, Dialog, ChangeStateDigimonHistory, ChangeStateBonus, Close, Wait, Tutorial
+
+**TrainingCursor (nested class):**
+- `index` (TrainingKindIndex) - Current position as enum
+
+**TrainingContent:**
+- `level` (int) - Training level
+- `index` (TrainingKindIndex) - Training type
+- `bonusCount` (int) - Number of bonuses
+
+**TrainingKindIndex Enum (ParameterTrainingData.TrainingKindIndex):**
+- Hp = 0
+- Mp = 1
+- Forcefulness = 2 (Strength)
+- Robustness = 3 (Stamina)
+- Cleverness = 4 (Wisdom)
+- Rapidity = 5 (Speed)
+- Rest = 6
+- Max = 7
+
+**Detection:** `FindObjectOfType<uTrainingPanelCommand>()`, check `m_state != None && m_state != Close`
+
+**Example:**
+```csharp
+var panel = FindObjectOfType<uTrainingPanelCommand>();
+if (panel != null && panel.m_state == uTrainingPanelCommand.State.Main)
+{
+    int cursor = (int)panel.m_trainingCursors[0].index;
+    int total = panel.m_trainingContents.Length;
+
+    var content = panel.m_trainingContents[cursor];
+    int level = content.level;
+    var kindIndex = content.index;
+
+    // Map to readable name
+    string name = kindIndex switch
+    {
+        TrainingKindIndex.Hp => "HP Training",
+        TrainingKindIndex.Mp => "MP Training",
+        TrainingKindIndex.Forcefulness => "Strength Training",
+        TrainingKindIndex.Robustness => "Stamina Training",
+        TrainingKindIndex.Cleverness => "Wisdom Training",
+        TrainingKindIndex.Rapidity => "Speed Training",
+        TrainingKindIndex.Rest => "Rest",
+        _ => $"Training {(int)kindIndex + 1}"
+    };
+}
+```
+
+### Colosseum Panel (uColosseumPanelCommand)
+
+**Class:** `uColosseumPanelCommand` (extends `MonoBehaviour`)
+
+Used for: Battle arena selection menu.
+
+**Key Properties:**
+- `m_state` (State enum) - Panel state
+- `m_colosseumScrollView` (ColosseumScrollView) - Scrollable battle list
+- `m_colosseumDescription` (uColosseumDescription) - Description panel
+
+**State Enum:**
+- None, Main, Confirm, Warning, Close, Wait
+
+**ColosseumScrollView:**
+- Extends `uItemBase`
+- `m_selectNo` (int) - Current cursor position
+- `m_itemList` (List<ItemData>) - Battle list (use Count for total)
+
+**uColosseumDescription:**
+- `m_caption` (Text) - Battle name/title
+- `m_ruleValue` (Text) - Rule description
+
+**Detection:** `FindObjectOfType<uColosseumPanelCommand>()`, check `m_state != None && m_state != Close`
+
+**Example:**
+```csharp
+var panel = FindObjectOfType<uColosseumPanelCommand>();
+if (panel != null && panel.m_state == uColosseumPanelCommand.State.Main)
+{
+    var scrollView = panel.m_colosseumScrollView;
+    int cursor = scrollView.m_selectNo;
+    int total = scrollView.m_itemList?.Count ?? 1;
+
+    var desc = panel.m_colosseumDescription;
+    string caption = desc?.m_caption?.text ?? "";
+    string rule = desc?.m_ruleValue?.text ?? "";
+}
+```
+
+### Farm Panel (uFarmPanelCommand)
+
+**Class:** `uFarmPanelCommand` (extends `MonoBehaviour`)
+
+Used for: Farm goods management menu.
+
+**Key Properties:**
+- `m_state` (State enum) - Panel state
+- `m_farmCursor` (FarmCursor) - Cursor object
+- `m_farmContents` (uFarmPanelFarmContent[]) - Farm slot UI elements
+
+**State Enum:**
+- None, Main, Item, Wait
+
+**FarmCursor (nested class):**
+- `index` (int) - Current position
+
+**uFarmPanelFarmContent:**
+- `m_name` (Text) - Item name
+- `m_day` (Text) - Day information
+- `m_time` (Text) - Time information
+- `m_condition` (Text) - Condition status
+
+**Detection:** `FindObjectOfType<uFarmPanelCommand>()`, check `m_state != None`
+
+**Example:**
+```csharp
+var panel = FindObjectOfType<uFarmPanelCommand>();
+if (panel != null && panel.m_state != uFarmPanelCommand.State.None)
+{
+    int cursor = panel.m_farmCursor.index;
+    int total = panel.m_farmContents.Length;
+
+    var content = panel.m_farmContents[cursor];
+    string name = content.m_name?.text ?? "";
+    string condition = content.m_condition?.text ?? "";
+    string day = content.m_day?.text ?? "";
+}
+```
+
+## Common Patterns for NPC Menus
+
+### uItemBase Pattern
+Many NPC menu panels use classes that extend `uItemBase`:
+
+**Key Properties (inherited):**
+- `m_selectNo` (int) - Current cursor position
+- `m_itemList` (List<ItemData>) - List of items (use Count for total)
+- `GetSelectItemData()` - Returns `ItemData` for current selection
+- `GetSelectItemParam()` - Returns `ParameterItemData` for current selection
+
+**Getting Item Names:**
+```csharp
+// WRONG - ItemData doesn't have m_name:
+// string name = itemPanel.GetSelectItem().m_name;  // Error!
+
+// CORRECT - Use ParameterItemData.GetName():
+var paramData = itemPanel.GetSelectItemParam();
+string name = paramData?.GetName() ?? "";
+```
+
+### ParameterItemData
+
+**Class:** `ParameterItemData` (base class for item data)
+
+**Key Methods:**
+- `GetName()` - Returns localized item name string
+
+**Derived Classes:**
+- ParameterItemDataFood
+- ParameterItemDataRecovery
+- ParameterItemDataBattle
+- ParameterItemDataMaterial
+- ParameterItemDataKeyItem
+- ParameterItemDataOther
+- ParameterItemDataEvolution
