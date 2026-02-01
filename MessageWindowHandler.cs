@@ -437,32 +437,75 @@ namespace DigimonNOAccess
         {
             try
             {
-                // Scan ALL uCommonMessageWindow instances and find one with real content
-                // GetCenter() often returns the copyright warning window, not the actual message
-                var windows = Object.FindObjectsOfType<uCommonMessageWindow>();
-                if (windows != null)
-                {
-                    foreach (var window in windows)
-                    {
-                        if (window != null &&
-                            window.gameObject != null &&
-                            window.gameObject.activeInHierarchy)
-                        {
-                            // Check if this window has non-placeholder text
-                            string text = "";
-                            try
-                            {
-                                if (window.m_label != null)
-                                    text = window.m_label.text ?? "";
-                            }
-                            catch { }
+                // Use the game's official message manager to check if a message is actually visible
+                var mgm = MainGameManager.m_instance;
+                if (mgm == null)
+                    return false;
 
-                            if (!string.IsNullOrEmpty(text) && !IsIgnoredText(text))
-                            {
-                                _commonMessageWindow = window;
-                                return true;
-                            }
-                        }
+                var msgMgr = mgm.MessageManager;
+                if (msgMgr == null)
+                    return false;
+
+                // IsFindActive() is the official way to check if any message is being displayed
+                if (!msgMgr.IsFindActive())
+                {
+                    _commonMessageWindow = null;
+                    return false;
+                }
+
+                // Get the center message window (main field messages)
+                var centerWindow = msgMgr.GetCenter();
+                if (centerWindow != null)
+                {
+                    string text = "";
+                    try
+                    {
+                        if (centerWindow.m_label != null)
+                            text = centerWindow.m_label.text ?? "";
+                    }
+                    catch { }
+
+                    if (!string.IsNullOrEmpty(text) && !IsIgnoredText(text))
+                    {
+                        _commonMessageWindow = centerWindow;
+                        return true;
+                    }
+                }
+
+                // Also check partner message windows (Get00, Get01)
+                var partner0 = msgMgr.Get00();
+                if (partner0 != null)
+                {
+                    string text = "";
+                    try
+                    {
+                        if (partner0.m_label != null)
+                            text = partner0.m_label.text ?? "";
+                    }
+                    catch { }
+
+                    if (!string.IsNullOrEmpty(text) && !IsIgnoredText(text))
+                    {
+                        _commonMessageWindow = partner0;
+                        return true;
+                    }
+                }
+
+                var partner1 = msgMgr.Get01();
+                if (partner1 != null)
+                {
+                    string text = "";
+                    try
+                    {
+                        if (partner1.m_label != null)
+                            text = partner1.m_label.text ?? "";
+                    }
+                    catch { }
+
+                    if (!string.IsNullOrEmpty(text) && !IsIgnoredText(text))
+                    {
+                        _commonMessageWindow = partner1;
+                        return true;
                     }
                 }
             }

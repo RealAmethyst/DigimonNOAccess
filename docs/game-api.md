@@ -1452,3 +1452,125 @@ Used for: Zone/area selection when traveling.
 - Zone name and description
 
 **Detection:** Check for zone selection panel active state
+
+## Care Panel (uCarePanel)
+
+**Class:** `uCarePanel` (extends `MonoBehaviour`)
+
+Used for: Care menu accessed via Square button in field. Allows feeding, sleeping, and caring for Digimon partners.
+
+**State Enum:**
+- None = 0 (panel closed)
+- Main = 1 (command selection active)
+- Item = 2 (item list open)
+- ItemUse = 3 (item being used)
+- ItemWait = 4 (waiting for item action)
+- ItemUseWait = 5
+- ItemMessage = 6
+- PutToSleepWait = 7
+- PutToSleep = 8
+- Education = 9 (praise/scold mode)
+- Message = 10
+- Wait = 11
+- Close = 12
+- Cooking = 13
+- EducationItemUse = 14
+- ItemUseWait2 = 15
+
+**Key Properties:**
+- `m_state` (State enum) - Current panel state
+- `m_commandPanel` (uCarePanelCommand) - Command selection panel
+
+**Access Pattern:**
+```csharp
+var mgm = MainGameManager.m_instance;
+if (mgm != null)
+{
+    var careUI = mgm.careUI;
+    if (careUI != null && careUI.m_state != uCarePanel.State.None)
+    {
+        // Care menu is open
+        var commandPanel = careUI.m_commandPanel;
+        int cursor = commandPanel.m_selectNo;
+        int total = commandPanel.m_selectMax;
+    }
+}
+```
+
+**Detection:** Use `MainGameManager.m_instance.careUI` (preferred) or `FindObjectOfType<uCarePanel>()`
+
+### uCarePanelCommand (Command Selection)
+
+**Class:** `uCarePanelCommand` (extends `MonoBehaviour`)
+
+**Key Properties:**
+- `m_selectNo` (int) - Current cursor position (0-based)
+- `m_selectMax` (int) - Total number of commands
+- `m_choiceText` (Text[]) - Array of command Text components
+- `m_command_name` (string[]) - Array of command name strings
+
+**Reading Current Command:**
+```csharp
+var commandPanel = careUI.m_commandPanel;
+int cursor = commandPanel.m_selectNo;
+string name = commandPanel.m_choiceText[cursor]?.text ?? "Option";
+```
+
+### Item Tabs within Care Menu (uCarePanelItem / uFieldItemPanel)
+
+When selecting Items in Care menu, uses `uFieldItemPanel` with internal tabs.
+
+**Tab Enum (uCarePanelItem.Tab):**
+- None = -1
+- Consumption = 0 (recovery items)
+- Foodstuff = 1 (food)
+- Evolution = 2
+- Material = 3
+- KeyItem = 4
+
+**Tab Property:**
+- `m_tab` (int) - Current internal tab index (inherited from uItemBase)
+
+**Example:**
+```csharp
+var fieldItemPanel = FindObjectOfType<uFieldItemPanel>();
+if (fieldItemPanel != null && fieldItemPanel.gameObject.activeInHierarchy)
+{
+    int tab = fieldItemPanel.m_tab;  // 0=Consumption, 1=Foodstuff, etc.
+    int cursor = fieldItemPanel.m_selectNo;
+    var paramData = fieldItemPanel.GetSelectItemParam();
+    string itemName = paramData?.GetName() ?? "";
+}
+```
+
+## CommonMessageWindowManager (Message Visibility)
+
+**Class:** `CommonMessageWindowManager`
+
+Used for: Managing field message windows and detecting when messages are actually visible.
+
+**Key Methods:**
+- `IsFindActive()` - Returns true if ANY message window is currently visible to the player
+- `GetCenter()` - Get center message window
+- `Get00()` - Get partner 0 message window
+- `Get01()` - Get partner 1 message window
+
+**Access Pattern:**
+```csharp
+var mgm = MainGameManager.m_instance;
+if (mgm != null)
+{
+    var msgMgr = mgm.MessageManager;
+    if (msgMgr != null && msgMgr.IsFindActive())
+    {
+        // A message is actively being displayed to the player
+        var centerWindow = msgMgr.GetCenter();
+        if (centerWindow != null)
+        {
+            string text = centerWindow.m_label?.text ?? "";
+        }
+    }
+}
+```
+
+**IMPORTANT:** Do NOT rely solely on `gameObject.activeInHierarchy` for uCommonMessageWindow - the window objects persist in the scene even when not visible. Always use `IsFindActive()` to check if a message is actually being shown.

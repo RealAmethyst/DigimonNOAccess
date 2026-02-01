@@ -39,6 +39,7 @@ namespace DigimonNOAccess
         private DigiviceTopPanelHandler _digiviceTopPanelHandler;
         private ZonePanelHandler _zonePanelHandler;
         private FieldHudHandler _fieldHudHandler;
+        private CarePanelHandler _carePanelHandler;
         private HarmonyLib.Harmony _harmony;
         private bool _initialized = false;
 
@@ -95,6 +96,7 @@ namespace DigimonNOAccess
             _digiviceTopPanelHandler = new DigiviceTopPanelHandler();
             _zonePanelHandler = new ZonePanelHandler();
             _fieldHudHandler = new FieldHudHandler();
+            _carePanelHandler = new CarePanelHandler();
 
             _initialized = true;
             LoggerInstance.Msg("DigimonNOAccess initialized");
@@ -136,6 +138,7 @@ namespace DigimonNOAccess
             _digiviceTopPanelHandler.Update();
             _zonePanelHandler.Update();
             _fieldHudHandler.Update();
+            _carePanelHandler.Update();
 
             // Global hotkeys
             HandleGlobalKeys();
@@ -234,6 +237,10 @@ namespace DigimonNOAccess
             else if (_savePanelHandler.IsOpen())
             {
                 _savePanelHandler.AnnounceStatus();
+            }
+            else if (_carePanelHandler.IsOpen())
+            {
+                _carePanelHandler.AnnounceStatus();
             }
             else if (_fieldItemPanelHandler.IsOpen())
             {

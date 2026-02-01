@@ -58,6 +58,7 @@ All major field menus now have accessibility handlers:
 - **DigiviceTopPanelHandler** - Digivice main menu
 - **ZonePanelHandler** - Zone/area selection
 - **FieldHudHandler** - Partner status via controller combos (RB/LB + face buttons)
+- **CarePanelHandler** - Care menu (Square button) with command selection, item tabs (Consumption/Foodstuff/etc.), and proper state detection
 
 ## Known Issues
 
@@ -272,7 +273,7 @@ Two approaches found in game:
 - `DialogHandler.cs` - Yes/No dialog accessibility
 - `DialogChoiceHandler.cs` - Dialog choices (multiple options in conversation)
 - `CommonYesNoHandler.cs` - Common Yes/No confirmation dialog accessibility
-- `MessageWindowHandler.cs` - Message window/story text accessibility (uses DialogTextPatch for immediate text)
+- `MessageWindowHandler.cs` - Message window/story text accessibility (uses DialogTextPatch for immediate text, IsFindActive() for proper visibility detection)
 - `DialogTextPatch.cs` - Harmony patches for EventWindowPanel.TextShrink and TalkMain.PlayVoiceText
 - `SteamInputPatch.cs` - Harmony patch attempt (not used - Steam Big Picture must be disabled manually)
 - `AudioNavigationHandler.cs` - Always-on audio navigation (auto-tracks nearest object with positional audio)
@@ -296,11 +297,13 @@ Two approaches found in game:
 - `DigiviceTopPanelHandler.cs` - Digivice main menu accessibility
 - `ZonePanelHandler.cs` - Zone selection accessibility
 - `FieldHudHandler.cs` - Partner status via controller combos
+- `CarePanelHandler.cs` - Care menu accessibility (command selection + education/discipline mode)
 - `docs/game-api.md` - Documented game API reference
 
 ### Audio Navigation System (ALWAYS-ON)
 - **Mode:** Always active when player is in control (no toggle keys)
-- **Auto-stops during:** Battles, cutscenes, events, menus, death states
+- **Auto-stops during:** Battles, cutscenes, events, death states
+- **Menu pause:** Automatically pauses when Care menu, Digivice, or Save menu is open
 - **Classes:** `AudioNavigationHandler`, `PositionalAudio`, `WallDetectionHandler`
 - **Detection Sources:**
   - `ItemPickPointManager.m_instance.m_itemPickPoints` - Collectible items (range 100m)
@@ -332,7 +335,10 @@ Two approaches found in game:
 - **Player Control Detection:**
   - Checks `uBattlePanel.m_instance.m_enabled` for battle state
   - Checks `PlayerCtrl.actionState` for Event, Battle, Dead, LiquidCrystallization states
-  - Only runs when player is in normal controllable state
+  - Checks `MainGameManager.careUI.m_state` for Care menu state
+  - Checks `uDigivicePanel.m_instance.m_enabled` for Digivice menu
+  - Checks `uSavePanelCommand.m_State` for Save/Load menu
+  - Only runs when player is in normal controllable state with no menus open
 - **Technical:**
   - NAudio `AudioFileReader` loads WAV files
   - `LoopingWaveProvider` enables continuous playback

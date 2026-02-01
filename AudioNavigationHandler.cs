@@ -312,7 +312,12 @@ namespace DigimonNOAccess
         {
             try
             {
+                // Check if in battle
                 if (IsInBattle())
+                    return false;
+
+                // Check if any menu is open that blocks player control
+                if (IsMenuOpen())
                     return false;
 
                 if (_playerCtrl == null)
@@ -323,6 +328,7 @@ namespace DigimonNOAccess
                 if (_playerCtrl == null)
                     return false;
 
+                // Check player action state
                 var actionState = _playerCtrl.actionState;
                 switch (actionState)
                 {
@@ -335,6 +341,43 @@ namespace DigimonNOAccess
                 }
 
                 return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private bool IsMenuOpen()
+        {
+            try
+            {
+                var mgm = MainGameManager.m_instance;
+                if (mgm != null)
+                {
+                    // Care menu check - reliable state-based detection
+                    var careUI = mgm.careUI;
+                    if (careUI != null && careUI.m_state != uCarePanel.State.None)
+                        return true;
+                }
+
+                // Digivice panel check - has static instance with m_enabled flag
+                var digivicePanel = uDigivicePanel.m_instance;
+                if (digivicePanel != null && digivicePanel.m_enabled)
+                    return true;
+
+                // Save panel check - use state-based detection via uSavePanelCommand
+                var savePanel = UnityEngine.Object.FindObjectOfType<uSavePanelCommand>();
+                if (savePanel != null)
+                {
+                    var state = savePanel.m_State;
+                    if (state == uSavePanelCommand.State.MAIN ||
+                        state == uSavePanelCommand.State.SAVE_CHECK ||
+                        state == uSavePanelCommand.State.LOAD_CHECK)
+                        return true;
+                }
+
+                return false;
             }
             catch
             {

@@ -13,6 +13,7 @@ namespace DigimonNOAccess
         private bool _wasActive = false;
         private int _lastCursor = -1;
         private uFieldItemPanel.Type _lastType = (uFieldItemPanel.Type)(-1);
+        private int _lastInternalTab = -1;
 
         public bool IsOpen()
         {
@@ -51,29 +52,32 @@ namespace DigimonNOAccess
         {
             _lastCursor = -1;
             _lastType = (uFieldItemPanel.Type)(-1);
+            _lastInternalTab = -1;
 
             if (_panel == null)
                 return;
 
             _lastType = _panel.m_type;
+            _lastInternalTab = GetInternalTab();
             int cursor = GetCursorPosition();
             int total = GetItemCount();
 
             string tabName = GetTabName(_lastType);
+            string internalTabName = GetInternalTabName(_lastInternalTab);
             string itemInfo = GetItemInfo();
 
             string announcement;
             if (total == 0)
             {
-                announcement = $"Items, {tabName} tab, empty";
+                announcement = $"Items, {tabName}, {internalTabName} tab, empty";
             }
             else
             {
-                announcement = $"Items, {tabName} tab. {itemInfo}, {cursor + 1} of {total}";
+                announcement = $"Items, {tabName}, {internalTabName} tab. {itemInfo}, {cursor + 1} of {total}";
             }
 
             ScreenReader.Say(announcement);
-            DebugLogger.Log($"[FieldItemPanel] Opened, tab={tabName}, cursor={cursor}, total={total}");
+            DebugLogger.Log($"[FieldItemPanel] Opened, type={tabName}, tab={internalTabName}, cursor={cursor}, total={total}");
             _lastCursor = cursor;
         }
 
@@ -82,6 +86,7 @@ namespace DigimonNOAccess
             _panel = null;
             _lastCursor = -1;
             _lastType = (uFieldItemPanel.Type)(-1);
+            _lastInternalTab = -1;
             DebugLogger.Log("[FieldItemPanel] Closed");
         }
 
@@ -119,29 +124,58 @@ namespace DigimonNOAccess
                 return;
 
             var currentType = _panel.m_type;
+            int currentInternalTab = GetInternalTab();
 
+            // Check if the outer type (Care/Camp/Battle) changed
             if (currentType != _lastType)
             {
                 _lastCursor = -1; // Reset cursor tracking for new tab
+                _lastInternalTab = currentInternalTab;
                 int cursor = GetCursorPosition();
                 int total = GetItemCount();
 
                 string tabName = GetTabName(currentType);
+                string internalTabName = GetInternalTabName(currentInternalTab);
                 string itemInfo = GetItemInfo();
 
                 string announcement;
                 if (total == 0)
                 {
-                    announcement = $"{tabName} tab, empty";
+                    announcement = $"{tabName}, {internalTabName} tab, empty";
                 }
                 else
                 {
-                    announcement = $"{tabName} tab. {itemInfo}, {cursor + 1} of {total}";
+                    announcement = $"{tabName}, {internalTabName} tab. {itemInfo}, {cursor + 1} of {total}";
                 }
 
                 ScreenReader.Say(announcement);
-                DebugLogger.Log($"[FieldItemPanel] Tab changed to {tabName}");
+                DebugLogger.Log($"[FieldItemPanel] Type changed to {tabName}, tab={internalTabName}");
                 _lastType = currentType;
+                _lastCursor = cursor;
+            }
+            // Check if the internal tab (Consumption/Foodstuff/etc.) changed
+            else if (currentInternalTab != _lastInternalTab)
+            {
+                _lastCursor = -1; // Reset cursor tracking for new tab
+                int cursor = GetCursorPosition();
+                int total = GetItemCount();
+
+                string internalTabName = GetInternalTabName(currentInternalTab);
+                string itemInfo = GetItemInfo();
+
+                string announcement;
+                if (total == 0)
+                {
+                    announcement = $"{internalTabName} tab, empty";
+                }
+                else
+                {
+                    announcement = $"{internalTabName} tab. {itemInfo}, {cursor + 1} of {total}";
+                }
+
+                ScreenReader.Say(announcement);
+                DebugLogger.Log($"[FieldItemPanel] Internal tab changed to {internalTabName}");
+                _lastInternalTab = currentInternalTab;
                 _lastCursor = cursor;
             }
         }
@@ -156,6 +190,37 @@ namespace DigimonNOAccess
                 uFieldItemPanel.Type.Event => "Event",
                 uFieldItemPanel.Type.Battle => "Battle",
                 uFieldItemPanel.Type.Oyatsu => "Snacks",
+                _ => "Items"
+            };
+        }
+
+        private int GetInternalTab()
+        {
+            try
+            {
+                if (_panel != null)
+                {
+                    return _panel.m_tab;
+                }
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[FieldItemPanel] Error getting internal tab: {ex.Message}");
+            }
+            return -1;
+        }
+
+        private string GetInternalTabName(int tab)
+        {
+            // Based on uCarePanelItem.Tab enum:
+            // None = -1, Consumption = 0, Foodstuff = 1, Evolution = 2, Material = 3, KeyItem = 4
+            return tab switch
+            {
+                0 => "Consumption",
+                1 => "Foodstuff",
+                2 => "Evolution",
+                3 => "Material",
+                4 => "Key Items",
                 _ => "Items"
             };
         }
@@ -221,20 +286,22 @@ namespace DigimonNOAccess
                 return;
 
             var type = _panel.m_type;
+            int internalTab = GetInternalTab();
             int cursor = GetCursorPosition();
             int total = GetItemCount();
 
             string tabName = GetTabName(type);
+            string internalTabName = GetInternalTabName(internalTab);
             string itemInfo = GetItemInfo();
 
             string announcement;
             if (total == 0)
             {
-                announcement = $"Items, {tabName} tab, empty";
+                announcement = $"Items, {tabName}, {internalTabName} tab, empty";
             }
             else
             {
-                announcement = $"Items, {tabName} tab. {itemInfo}, {cursor + 1} of {total}";
+                announcement = $"Items, {tabName}, {internalTabName} tab. {itemInfo}, {cursor + 1} of {total}";
             }
 
             ScreenReader.Say(announcement);
