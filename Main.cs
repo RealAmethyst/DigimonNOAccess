@@ -29,6 +29,16 @@ namespace DigimonNOAccess
         private TrainingPanelHandler _trainingPanelHandler;
         private ColosseumPanelHandler _colosseumPanelHandler;
         private FarmPanelHandler _farmPanelHandler;
+        private SavePanelHandler _savePanelHandler;
+        private FieldItemPanelHandler _fieldItemPanelHandler;
+        private StoragePanelHandler _storagePanelHandler;
+        private MapPanelHandler _mapPanelHandler;
+        private PartnerPanelHandler _partnerPanelHandler;
+        private ItemPickPanelHandler _itemPickPanelHandler;
+        private MailPanelHandler _mailPanelHandler;
+        private DigiviceTopPanelHandler _digiviceTopPanelHandler;
+        private ZonePanelHandler _zonePanelHandler;
+        private FieldHudHandler _fieldHudHandler;
         private HarmonyLib.Harmony _harmony;
         private bool _initialized = false;
 
@@ -75,6 +85,16 @@ namespace DigimonNOAccess
             _trainingPanelHandler = new TrainingPanelHandler();
             _colosseumPanelHandler = new ColosseumPanelHandler();
             _farmPanelHandler = new FarmPanelHandler();
+            _savePanelHandler = new SavePanelHandler();
+            _fieldItemPanelHandler = new FieldItemPanelHandler();
+            _storagePanelHandler = new StoragePanelHandler();
+            _mapPanelHandler = new MapPanelHandler();
+            _partnerPanelHandler = new PartnerPanelHandler();
+            _itemPickPanelHandler = new ItemPickPanelHandler();
+            _mailPanelHandler = new MailPanelHandler();
+            _digiviceTopPanelHandler = new DigiviceTopPanelHandler();
+            _zonePanelHandler = new ZonePanelHandler();
+            _fieldHudHandler = new FieldHudHandler();
 
             _initialized = true;
             LoggerInstance.Msg("DigimonNOAccess initialized");
@@ -106,6 +126,16 @@ namespace DigimonNOAccess
             _trainingPanelHandler.Update();
             _colosseumPanelHandler.Update();
             _farmPanelHandler.Update();
+            _savePanelHandler.Update();
+            _fieldItemPanelHandler.Update();
+            _storagePanelHandler.Update();
+            _mapPanelHandler.Update();
+            _partnerPanelHandler.Update();
+            _itemPickPanelHandler.Update();
+            _mailPanelHandler.Update();
+            _digiviceTopPanelHandler.Update();
+            _zonePanelHandler.Update();
+            _fieldHudHandler.Update();
 
             // Global hotkeys
             HandleGlobalKeys();
@@ -200,6 +230,38 @@ namespace DigimonNOAccess
             else if (_farmPanelHandler.IsOpen())
             {
                 _farmPanelHandler.AnnounceStatus();
+            }
+            else if (_savePanelHandler.IsOpen())
+            {
+                _savePanelHandler.AnnounceStatus();
+            }
+            else if (_fieldItemPanelHandler.IsOpen())
+            {
+                _fieldItemPanelHandler.AnnounceStatus();
+            }
+            else if (_storagePanelHandler.IsOpen())
+            {
+                _storagePanelHandler.AnnounceStatus();
+            }
+            else if (_mapPanelHandler.IsOpen())
+            {
+                _mapPanelHandler.AnnounceStatus();
+            }
+            else if (_partnerPanelHandler.IsOpen())
+            {
+                _partnerPanelHandler.AnnounceStatus();
+            }
+            else if (_itemPickPanelHandler.IsOpen())
+            {
+                _itemPickPanelHandler.AnnounceStatus();
+            }
+            else if (_mailPanelHandler.IsOpen())
+            {
+                _mailPanelHandler.AnnounceStatus();
+            }
+            else if (_digiviceTopPanelHandler.IsOpen())
+            {
+                _digiviceTopPanelHandler.AnnounceStatus();
             }
             else
             {

@@ -112,6 +112,17 @@ Keys NOT used by game, safe for mod functions:
 ### Mod Key Bindings (Currently Used)
 - **F1** - Repeat last announcement
 - **F2** - Announce current menu/status
+- **F3** - Partner 1 full status (field only)
+- **F4** - Partner 2 full status (field only)
+
+### Controller Combos for Partner Status (Field Only)
+Hold RB (R1) + face button for Partner 1 info:
+- **A/Cross** - HP and MP
+- **B/Circle** - Status effects (Injury, Disease, etc.)
+- **X/Square** - Mood/condition
+- **Y/Triangle** - Name and basic info
+
+Hold LB (L1) + face button for Partner 2 info (same layout)
 
 ### Always-On Audio Systems (No Keys Required)
 - **Positional Audio Tracking** - Automatically tracks nearest object with 3D audio when player is in control
@@ -1181,3 +1192,261 @@ string name = paramData?.GetName() ?? "";
 - ParameterItemDataKeyItem
 - ParameterItemDataOther
 - ParameterItemDataEvolution
+
+## Save/Load Menu (uSavePanelCommand)
+
+**Class:** `uSavePanelCommand` (extends `uPanelBase`)
+
+Used for: Save and load game progress menu.
+
+**State Enum:**
+- NONE = 0
+- MAIN = 1 (selecting slot)
+- CLOSE = 2
+- LOAD_CHECK = 3 (confirm load)
+- LOAD = 4 (loading)
+- SAVE_CHECK = 5 (confirm save)
+- SAVE = 6 (saving)
+
+**Key Properties:**
+- `m_State` (State enum) - Current menu state
+- `m_KeyCursorController` (KeyCursorController) - Cursor position tracking
+- `m_items` (uSavePanelItemBase[]) - Array of save slot items
+- `m_Caption` (uSavePanelCaption) - Caption/instruction panel
+
+**Key Methods:**
+- `GetCorsorIndex()` - Returns current cursor position (note: typo in game code)
+- `ExistSavedata(int slot)` - Check if save slot has data
+- `GetSaveItemDatas()` - Get array of save item data
+
+**Detection:** `FindObjectOfType<uSavePanelCommand>()`, check `m_State == State.MAIN`
+
+### uSavePanelItemSaveItem (Save Slot Details)
+
+**Class:** `uSavePanelItemSaveItem` (extends `uSavePanelItemBase`)
+
+Used for: Individual save slot display with game data.
+
+**Key Properties:**
+- `m_playerNameText` (Text) - Player name
+- `m_tamarLavelText` (Text) - Tamer level value
+- `m_areaText` (Text) - Current area/location name
+- `m_playTimeText` (Text) - Play time display
+- `m_timeStampText` (Text) - Save date/time
+- `m_NoDataText` (Text) - "No Data" text for empty slots
+
+**Example:**
+```csharp
+var panel = FindObjectOfType<uSavePanelCommand>();
+if (panel != null && panel.m_State == uSavePanelCommand.State.MAIN)
+{
+    int cursor = panel.m_KeyCursorController.m_DataIndex;
+    int total = panel.m_KeyCursorController.m_DataMax;
+
+    var item = panel.m_items[cursor];
+    var saveItem = item.TryCast<uSavePanelItemSaveItem>();
+    if (saveItem != null)
+    {
+        // Check for empty slot
+        if (saveItem.m_NoDataText?.gameObject.activeInHierarchy == true)
+        {
+            // Empty slot
+        }
+        else
+        {
+            string playerName = saveItem.m_playerNameText?.text ?? "";
+            string area = saveItem.m_areaText?.text ?? "";
+            string playTime = saveItem.m_playTimeText?.text ?? "";
+        }
+    }
+}
+```
+
+### uSavePanelHeadLine (Menu Header)
+
+**Class:** `uSavePanelHeadLine` (extends `uPanelBase`)
+
+**Key Properties:**
+- `m_HeadLine` (Text) - Header text (e.g., "Save" or "Load")
+
+### uSavePanelCaption (Menu Caption)
+
+**Class:** `uSavePanelCaption` (extends `uPanelBase`)
+
+**Key Properties:**
+- `m_Caption` (Text) - Caption/instruction text
+
+**CaptionKind Enum:**
+- NORMAL = 0
+- YESNO = 1 (confirmation mode)
+
+## Field Item Panel (uFieldItemPanel)
+
+**Class:** `uFieldItemPanel` (extends `MonoBehaviour`)
+
+Used for: Using items during field exploration.
+
+**Type Enum (Item Categories):**
+- Care = 0
+- Camp = 1
+- Digivice = 2
+- Event = 3
+- Battle = 4
+- Oyatsu = 5 (Snacks)
+- Max = 6
+
+**Result Enum:**
+- ItemSelect
+- ItemMenuToCommandMenu
+- ItemMessage
+- ItemUse
+
+**Key Properties:**
+- Multiple item category tabs with TypeData struct
+- Context-dependent item lists per category
+- Scroll position tracking per category
+
+**Detection:** `FindObjectOfType<uFieldItemPanel>()`, check state is active
+
+## Storage Panel (uStoragePanel)
+
+**Class:** `uStoragePanel` (extends `MonoBehaviour`)
+
+Used for: Transferring items between inventory and storage boxes.
+
+**Key Properties:**
+- `m_itemPanelL` - Left panel (source)
+- `m_itemPanelR` - Right panel (destination)
+- `m_captionPanel` - Header/title panel
+- `m_infoPanel` - Item details panel
+- `m_openType` - Storage type state
+
+**Key Methods:**
+- `ChangeItemList` - Switch between lists
+- `ArrowAction` - Navigate between panels
+
+**Detection:** `FindObjectOfType<uStoragePanel>()`, check panel is active
+
+## Map Panel (uDigiviceMapPanel)
+
+**Class:** `uDigiviceMapPanel` (extends `MonoBehaviour`)
+
+Used for: Viewing world map, area maps, and navigation.
+
+**State Enum:**
+- NONE
+- WORLD
+- AREA
+- MINI_AREA
+- CLOSE
+- MAX
+
+**RapidChangeKind Enum:**
+- NORMAL
+- EXTRA_DUNGEON
+
+**Key Properties:**
+- Multi-level map navigation (World/Area/Mini)
+- MapPanelBitFlag with state tracking
+- Dialog state management
+
+**Detection:** `FindObjectOfType<uDigiviceMapPanel>()`, check state is not NONE
+
+## Partner Panel (uPartnerPanel)
+
+**Class:** `uPartnerPanel` (extends `MonoBehaviour`)
+
+Used for: Viewing detailed Digimon partner information.
+
+**State Enum (Tabs):**
+- None
+- Top
+- Status
+- Attack
+- Tactics
+- History
+
+**Key Properties:**
+- Multi-tab navigation
+- Tab-specific content display
+- InitializeTask coroutine for async loading
+
+**Tab Content:**
+- Status: HP, MP, stats, hunger, fatigue
+- Attack: Known moves/skills
+- Tactics: Battle AI settings
+- History: Evolution history, achievements
+
+**Detection:** `FindObjectOfType<uPartnerPanel>()`, check state is not None
+
+## Item Pick Panel (uItemPickPanel)
+
+**Class:** `uItemPickPanel` (extends `MonoBehaviour`)
+
+Used for: Picking up items and materials found in the field.
+
+**State Enum:**
+- None
+- CommandMain
+- ItemPick
+- MaterialPick
+- Result
+- Close
+- Wait
+- Max
+
+**Result Enum:**
+- None
+- End
+
+**Key Properties:**
+- Material vs item type distinction
+- Callback-based state changes
+- Count/quantity management
+
+**Detection:** `FindObjectOfType<uItemPickPanel>()`, check state is not None
+
+## Mail Panel (uMailPanel)
+
+**Class:** `uMailPanel` (extends `MonoBehaviour`)
+
+Used for: Reading messages and quest information.
+
+**State Enum:**
+- SELECT
+- NEXT
+- RETURN
+
+**Key Properties:**
+- `m_ListMailData` - List of mail items
+- `m_SelectTab` - Current tab index
+- `m_SelectTabInfoTbl` - Tab information array
+- MailPanelBitFlag with 9 state flags
+
+**Key Methods:**
+- `UpdateMailList` - Refresh mail list
+- `SetSelectTab` - Change active tab
+
+**Detection:** `FindObjectOfType<uMailPanel>()`, check panel is active
+
+## Digivice Top Panel (uDigiviceTopPanel)
+
+**Class:** `uDigiviceTopPanel` (extends `MonoBehaviour`)
+
+Used for: Main Digivice menu with navigation to sub-menus.
+
+**Key Properties:**
+- Main menu cursor/selection
+- Navigation to Partner, Item, Map, Mail, etc.
+
+**Detection:** `FindObjectOfType<uDigiviceTopPanel>()`, check panel is active
+
+## Zone Panel
+
+Used for: Zone/area selection when traveling.
+
+**Key Properties:**
+- Zone list with cursor selection
+- Zone name and description
+
+**Detection:** Check for zone selection panel active state

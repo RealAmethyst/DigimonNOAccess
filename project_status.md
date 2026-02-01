@@ -45,6 +45,19 @@ All major NPC dialog menus now have accessibility handlers:
 - **TrainingPanelHandler** - Gym training selection (HP, MP, STR, STA, WIS, SPD)
 - **ColosseumPanelHandler** - Battle arena selection
 - **FarmPanelHandler** - Farm goods management
+- **SavePanelHandler** - Save/load game menu
+
+### Field Gameplay Menus (COMPLETE)
+All major field menus now have accessibility handlers:
+- **FieldItemPanelHandler** - Item use menu with category tabs
+- **StoragePanelHandler** - Storage/inventory transfer between panels
+- **MapPanelHandler** - World/area map navigation
+- **PartnerPanelHandler** - Partner status with multi-tab support (Status, Attack, Tactics, History)
+- **ItemPickPanelHandler** - Field item/material pickup
+- **MailPanelHandler** - Digital messenger/mail reading
+- **DigiviceTopPanelHandler** - Digivice main menu
+- **ZonePanelHandler** - Zone/area selection
+- **FieldHudHandler** - Partner status via controller combos (RB/LB + face buttons)
 
 ## Known Issues
 
@@ -273,6 +286,16 @@ Two approaches found in game:
 - `TrainingPanelHandler.cs` - Training gym menu accessibility
 - `ColosseumPanelHandler.cs` - Colosseum battle selection accessibility
 - `FarmPanelHandler.cs` - Farm management menu accessibility
+- `SavePanelHandler.cs` - Save/load menu accessibility
+- `FieldItemPanelHandler.cs` - Field item use menu accessibility
+- `StoragePanelHandler.cs` - Storage/inventory transfer accessibility
+- `MapPanelHandler.cs` - Map navigation accessibility
+- `PartnerPanelHandler.cs` - Partner status menu accessibility
+- `ItemPickPanelHandler.cs` - Item pickup accessibility
+- `MailPanelHandler.cs` - Mail/messenger accessibility
+- `DigiviceTopPanelHandler.cs` - Digivice main menu accessibility
+- `ZonePanelHandler.cs` - Zone selection accessibility
+- `FieldHudHandler.cs` - Partner status via controller combos
 - `docs/game-api.md` - Documented game API reference
 
 ### Audio Navigation System (ALWAYS-ON)
@@ -325,9 +348,7 @@ Two approaches found in game:
 - **Dependencies:** NAudio NuGet package (NAudio.dll, NAudio.Core.dll, NAudio.WinMM.dll, NAudio.Wasapi.dll deployed to Mods folder)
 
 ## Next Steps
-1. **Audio Navigation Sound Design** - Replace generated tones with actual sound files for better audio experience (WAV/MP3 loading via NAudio)
-2. Test voice detection - confirm voiced dialog is filtered, non-voiced plays TTS
-3. Look at MainGameBattle, uBattlePanel classes for battle accessibility
-4. Consider movie subtitles (MovieSubtitle class) for cutscene accessibility
-5. Field gameplay menus (inventory, map, etc.)
-6. Wall/obstacle detection with continuous audio feedback
+1. **Battle System** - Look at MainGameBattle, uBattlePanel classes for battle accessibility
+2. **Cutscene Subtitles** - MovieSubtitle class for cutscene accessibility
+3. Test voice detection - confirm voiced dialog is filtered, non-voiced plays TTS
+4. Expand FieldHudHandler with hunger/fatigue/mood data if available
