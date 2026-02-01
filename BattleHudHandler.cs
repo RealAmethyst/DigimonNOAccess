@@ -4,18 +4,26 @@ using UnityEngine;
 namespace DigimonNOAccess
 {
     /// <summary>
-    /// Handles battle HUD status announcements via controller combos.
-    /// Uses the same D-pad pattern as FieldHudHandler for consistency.
+    /// Handles battle HUD status announcements via keyboard.
     ///
-    /// Controller layout (D-pad only, no modifiers):
-    /// D-Up = Partner 1 HP and MP
-    /// D-Down = Partner 2 HP and MP
-    /// D-Left = Partner 1 current order
-    /// D-Right = Partner 2 current order
-    ///
-    /// Keyboard fallback:
+    /// Keyboard:
     /// F3 = Partner 1 full status
     /// F4 = Partner 2 full status
+    /// F6 = Partner 1 HP/MP
+    /// F7 = Partner 2 HP/MP
+    ///
+    /// CONTROLLER ATTEMPTS (none worked - for future reference):
+    /// - D-pad alone: Game consumes D-pad for targeting/camera
+    /// - RB/LB + D-pad: RB/LB open Order Ring during battle
+    /// - Select + D-pad: PadManager.IsInput didn't detect Select
+    /// - B (Circle) + D-pad: PadManager.IsInput didn't detect it
+    /// - L2/R2 triggers: Game uses Steam Input which doesn't expose triggers
+    ///   (tried Unity Input.GetAxisRaw - axes not configured in Steam Input)
+    /// - Right Stick (srUp/srDown/etc): PadManager.IsTrigger didn't fire
+    ///
+    /// The game uses Steam Input for controller, which intercepts all input.
+    /// PadManager only exposes buttons the game explicitly mapped.
+    /// Triggers (L2/R2) are not mapped in the game's Steam Input config.
     /// </summary>
     public class BattleHudHandler
     {
@@ -43,17 +51,8 @@ namespace DigimonNOAccess
                 DebugLogger.Log("[BattleHudHandler] Battle panel active, D-pad status checks enabled");
             }
 
-            // Only respond if we're not in a sub-menu (item, dialog, etc.)
-            if (IsInSubMenu())
-            {
-                return;
-            }
-
-            // Handle keyboard input
+            // Handle keyboard input (F3/F4/F6/F7)
             HandleKeyboardInput();
-
-            // Handle controller input
-            HandleControllerInput();
         }
 
         private bool IsInSubMenu()
@@ -114,77 +113,37 @@ namespace DigimonNOAccess
             // F3 = Partner 1 full status
             if (Input.GetKeyDown(KeyCode.F3))
             {
+                DebugLogger.Log("[BattleHudHandler] F3 pressed in battle");
                 AnnouncePartnerFullStatus(0);
             }
 
             // F4 = Partner 2 full status
             if (Input.GetKeyDown(KeyCode.F4))
             {
+                DebugLogger.Log("[BattleHudHandler] F4 pressed in battle");
                 AnnouncePartnerFullStatus(1);
             }
-        }
 
-        private void HandleControllerInput()
-        {
-            // D-pad only controls (no shoulder buttons needed in battle)
-            // D-Up = Partner 1 HP/MP
-            // D-Down = Partner 2 HP/MP
-            // D-Left = Partner 1 order
-            // D-Right = Partner 2 order
-
-            // Check all D-pad buttons at once to capture the state
-            bool dUp = PadManager.IsTrigger(PadManager.BUTTON.dUp);
-            bool dDown = PadManager.IsTrigger(PadManager.BUTTON.dDown);
-            bool dLeft = PadManager.IsTrigger(PadManager.BUTTON.dLeft);
-            bool dRight = PadManager.IsTrigger(PadManager.BUTTON.dRight);
-
-            if (dUp)
+            // F6 = Partner 1 HP/MP only (simpler)
+            if (Input.GetKeyDown(KeyCode.F6))
             {
-                DebugLogger.Log("[BattleHudHandler] D-Up pressed - Partner 1 HP/MP");
+                DebugLogger.Log("[BattleHudHandler] F6 pressed - Partner 1 HP/MP");
                 AnnouncePartnerHpMp(0);
             }
-            else if (dDown)
+
+            // F7 = Partner 2 HP/MP only (simpler)
+            if (Input.GetKeyDown(KeyCode.F7))
             {
-                DebugLogger.Log("[BattleHudHandler] D-Down pressed - Partner 2 HP/MP");
+                DebugLogger.Log("[BattleHudHandler] F7 pressed - Partner 2 HP/MP");
                 AnnouncePartnerHpMp(1);
             }
-            else if (dLeft)
-            {
-                DebugLogger.Log("[BattleHudHandler] D-Left pressed - Partner 1 order");
-                AnnouncePartnerOrder(0);
-            }
-            else if (dRight)
-            {
-                DebugLogger.Log("[BattleHudHandler] D-Right pressed - Partner 2 order");
-                AnnouncePartnerOrder(1);
-            }
-        }
 
-        private void HandlePartnerInput(int partnerIndex)
-        {
-            // D-Up = HP and MP
-            if (PadManager.IsTrigger(PadManager.BUTTON.dUp))
+            // F8 = Debug: log all joystick axes to find trigger mapping
+            if (Input.GetKeyDown(KeyCode.F8))
             {
-                DebugLogger.Log($"[BattleHudHandler] D-Up triggered for partner {partnerIndex}");
-                AnnouncePartnerHpMp(partnerIndex);
-            }
-            // D-Right = Current order/command
-            else if (PadManager.IsTrigger(PadManager.BUTTON.dRight))
-            {
-                DebugLogger.Log($"[BattleHudHandler] D-Right triggered for partner {partnerIndex}");
-                AnnouncePartnerOrder(partnerIndex);
-            }
-            // D-Down = Order Power level
-            else if (PadManager.IsTrigger(PadManager.BUTTON.dDown))
-            {
-                DebugLogger.Log($"[BattleHudHandler] D-Down triggered for partner {partnerIndex}");
-                AnnouncePartnerOrderPower(partnerIndex);
-            }
-            // D-Left = Name
-            else if (PadManager.IsTrigger(PadManager.BUTTON.dLeft))
-            {
-                DebugLogger.Log($"[BattleHudHandler] D-Left triggered for partner {partnerIndex}");
-                AnnouncePartnerName(partnerIndex);
+                DebugLogger.Log("[BattleHudHandler] F8 pressed - logging all joystick inputs");
+                TriggerInput.DebugLogAllAxes();
+                ScreenReader.Say("Logging joystick inputs to debug file");
             }
         }
 
@@ -192,13 +151,39 @@ namespace DigimonNOAccess
         {
             try
             {
-                var panels = _cachedBattlePanel?.m_digimon;
-                if (panels != null && index < panels.Length)
+                if (_cachedBattlePanel == null)
                 {
-                    return panels[index];
+                    DebugLogger.Log($"[BattleHudHandler] GetDigimonPanel: _cachedBattlePanel is null");
+                    return null;
+                }
+
+                var panels = _cachedBattlePanel.m_digimon;
+                if (panels == null)
+                {
+                    DebugLogger.Log($"[BattleHudHandler] GetDigimonPanel: m_digimon array is null");
+                    return null;
+                }
+
+                DebugLogger.Log($"[BattleHudHandler] GetDigimonPanel: m_digimon.Length = {panels.Length}, requesting index {index}");
+
+                if (index >= 0 && index < panels.Length)
+                {
+                    var panel = panels[index];
+                    if (panel == null)
+                    {
+                        DebugLogger.Log($"[BattleHudHandler] GetDigimonPanel: panel at index {index} is null");
+                    }
+                    return panel;
+                }
+                else
+                {
+                    DebugLogger.Log($"[BattleHudHandler] GetDigimonPanel: index {index} out of range");
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[BattleHudHandler] GetDigimonPanel exception: {ex.Message}");
+            }
 
             return null;
         }
@@ -230,25 +215,82 @@ namespace DigimonNOAccess
                 return;
             }
 
-            // Get HP and MP from text fields or numeric values
-            string hpText = "0";
-            string mpText = "0";
+            // Get HP and MP - try multiple sources
+            int hp = 0;
+            int mp = 0;
+            string hpSource = "unknown";
+            string mpSource = "unknown";
 
+            // Method 1: Try m_now_hp/m_now_mp (integer fields from base class)
             try
             {
-                hpText = panel.m_hpText?.text ?? panel.m_now_hp.ToString();
-                mpText = panel.m_mpText?.text ?? panel.m_now_mp.ToString();
-                DebugLogger.Log($"[BattleHudHandler] Partner {partnerIndex}: HP={hpText}, MP={mpText}");
+                hp = panel.m_now_hp;
+                mp = panel.m_now_mp;
+                hpSource = "m_now_hp";
+                mpSource = "m_now_mp";
+                DebugLogger.Log($"[BattleHudHandler] From m_now fields: HP={hp}, MP={mp}");
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[BattleHudHandler] Exception reading HP/MP: {ex.Message}");
-                hpText = panel.m_now_hp.ToString();
-                mpText = panel.m_now_mp.ToString();
+                DebugLogger.Log($"[BattleHudHandler] Failed to read m_now fields: {ex.Message}");
+            }
+
+            // Method 2: Try text fields if integers failed or were 0
+            if (hp == 0 || mp == 0)
+            {
+                try
+                {
+                    var hpTextField = panel.m_hpText;
+                    var mpTextField = panel.m_mpText;
+
+                    if (hpTextField != null && !string.IsNullOrEmpty(hpTextField.text))
+                    {
+                        if (int.TryParse(hpTextField.text, out int parsedHp))
+                        {
+                            hp = parsedHp;
+                            hpSource = "m_hpText";
+                        }
+                    }
+                    if (mpTextField != null && !string.IsNullOrEmpty(mpTextField.text))
+                    {
+                        if (int.TryParse(mpTextField.text, out int parsedMp))
+                        {
+                            mp = parsedMp;
+                            mpSource = "m_mpText";
+                        }
+                    }
+                    DebugLogger.Log($"[BattleHudHandler] From text fields: HP={hp} ({hpSource}), MP={mp} ({mpSource})");
+                }
+                catch (System.Exception ex)
+                {
+                    DebugLogger.Log($"[BattleHudHandler] Failed to read text fields: {ex.Message}");
+                }
+            }
+
+            // Method 3: Try PartnerCtrl reference
+            if (hp == 0 || mp == 0)
+            {
+                try
+                {
+                    var partner = panel.m_partner;
+                    if (partner != null)
+                    {
+                        DebugLogger.Log($"[BattleHudHandler] Trying PartnerCtrl reference");
+                        // PartnerCtrl extends DigimonCtrl which has Hp property
+                        hp = partner.Hp;
+                        hpSource = "PartnerCtrl.Hp";
+                        DebugLogger.Log($"[BattleHudHandler] From PartnerCtrl: HP={hp}");
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    DebugLogger.Log($"[BattleHudHandler] Failed to read from PartnerCtrl: {ex.Message}");
+                }
             }
 
             string partnerLabel = partnerIndex == 0 ? "Partner 1" : "Partner 2";
-            ScreenReader.Say($"{partnerLabel}: HP {hpText}, MP {mpText}");
+            DebugLogger.Log($"[BattleHudHandler] Final values: HP={hp}, MP={mp}");
+            ScreenReader.Say($"{partnerLabel}: HP {hp}, MP {mp}");
         }
 
         private void AnnouncePartnerOrder(int partnerIndex)

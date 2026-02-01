@@ -175,6 +175,14 @@ namespace DigimonNOAccess
             {
                 AnnounceCurrentStatus();
             }
+
+            // F5 = Toggle reading voiced text (for non-English voice users)
+            if (Input.GetKeyDown(KeyCode.F5))
+            {
+                DialogTextPatch.AlwaysReadText = !DialogTextPatch.AlwaysReadText;
+                string state = DialogTextPatch.AlwaysReadText ? "on" : "off";
+                ScreenReader.Say($"Read voiced text: {state}");
+            }
         }
 
         private void AnnounceCurrentStatus()
@@ -310,7 +318,7 @@ namespace DigimonNOAccess
             }
             else if (_battleHudHandler.IsActive())
             {
-                ScreenReader.Say("In battle - use RB or LB plus D-pad for partner status");
+                ScreenReader.Say("In battle. Hold RB plus D-pad for Partner 1, LB plus D-pad for Partner 2");
             }
             else
             {

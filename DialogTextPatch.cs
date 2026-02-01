@@ -33,6 +33,9 @@ namespace DigimonNOAccess
         private static HashSet<string> _voicedTextKeys = new HashSet<string>();
         private static DateTime _lastVoiceTime = DateTime.MinValue;
 
+        // Toggle: When true, read ALL text including voiced dialog (for non-English voice users)
+        public static bool AlwaysReadText { get; set; } = false;
+
         /// <summary>
         /// Mark the text as consumed (after announcement).
         /// </summary>
@@ -142,7 +145,8 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[DialogTextPatch] TextShrink intercepted: text='{TruncateForLog(text)}'");
 
                 // Check if this is voiced dialog - skip TTS since game will play voice
-                if (IsVoicedDialog())
+                // Unless AlwaysReadText is enabled (for users playing with non-English voice)
+                if (IsVoicedDialog() && !AlwaysReadText)
                 {
                     DebugLogger.Log($"[DialogTextPatch] Skipping TTS - voiced dialog detected");
                     return;

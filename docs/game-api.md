@@ -112,8 +112,11 @@ Keys NOT used by game, safe for mod functions:
 ### Mod Key Bindings (Currently Used)
 - **F1** - Repeat last announcement
 - **F2** - Announce current menu/status
-- **F3** - Partner 1 full status (field only)
-- **F4** - Partner 2 full status (field only)
+- **F3** - Partner 1 full status (field and battle)
+- **F4** - Partner 2 full status (field and battle)
+- **F5** - Toggle reading voiced text (for non-English voice users)
+- **F6** - Partner 1 HP/MP only (battle)
+- **F7** - Partner 2 HP/MP only (battle)
 
 ### Controller Combos for Partner Status (Field Only)
 Hold RB (R1) + D-pad for Partner 1 info:
@@ -124,7 +127,14 @@ Hold RB (R1) + D-pad for Partner 1 info:
 
 Hold LB (L1) + D-pad for Partner 2 info (same layout)
 
-Note: D-pad is used instead of face buttons to avoid conflicts with game menus (Triangle opens Digivice, Square opens Care menu).
+Note: In field, use RB/LB + D-pad. In battle, use Right Stick (RB/LB open Order Ring).
+
+### Controller Combos for Partner Status (Battle Only)
+Right Stick directions:
+- **RS Up** - Partner 1 HP/MP
+- **RS Down** - Partner 2 HP/MP
+- **RS Left** - Partner 1 current order
+- **RS Right** - Partner 2 current order
 
 ### Always-On Audio Systems (No Keys Required)
 - **Positional Audio Tracking** - Automatically tracks nearest object with 3D audio when player is in control
