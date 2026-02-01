@@ -14,6 +14,12 @@
   <ItemGroup>
     <Compile Remove="decompiled\**" />
     <Compile Remove="templates\**" />
+    <Compile Remove="sounds\**" />
+  </ItemGroup>
+
+  <!-- Copy sounds folder to output -->
+  <ItemGroup>
+    <None Include="sounds\**" CopyToOutputDirectory="PreserveNewest" LinkBase="sounds" />
   </ItemGroup>
 
   <!-- NAudio for positional audio -->
@@ -52,6 +58,9 @@
     </Reference>
     <Reference Include="UnityEngine.PhysicsModule">
       <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Digimon World Next Order\MelonLoader\Il2CppAssemblies\UnityEngine.PhysicsModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.AIModule">
+      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Digimon World Next Order\MelonLoader\Il2CppAssemblies\UnityEngine.AIModule.dll</HintPath>
     </Reference>
     <Reference Include="0Harmony">
       <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Digimon World Next Order\MelonLoader\net6\0Harmony.dll</HintPath>

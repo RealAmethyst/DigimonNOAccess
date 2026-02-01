@@ -21,6 +21,7 @@ namespace DigimonNOAccess
         private DialogChoiceHandler _dialogChoiceHandler;
         private CommonYesNoHandler _commonYesNoHandler;
         private AudioNavigationHandler _audioNavigationHandler;
+        private WallDetectionHandler _wallDetectionHandler;
         private CampCommandHandler _campCommandHandler;
         private CommonSelectWindowHandler _commonSelectWindowHandler;
         private TradePanelHandler _tradePanelHandler;
@@ -66,6 +67,7 @@ namespace DigimonNOAccess
             _dialogChoiceHandler = new DialogChoiceHandler();
             _commonYesNoHandler = new CommonYesNoHandler();
             _audioNavigationHandler = new AudioNavigationHandler();
+            _wallDetectionHandler = new WallDetectionHandler();
             _campCommandHandler = new CampCommandHandler();
             _commonSelectWindowHandler = new CommonSelectWindowHandler();
             _tradePanelHandler = new TradePanelHandler();
@@ -96,6 +98,7 @@ namespace DigimonNOAccess
             _dialogChoiceHandler.Update();
             _commonYesNoHandler.Update();
             _audioNavigationHandler.Update();
+            _wallDetectionHandler.Update();
             _campCommandHandler.Update();
             _commonSelectWindowHandler.Update();
             _tradePanelHandler.Update();
@@ -208,6 +211,7 @@ namespace DigimonNOAccess
         {
             LoggerInstance.Msg("DigimonNOAccess shutdown");
             _audioNavigationHandler?.Cleanup();
+            _wallDetectionHandler?.Dispose();
             ScreenReader.Shutdown();
         }
     }

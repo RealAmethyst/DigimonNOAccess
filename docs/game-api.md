@@ -110,10 +110,13 @@ Keys NOT used by game, safe for mod functions:
 - Alt+key combinations
 
 ### Mod Key Bindings (Currently Used)
-- **F3** - Toggle audio navigation system on/off
-- **F4** - Test game sounds (cycles through CRI sound effects)
-- **F5** - Announce nearby objects (distance and direction via TTS)
-- **F6** - Toggle 3D positional audio tracking (tracks nearest object with continuous audio)
+- **F1** - Repeat last announcement
+- **F2** - Announce current menu/status
+
+### Always-On Audio Systems (No Keys Required)
+- **Positional Audio Tracking** - Automatically tracks nearest object with 3D audio when player is in control
+- **Wall Detection** - Automatically plays directional sounds when walls are nearby
+- Both systems pause during battles, cutscenes, events, and menus
 
 ## Options Top Panel Command (uOptionTopPanelCommand)
 
@@ -755,9 +758,9 @@ private static void TextShrinkPrefix(EventWindowPanel __instance, string text)
 **MovieSubtitle** - Movie subtitle display
 - `m_start_frame` / `m_end_frame` - Subtitle timing
 
-## Positional Audio System (NAudio)
+## Positional Audio System (NAudio) - Always-On
 
-The mod uses NAudio for 3D positional audio, bypassing the game's CRI Atom system (which has 2D-baked sounds).
+The mod uses NAudio for 3D positional audio, bypassing the game's CRI Atom system (which has 2D-baked sounds). The system is **always active** when the player is in control - no toggle keys required.
 
 ### Why NAudio Instead of Game Audio
 - **CRI Atom Limitation:** The game's common SE cue sheet sounds are authored as 2D in CRI Atom at build time. The `use3D` parameter only affects position updates, not actual 3D playback.
@@ -771,19 +774,21 @@ The mod uses NAudio for 3D positional audio, bypassing the game's CRI Atom syste
 **Key Methods:**
 - `StartTracking(SoundType, maxDistance)` - Begin tracking with specified sound type
 - `Stop()` - Stop tracking audio
+- `ChangeSoundType(SoundType, maxDistance)` - Switch to different sound while playing
 - `UpdateTargetPosition(x, y, z)` - Update target world position
 - `UpdatePlayerPosition(x, y, z, forwardX, forwardZ)` - Update player position and facing direction
 - `GetCurrentDistance()` - Get current distance to target
 - `IsPlaying` - Check if currently playing
 
 **SoundType Enum:**
-- `Beep` - 440Hz sine wave (items)
-- `Pulse` - 600Hz sine wave (NPCs/partners)
-- `Warning` - 880Hz square wave (enemies)
+- `Item` - Items (loads item.wav)
+- `NPC` - NPCs (loads potential npc.wav)
+- `Enemy` - Enemy Digimon (loads potential enemie digimon.wav)
+- `Transition` - Area transitions (loads transission.wav)
 
 **Audio Chain:**
 ```
-SignalGenerator (mono) → PanningSampleProvider (stereo) → VolumeSampleProvider → WaveOutEvent
+AudioFileReader/SignalGenerator (mono) → PanningSampleProvider (stereo) → VolumeSampleProvider → WaveOutEvent
 ```
 
 **Position Calculation:**
@@ -800,52 +805,55 @@ float dot = forwardX * dx + forwardZ * dz;  // positive = front, negative = back
 ```
 
 **Features:**
+- Loads custom WAV files from sounds/ folder (falls back to generated tones)
 - Stereo panning based on target angle relative to player facing
 - Volume scales with distance (louder when closer)
-- Pitch increases as player approaches (proximity cue)
+- Pitch increases as player approaches (proximity cue, generated tones only)
 - Background thread updates at 60fps for smooth audio
-- Auto-stops when player reaches target (within 2 meters)
+- Auto-switches to nearest target every 0.5 seconds
+- Auto-stops when player reaches target (within 3 meters)
 
-### AudioNavigationHandler Integration
+### AudioNavigationHandler - Always-On Mode
 
 **File:** `AudioNavigationHandler.cs`
 
-**Update Loop:**
-```csharp
-// Called every frame when tracking is active
-private void UpdatePositionalAudioTracking()
-{
-    // Update player position from PlayerCtrl
-    Vector3 playerPos = _playerCtrl.transform.position;
-    Vector3 playerForward = _playerCtrl.transform.forward;
-    _positionalAudio.UpdatePlayerPosition(
-        playerPos.x, playerPos.y, playerPos.z,
-        playerForward.x, playerForward.z
-    );
-
-    // Update target position from tracked GameObject
-    Vector3 targetPos = _trackedTarget.transform.position;
-    _positionalAudio.UpdateTargetPosition(targetPos.x, targetPos.y, targetPos.z);
-}
-```
+**Behavior:**
+- Automatically initializes and starts tracking on first Update
+- Continuously scans for nearest target every 0.5 seconds
+- Automatically switches between targets as player moves
+- Pauses during battles, cutscenes, events (ActionState_Event, ActionState_Battle, etc.)
+- No toggle keys - always active when player is in control
 
 **Object Detection Priority:**
-1. Items (`ItemPickPointManager.m_itemPickPoints`) - range 20m
-2. NPCs (`NpcManager.m_NpcCtrlArray`) - range 25m
-3. Enemies (`EnemyManager.m_EnemyCtrlArray`) - range 30m
-4. Partners (`DigimonCtrl`) - range 50m (fallback)
+1. Items (`ItemPickPointManager.m_itemPickPoints`) - range 100m
+2. Transitions (`MapTriggerScript` with `enterID == MapChange`) - range 80m
+3. Enemies (`EnemyManager.m_EnemyCtrlArray`) - range 150m
+4. NPCs (`NpcManager.m_NpcCtrlArray`) - range 120m
+5. Partners (`PartnerCtrl`) - range 200m (fallback only)
 
-### Future: Loading Sound Files
+### WallDetectionHandler - Always-On Mode
 
-NAudio supports loading WAV/MP3 files for better audio:
-```csharp
-using (var audioFile = new AudioFileReader("sound.wav"))
-{
-    var loopStream = new LoopStream(audioFile);
-    var panner = new PanningSampleProvider(loopStream.ToSampleProvider());
-    // ... rest of chain
-}
-```
+**File:** `WallDetectionHandler.cs`
+
+**Behavior:**
+- Uses NavMesh.SamplePosition to detect impassable areas
+- Checks 4 directions relative to player: ahead, behind, left, right
+- Plays directional sounds with stereo panning
+- Volume levels: ahead 0.4, behind 0.5, left/right 0.3
+- Pauses during battles, cutscenes, events
+- No toggle key - always active when player is in control
+
+**Sound Files:**
+- `wall up.wav` - Wall ahead (center pan)
+- `wall down.wav` - Wall behind (center pan)
+- `wall left.wav` - Wall to left (left speaker)
+- `wall right.wav` - Wall to right (right speaker)
+
+### Player Control Detection
+
+Both systems use `IsPlayerInControl()` which checks:
+- `uBattlePanel.m_instance.m_enabled == false` (not in battle)
+- `PlayerCtrl.actionState` is not Event, Battle, Dead, DeadGataway, or LiquidCrystallization
 
 ## NPC Menu Panels
 

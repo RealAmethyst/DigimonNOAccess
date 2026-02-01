@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
@@ -8,6 +9,7 @@ namespace DigimonNOAccess
     /// <summary>
     /// Provides true positional audio using NAudio, bypassing the game's audio system.
     /// Simulates 3D audio with stereo panning and distance-based volume.
+    /// Supports loading custom WAV files for different object types.
     /// </summary>
     public class PositionalAudio : IDisposable
     {
@@ -16,6 +18,8 @@ namespace DigimonNOAccess
         private PanningSampleProvider _panner;
         private VolumeSampleProvider _volumeProvider;
         private SignalGenerator _signalGenerator;
+        private LoopingWaveProvider _loopingWave;
+        private AudioFileReader _audioFile;
 
         // Position tracking
         private float _targetX, _targetY, _targetZ;
@@ -29,32 +33,66 @@ namespace DigimonNOAccess
         private float _maxVolume = 0.8f;
         private bool _isPlaying = false;
         private bool _disposed = false;
+        private bool _useWavFile = false;
 
         // Update thread
         private Thread _updateThread;
         private bool _shouldUpdate = false;
 
+        // Sound files directory
+        private static string _soundsPath;
+
         // Different sound types for different objects
         public enum SoundType
         {
-            Beep,       // Simple beep for items
-            Pulse,      // Pulsing for NPCs
-            Warning     // Higher pitch for enemies
+            Item,       // Items (item.wav)
+            NPC,        // NPCs (potential npc.wav)
+            Enemy,      // Enemy Digimon (potential enemie digimon.wav)
+            Transition  // Area transitions (transission.wav)
         }
 
-        private SoundType _currentSoundType = SoundType.Beep;
+        private SoundType _currentSoundType = SoundType.Item;
 
         public PositionalAudio()
         {
             try
             {
-                InitializeAudio(SoundType.Beep);
+                // Find sounds folder relative to mod DLL location
+                string modPath = Path.GetDirectoryName(typeof(PositionalAudio).Assembly.Location);
+                _soundsPath = Path.Combine(Path.GetDirectoryName(modPath), "sounds");
+
+                // Fallback to project directory structure
+                if (!Directory.Exists(_soundsPath))
+                {
+                    _soundsPath = Path.Combine(modPath, "sounds");
+                }
+
+                DebugLogger.Log($"[PositionalAudio] Sounds path: {_soundsPath}");
+                DebugLogger.Log($"[PositionalAudio] Sounds folder exists: {Directory.Exists(_soundsPath)}");
+
+                InitializeAudio(SoundType.Item);
                 DebugLogger.Log("[PositionalAudio] Initialized successfully");
             }
             catch (Exception ex)
             {
-                DebugLogger.Log($"[PositionalAudio] Init error: {ex.Message}");
+                DebugLogger.Log($"[PositionalAudio] Init error: {ex.Message}\n{ex.StackTrace}");
             }
+        }
+
+        /// <summary>
+        /// Get the WAV file path for a sound type
+        /// </summary>
+        private string GetSoundFilePath(SoundType soundType)
+        {
+            string filename = soundType switch
+            {
+                SoundType.Item => "item.wav",
+                SoundType.NPC => "potential npc.wav",
+                SoundType.Enemy => "potential enemie digimon.wav",
+                SoundType.Transition => "transission.wav",
+                _ => "item.wav"
+            };
+            return Path.Combine(_soundsPath, filename);
         }
 
         private void InitializeAudio(SoundType soundType)
@@ -63,22 +101,93 @@ namespace DigimonNOAccess
             StopInternal();
 
             _currentSoundType = soundType;
+            _useWavFile = false;
 
+            // Try to load WAV file first
+            string wavPath = GetSoundFilePath(soundType);
+            if (File.Exists(wavPath))
+            {
+                try
+                {
+                    InitializeFromWavFile(wavPath);
+                    _useWavFile = true;
+                    DebugLogger.Log($"[PositionalAudio] Loaded WAV file: {wavPath}");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Log($"[PositionalAudio] Failed to load WAV: {ex.Message}, falling back to generated tone");
+                }
+            }
+            else
+            {
+                DebugLogger.Log($"[PositionalAudio] WAV file not found: {wavPath}, using generated tone");
+            }
+
+            // Fallback to generated tone
+            InitializeFromGenerator(soundType);
+        }
+
+        private void InitializeFromWavFile(string wavPath)
+        {
+            _audioFile = new AudioFileReader(wavPath);
+
+            // Create looping provider
+            _loopingWave = new LoopingWaveProvider(_audioFile);
+
+            // Convert to mono if stereo, for proper panning
+            ISampleProvider sampleProvider;
+            if (_loopingWave.WaveFormat.Channels == 2)
+            {
+                // Convert stereo to mono for panning to work correctly
+                sampleProvider = new StereoToMonoSampleProvider(_loopingWave.ToSampleProvider());
+            }
+            else
+            {
+                sampleProvider = _loopingWave.ToSampleProvider();
+            }
+
+            // PanningSampleProvider takes MONO input and creates stereo output with panning
+            _panner = new PanningSampleProvider(sampleProvider)
+            {
+                Pan = 0f
+            };
+
+            // Add volume control
+            _volumeProvider = new VolumeSampleProvider(_panner)
+            {
+                Volume = 0.5f
+            };
+
+            // Create output device
+            _waveOut = new WaveOutEvent
+            {
+                DesiredLatency = 100
+            };
+            _waveOut.Init(_volumeProvider);
+        }
+
+        private void InitializeFromGenerator(SoundType soundType)
+        {
             // Create signal generator based on sound type
             float frequency;
             SignalGeneratorType signalType;
 
             switch (soundType)
             {
-                case SoundType.Pulse:
+                case SoundType.NPC:
                     frequency = 600f;  // Medium pitch for NPCs
                     signalType = SignalGeneratorType.Sin;
                     break;
-                case SoundType.Warning:
+                case SoundType.Enemy:
                     frequency = 880f;  // Higher pitch for enemies
                     signalType = SignalGeneratorType.Square;
                     break;
-                case SoundType.Beep:
+                case SoundType.Transition:
+                    frequency = 523f;  // C5 for transitions
+                    signalType = SignalGeneratorType.Triangle;
+                    break;
+                case SoundType.Item:
                 default:
                     frequency = 440f;  // A4 note for items
                     signalType = SignalGeneratorType.Sin;
@@ -94,7 +203,6 @@ namespace DigimonNOAccess
             };
 
             // PanningSampleProvider takes MONO input and creates stereo output with panning
-            // This is the correct order - no MonoToStereo needed before panning
             _panner = new PanningSampleProvider(_signalGenerator)
             {
                 Pan = 0f  // -1 = left, 0 = center, 1 = right
@@ -113,7 +221,7 @@ namespace DigimonNOAccess
             };
             _waveOut.Init(_volumeProvider);
 
-            DebugLogger.Log($"[PositionalAudio] Audio initialized: {soundType}, freq={frequency}Hz");
+            DebugLogger.Log($"[PositionalAudio] Audio initialized with generator: {soundType}, freq={frequency}Hz");
         }
 
         /// <summary>
@@ -164,6 +272,47 @@ namespace DigimonNOAccess
             DebugLogger.Log("[PositionalAudio] Stopped");
         }
 
+        /// <summary>
+        /// Change the sound type while playing (for continuous tracking mode)
+        /// </summary>
+        public void ChangeSoundType(SoundType soundType, float maxDistance = 50f)
+        {
+            if (_currentSoundType == soundType)
+            {
+                // Same sound type, just update max distance
+                _maxDistance = maxDistance;
+                return;
+            }
+
+            // Different sound type - reinitialize audio
+            DebugLogger.Log($"[PositionalAudio] Changing sound from {_currentSoundType} to {soundType}");
+
+            bool wasPlaying = _isPlaying;
+            _maxDistance = maxDistance;
+
+            // Reinitialize with new sound type
+            InitializeAudio(soundType);
+
+            // Resume if we were playing
+            if (wasPlaying)
+            {
+                _isPlaying = true;
+                _shouldUpdate = true;
+                _waveOut?.Play();
+
+                // Restart update thread if needed
+                if (_updateThread == null || !_updateThread.IsAlive)
+                {
+                    _updateThread = new Thread(UpdateLoop)
+                    {
+                        IsBackground = true,
+                        Name = "PositionalAudio_Update"
+                    };
+                    _updateThread.Start();
+                }
+            }
+        }
+
         private void StopInternal()
         {
             try
@@ -173,6 +322,18 @@ namespace DigimonNOAccess
                 _waveOut = null;
             }
             catch { }
+
+            try
+            {
+                _audioFile?.Dispose();
+                _audioFile = null;
+                _loopingWave = null;
+            }
+            catch { }
+
+            _signalGenerator = null;
+            _panner = null;
+            _volumeProvider = null;
         }
 
         /// <summary>
@@ -297,12 +458,14 @@ namespace DigimonNOAccess
             _volumeProvider.Volume = volume;
 
             // Adjust frequency based on distance for additional cue (closer = slightly higher pitch)
-            if (_signalGenerator != null)
+            // Only works with generated tones, not WAV files
+            if (_signalGenerator != null && !_useWavFile)
             {
                 float basePitch = _currentSoundType switch
                 {
-                    SoundType.Pulse => 600f,
-                    SoundType.Warning => 880f,
+                    SoundType.NPC => 600f,
+                    SoundType.Enemy => 880f,
+                    SoundType.Transition => 523f,
                     _ => 440f
                 };
 
@@ -345,6 +508,42 @@ namespace DigimonNOAccess
             catch { }
 
             StopInternal();
+        }
+    }
+
+    /// <summary>
+    /// Wraps a WaveStream to loop continuously
+    /// </summary>
+    public class LoopingWaveProvider : IWaveProvider
+    {
+        private readonly WaveStream _sourceStream;
+
+        public LoopingWaveProvider(WaveStream sourceStream)
+        {
+            _sourceStream = sourceStream;
+        }
+
+        public WaveFormat WaveFormat => _sourceStream.WaveFormat;
+
+        public int Read(byte[] buffer, int offset, int count)
+        {
+            int totalBytesRead = 0;
+
+            while (totalBytesRead < count)
+            {
+                int bytesRead = _sourceStream.Read(buffer, offset + totalBytesRead, count - totalBytesRead);
+                if (bytesRead == 0)
+                {
+                    // End of stream, loop back to beginning
+                    _sourceStream.Position = 0;
+                    bytesRead = _sourceStream.Read(buffer, offset + totalBytesRead, count - totalBytesRead);
+                    if (bytesRead == 0)
+                        break; // Empty stream
+                }
+                totalBytesRead += bytesRead;
+            }
+
+            return totalBytesRead;
         }
     }
 }

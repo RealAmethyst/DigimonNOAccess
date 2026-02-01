@@ -34,7 +34,7 @@
 ```
 
 ## Current Phase
-New game flow complete through Digi-Egg selection with confirmation dialogs. Dialog choices now track properly using TalkMain.m_cursor. Voice detection filters voiced dialog from TTS. **3D positional audio navigation fully working** using NAudio (bypasses game's CRI audio system). Press F6 to track nearest object with continuous directional audio.
+New game flow complete through Digi-Egg selection with confirmation dialogs. Dialog choices now track properly using TalkMain.m_cursor. Voice detection filters voiced dialog from TTS. **3D positional audio navigation fully working** using NAudio (bypasses game's CRI audio system). **Always-on audio system** - no toggle keys required, all navigation sounds are automatic when player is in control.
 
 ### NPC Menu Accessibility (COMPLETE)
 All major NPC dialog menus now have accessibility handlers:
@@ -262,8 +262,9 @@ Two approaches found in game:
 - `MessageWindowHandler.cs` - Message window/story text accessibility (uses DialogTextPatch for immediate text)
 - `DialogTextPatch.cs` - Harmony patches for EventWindowPanel.TextShrink and TalkMain.PlayVoiceText
 - `SteamInputPatch.cs` - Harmony patch attempt (not used - Steam Big Picture must be disabled manually)
-- `AudioNavigationHandler.cs` - Audio navigation controller (F3-F6 keys, object detection, tracking)
-- `PositionalAudio.cs` - NAudio-based 3D positional audio system (stereo panning, volume, pitch)
+- `AudioNavigationHandler.cs` - Always-on audio navigation (auto-tracks nearest object with positional audio)
+- `PositionalAudio.cs` - NAudio-based 3D positional audio system (stereo panning, volume, WAV file loading)
+- `WallDetectionHandler.cs` - Always-on wall detection via NavMesh (directional wall sounds)
 - `ToneGenerator.cs` - Legacy programmatic audio tone generation (not currently used)
 - `CampCommandHandler.cs` - Camp menu accessibility
 - `CommonSelectWindowHandler.cs` - Generic selection window accessibility
@@ -274,31 +275,46 @@ Two approaches found in game:
 - `FarmPanelHandler.cs` - Farm management menu accessibility
 - `docs/game-api.md` - Documented game API reference
 
-### Audio Navigation System (WORKING)
-- **Toggle Tracking:** F6 key (start/stop tracking nearest object)
-- **Toggle System:** F3 key (enable/disable audio navigation announcements)
-- **Test Sounds:** F4 key (cycle through game sound effects)
-- **Announce Objects:** F5 key (speak nearby objects with distance/direction)
-- **Classes:** `AudioNavigationHandler`, `PositionalAudio`
+### Audio Navigation System (ALWAYS-ON)
+- **Mode:** Always active when player is in control (no toggle keys)
+- **Auto-stops during:** Battles, cutscenes, events, menus, death states
+- **Classes:** `AudioNavigationHandler`, `PositionalAudio`, `WallDetectionHandler`
 - **Detection Sources:**
-  - `ItemPickPointManager.m_instance.m_itemPickPoints` - Collectible items (range 20m)
-  - `NpcManager.m_NpcCtrlArray` - NPCs (range 25m)
-  - `EnemyManager.m_EnemyCtrlArray` - Enemies/wild Digimon (range 30m)
-  - `DigimonCtrl` - Partner Digimon (range 50m, fallback)
-- **3D Positional Audio (NAudio):**
+  - `ItemPickPointManager.m_instance.m_itemPickPoints` - Collectible items (range 100m)
+  - `MapTriggerScript` with `enterID == MapChange` - Area transitions (range 80m)
+  - `NpcManager.m_NpcCtrlArray` - NPCs (range 120m)
+  - `EnemyManager.m_EnemyCtrlArray` - Enemies/wild Digimon (range 150m)
+  - `PartnerCtrl` - Partner Digimon (range 200m, fallback)
+- **3D Positional Audio (NAudio with Custom Sound Files):**
   - Uses NAudio library to bypass game's CRI audio system (which has 2D-baked sounds)
-  - Continuous tone that updates in real-time as player/target move
+  - Loads custom WAV files from sounds/ folder for each object type
+  - Falls back to generated tones if WAV files not found
+  - Continuous audio that updates in real-time as player/target move
   - Stereo panning based on target direction relative to player facing
   - Volume scales with distance (louder when closer)
-  - Pitch rises as player approaches target (additional proximity cue)
-  - Auto-stops when target reached (within 2 meters)
-- **Sound Types:**
-  - Items: 440Hz sine wave (A4 note)
-  - NPCs/Partners: 600Hz sine wave (pulsing feel)
-  - Enemies: 880Hz square wave (warning tone)
+  - Auto-switches to nearest target every 0.5 seconds
+  - Auto-stops when target reached (within 3 meters)
+- **Sound Files (sounds/ folder):**
+  - `item.wav` - Items
+  - `potential npc.wav` - NPCs
+  - `potential enemie digimon.wav` - Enemy Digimon
+  - `transission.wav` - Area transitions
+  - `wall up.wav`, `wall down.wav`, `wall left.wav`, `wall right.wav` - Wall detection
+- **Wall Detection (NavMesh-based):**
+  - Uses NavMesh.SamplePosition to detect impassable areas (same data game uses for pathfinding)
+  - Checks 4 directions (ahead, behind, left, right) relative to player facing
+  - Plays directional sounds with stereo panning (left/right walls pan to respective speakers)
+  - Volume levels: ahead 0.4, behind 0.5, left/right 0.3 (less harsh)
+  - Falls back to raycasting if NavMesh unavailable
+- **Player Control Detection:**
+  - Checks `uBattlePanel.m_instance.m_enabled` for battle state
+  - Checks `PlayerCtrl.actionState` for Event, Battle, Dead, LiquidCrystallization states
+  - Only runs when player is in normal controllable state
 - **Technical:**
-  - NAudio `SignalGenerator` creates tones programmatically
+  - NAudio `AudioFileReader` loads WAV files
+  - `LoopingWaveProvider` enables continuous playback
   - `PanningSampleProvider` handles stereo positioning
+  - `VolumeSampleProvider` controls volume levels
   - Background thread updates audio parameters at 60fps
   - Cross product calculation determines left/right panning
   - Dot product determines front/back positioning
