@@ -36,6 +36,17 @@
 ## Current Phase
 New game flow complete through Digi-Egg selection with confirmation dialogs. Dialog choices now track properly using TalkMain.m_cursor. Voice detection filters voiced dialog from TTS. **3D positional audio navigation fully working** using NAudio (bypasses game's CRI audio system). **Always-on audio system** - no toggle keys required, all navigation sounds are automatic when player is in control.
 
+### Battle System Accessibility (IN PROGRESS)
+Handlers implemented:
+- **BattleHudHandler** - Partner HP/MP status via D-pad (D-Up/Down for HP, D-Left/Right for orders). **Known issue:** D-pad input may be consumed by game. Use F3/F4 keyboard fallback.
+- **BattleOrderRingHandler** - Order Ring command selection announcements (WORKING)
+- **BattleItemHandler** - Battle item menu with target selection (WORKING)
+- **BattleDialogHandler** - Battle Yes/No dialogs (escape confirmation, etc.) (WORKING)
+- **BattleTacticsHandler** - Square button menu tabs (Escape, MP Usage, Target)
+- **BattleResultHandler** - Victory screen announcements and reward logging
+
+Controls: D-pad only for battle status (no shoulder buttons). F3/F4 keyboard fallback for partner status.
+
 ### NPC Menu Accessibility (COMPLETE)
 All major NPC dialog menus now have accessibility handlers:
 - **CampCommandHandler** - Camp menu commands (Rest, Train, etc.)
@@ -298,7 +309,14 @@ Two approaches found in game:
 - `ZonePanelHandler.cs` - Zone selection accessibility
 - `FieldHudHandler.cs` - Partner status via controller combos
 - `CarePanelHandler.cs` - Care menu accessibility (command selection + education/discipline mode)
+- `BattleHudHandler.cs` - Battle partner HP/MP status via D-pad (F3/F4 keyboard fallback)
+- `BattleOrderRingHandler.cs` - Order Ring command selection
+- `BattleItemHandler.cs` - Battle item menu accessibility
+- `BattleDialogHandler.cs` - Battle Yes/No dialog accessibility
+- `BattleTacticsHandler.cs` - Square button tactics menu (Escape, MP Usage, Target tabs)
+- `BattleResultHandler.cs` - Victory screen and rewards announcement
 - `docs/game-api.md` - Documented game API reference
+- `battle-system-checklist.md` - Battle system implementation checklist
 
 ### Audio Navigation System (ALWAYS-ON)
 - **Mode:** Always active when player is in control (no toggle keys)
@@ -354,7 +372,9 @@ Two approaches found in game:
 - **Dependencies:** NAudio NuGet package (NAudio.dll, NAudio.Core.dll, NAudio.WinMM.dll, NAudio.Wasapi.dll deployed to Mods folder)
 
 ## Next Steps
-1. **Battle System** - Look at MainGameBattle, uBattlePanel classes for battle accessibility
-2. **Cutscene Subtitles** - MovieSubtitle class for cutscene accessibility
-3. Test voice detection - confirm voiced dialog is filtered, non-voiced plays TTS
-4. Expand FieldHudHandler with hunger/fatigue/mood data if available
+1. **Fix D-pad in Battle** - Investigate why D-pad input isn't detected during battle (game may consume it)
+2. **Battle Result Improvements** - Read actual item/TP/Bit text from uResultPanelGet
+3. **Tactics Tab Names** - Find proper text source for tab names instead of hardcoded strings
+4. **Partner Interaction** - Handle talking to partner Digimon outside battle (uPartnerTacticsPanel?)
+5. **Battle State Announcements** - Add battle start/victory/defeat announcements
+6. **Cutscene Subtitles** - MovieSubtitle class for cutscene accessibility

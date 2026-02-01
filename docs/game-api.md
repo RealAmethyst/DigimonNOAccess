@@ -1574,3 +1574,338 @@ if (mgm != null)
 ```
 
 **IMPORTANT:** Do NOT rely solely on `gameObject.activeInHierarchy` for uCommonMessageWindow - the window objects persist in the scene even when not visible. Always use `IsFindActive()` to check if a message is actually being shown.
+
+## Battle System
+
+### uBattlePanel (Main Battle UI Controller)
+
+**Class:** `uBattlePanel` (extends `MonoBehaviour`)
+
+The main controller for battle UI. Has a static singleton instance.
+
+**Key Properties:**
+- `m_instance` (static uBattlePanel) - Singleton instance
+- `m_enabled` (bool) - Whether battle UI is currently active
+- `m_digimon` (uBattlePanelDigimon[]) - Array of 2 partner status panels
+- `m_itemBox` (uBattlePanelItemBox) - Battle item menu
+- `m_tactics` (uBattlePanelTactics) - Tactics menu
+- `m_description` (uBattleDescription) - Button hints panel
+- `m_textPop` (uBattleTextPop) - Damage/status text popups
+
+**Key Methods:**
+- `IsUseCmdPanel(ORDER_UNIT)` - Check if command panel usable for partner
+- `IsOpenCmdUnit(ORDER_UNIT)` - Check if command panel is open
+- `GetOpenCmdUnit()` - Get which partner's command panel is open
+
+**Detection Pattern:**
+```csharp
+var battlePanel = uBattlePanel.m_instance;
+if (battlePanel != null && battlePanel.m_enabled)
+{
+    // Battle is active
+}
+```
+
+**PowerCmdIcon Enum (Power Command Types):**
+- Unknown = -1
+- None = 0
+- Rush = 1
+- Surround = 2
+- Long = 3
+- Short = 4
+- Shooting = 5
+- Enhance = 6
+
+---
+
+### uBattlePanelDigimon (Partner Status in Battle)
+
+**Class:** `uBattlePanelDigimon` (extends `uDigimonPanelBase`)
+
+Displays partner Digimon HP/MP and status during battle. Inherits HP/MP fields from `uDigimonPanelBase`.
+
+**Key Properties (inherited from uDigimonPanelBase):**
+- `m_hpText` (Text) - HP text display
+- `m_mpText` (Text) - MP text display
+- `m_now_hp` (int) - Current HP numeric value
+- `m_now_mp` (int) - Current MP numeric value
+
+**Own Properties:**
+- `m_orderLabel` (Text) - Current order/command label text
+- `m_partner` (PartnerCtrl) - Reference to the partner controller
+- `m_dispOrderPower` (int) - Displayed Order Power value
+- `m_isMiracleIcon` (bool) - Whether miracle icon is showing
+
+**Key Methods:**
+- `UpdateValues(bool isForced)` - Update HP/MP display
+- `SetDamageShake(float h, float v, float time)` - Shake effect when damaged
+- `StartMessage(string message, float time)` - Show status message
+
+**Access Pattern:**
+```csharp
+var battlePanel = uBattlePanel.m_instance;
+if (battlePanel != null && battlePanel.m_enabled)
+{
+    var digimonPanels = battlePanel.m_digimon;
+    if (digimonPanels != null && digimonPanels.Length >= 2)
+    {
+        var partner0 = digimonPanels[0];  // Partner 1
+        var partner1 = digimonPanels[1];  // Partner 2
+
+        string hp = partner0.m_hpText?.text ?? partner0.m_now_hp.ToString();
+        string mp = partner0.m_mpText?.text ?? partner0.m_now_mp.ToString();
+        string order = partner0.m_orderLabel?.text ?? "";
+    }
+}
+```
+
+---
+
+### uBattlePanelCommand (Order Ring / Command Selection)
+
+**Class:** `uBattlePanelCommand` (extends `MonoBehaviour`)
+
+The circular "Order Ring" menu for selecting battle commands.
+
+**SelectMode Enum:**
+- None = -1 (not active)
+- Default = 0 (normal selection)
+- LRCommand = 1 (L/R button mode)
+
+**Key Properties:**
+- `m_selectIndex` (int) - Current cursor position (0-based)
+- `m_selectDigimon` (int) - Which partner: 0 = Partner 1, 1 = Partner 2
+- `m_selectMode` (SelectMode) - Current selection mode
+- `m_command_tbl` (PartnerCommand[]) - Array of available commands
+- `m_cursor` (GameObject) - Visual cursor object
+- `m_commandImages` (MaskableGraphic[]) - Command icon images
+
+**Detection Pattern:**
+```csharp
+var cmdPanel = FindObjectOfType<uBattlePanelCommand>();
+if (cmdPanel != null && cmdPanel.gameObject.activeInHierarchy)
+{
+    int index = cmdPanel.m_selectIndex;
+    int partner = cmdPanel.m_selectDigimon;
+    var commands = cmdPanel.m_command_tbl;
+
+    if (commands != null && index >= 0 && index < commands.Length)
+    {
+        PartnerAIManager.PartnerCommand cmd = commands[index];
+        string cmdName = GetCommandName(cmd);
+    }
+}
+```
+
+---
+
+### PartnerAIManager.PartnerCommand Enum (Battle Commands)
+
+**Full Command List:**
+
+**Tactical Commands:**
+- `CrossfireAttack` = 0 - Both partners attack same target
+- `ScatteredAttack` = 1 - Partners attack different targets
+- `Free` = 2 - One partner fights freely
+- `FreeAll` = 3 - Both partners fight freely
+
+**Target Commands:**
+- `Target` = 4 - Focus one partner on target
+- `TargetAll` = 5 - Focus both on target
+
+**Direct Attacks (uses moves from slots):**
+- `Attack1` = 6 - Use move slot 1
+- `Attack2` = 7 - Use move slot 2
+- `Attack3` = 8 - Use move slot 3
+- `Attack4` = 9 - Use move slot 4
+
+**Special Attacks:**
+- `SpAttack` = 10 - Special attack (one partner)
+- `SpAttackAll` = 11 - Special attack (both)
+
+**MP Conservation:**
+- `ModeratelyAttack` = 12 - Conserve MP (one)
+- `ModeratelyAttackAll` = 13 - Conserve MP (both)
+- `UtmostAttack` = 14 - Use MP freely (one)
+- `UtmostAttackAll` = 15 - Use MP freely (both)
+
+**Defensive:**
+- `Guard` = 16 - Guard (one)
+- `GuardAll` = 17 - Guard (both)
+
+**Movement:**
+- `Approach` = 18 - Move closer (one)
+- `ApproachAll` = 19 - Move closer (both)
+- `Leave` = 20 - Move away (one)
+- `LeaveAll` = 21 - Move away (both)
+
+**Formation:**
+- `FormationRFrontLBack` = 22 - Right partner front
+- `FormationLFrontRBack` = 23 - Left partner front
+- `FormationFree` = 24 - Free formation
+
+**Special:**
+- `Escape` = 25 - Flee from battle
+- `Cheer` = 26 - Cheer partner (builds Order Power)
+- `PowerCommandA/B/C/D` = 27-30 - Power commands
+- `HighTensionA` = 31 - High tension mode
+- `Exe` = 32 - ExE combination attack
+
+**Command Name Mapping Example:**
+```csharp
+private string GetCommandName(PartnerAIManager.PartnerCommand cmd)
+{
+    return cmd switch
+    {
+        PartnerAIManager.PartnerCommand.CrossfireAttack => "Crossfire Attack",
+        PartnerAIManager.PartnerCommand.ScatteredAttack => "Scattered Attack",
+        PartnerAIManager.PartnerCommand.Free => "Fight Freely",
+        PartnerAIManager.PartnerCommand.FreeAll => "Both Fight Freely",
+        PartnerAIManager.PartnerCommand.Attack1 => "Attack 1",
+        PartnerAIManager.PartnerCommand.Attack2 => "Attack 2",
+        PartnerAIManager.PartnerCommand.Attack3 => "Attack 3",
+        PartnerAIManager.PartnerCommand.Attack4 => "Attack 4",
+        PartnerAIManager.PartnerCommand.SpAttack => "Special Attack",
+        PartnerAIManager.PartnerCommand.SpAttackAll => "Both Special Attack",
+        PartnerAIManager.PartnerCommand.Guard => "Guard",
+        PartnerAIManager.PartnerCommand.GuardAll => "Both Guard",
+        PartnerAIManager.PartnerCommand.Approach => "Move Closer",
+        PartnerAIManager.PartnerCommand.Leave => "Move Away",
+        PartnerAIManager.PartnerCommand.Escape => "Escape",
+        PartnerAIManager.PartnerCommand.Cheer => "Cheer",
+        PartnerAIManager.PartnerCommand.Exe => "ExE Attack",
+        _ => cmd.ToString()
+    };
+}
+```
+
+---
+
+### uBattlePanelItemBox (Battle Item Menu)
+
+**Class:** `uBattlePanelItemBox` (extends `uItemBase`)
+
+Item menu during battle. Inherits standard item selection from `uItemBase`.
+
+**Key Properties (inherited from uItemBase):**
+- `m_selectNo` (int) - Current item cursor position
+- `GetSelectItemParam()` - Returns `ParameterItemData` for selected item
+
+**Own Properties:**
+- `m_MainHeadLineText` (Text) - Menu headline
+- `m_CaptionText` (Text) - Caption/instructions
+- `m_isSelectTarget` (bool) - Whether in target selection phase
+- `m_target` (ORDER_UNIT) - Selected target
+- `m_targetUnit` (DigimonCtrl) - Target Digimon reference
+- `m_isVisible` (bool) - Whether menu is visible
+
+**Key Methods:**
+- `IsEmptyItem()` - Check if item list is empty
+- `UseItem()` - Use the selected item
+- `SetItemTarget(ORDER_UNIT)` - Set item target
+
+**Detection Pattern:**
+```csharp
+var battlePanel = uBattlePanel.m_instance;
+if (battlePanel?.m_itemBox != null)
+{
+    var itemBox = battlePanel.m_itemBox;
+    if (itemBox.gameObject.activeInHierarchy && itemBox.m_isVisible)
+    {
+        int cursor = itemBox.m_selectNo;
+        var itemParam = itemBox.GetSelectItemParam();
+        string itemName = itemParam?.GetName() ?? "Unknown Item";
+
+        if (itemBox.m_isSelectTarget)
+        {
+            // In target selection mode
+            var target = itemBox.m_target;
+            string targetName = target switch
+            {
+                MainGameManager.ORDER_UNIT.Partner00 => "Partner 1",
+                MainGameManager.ORDER_UNIT.Partner01 => "Partner 2",
+                MainGameManager.ORDER_UNIT.PartnerAll => "Both Partners",
+                _ => "Unknown"
+            };
+        }
+    }
+}
+```
+
+---
+
+### MainGameManager.ORDER_UNIT Enum (Target Selection)
+
+**Values:**
+- `Partner00` = 0 - First partner
+- `Partner01` = 1 - Second partner
+- `PartnerAll` = 2 - Both partners
+- `Non` = -1 - No target
+
+---
+
+### uBattlePanelDialog (Battle Confirmation Dialogs)
+
+**Class:** `uBattlePanelDialog` (extends `uPanelBase`)
+
+Yes/No dialogs during battle (e.g., escape confirmation).
+
+**Key Properties:**
+- `m_messageText` (Text) - Dialog message
+- `m_cursorIndex` (int) - Current selection: 0 = Yes, 1 = No
+- `m_buttons` (GameObject[]) - Button objects
+- `m_cursor` (GameObject) - Visual cursor
+
+**Key Methods:**
+- `OpenDialog(string text, Action yesCb, Action noCb, bool isUnScaleTime)` - Open dialog
+- `SelectCommand()` - Confirm selection
+
+**Detection Pattern:**
+```csharp
+var dialog = FindObjectOfType<uBattlePanelDialog>();
+if (dialog != null && dialog.gameObject.activeInHierarchy)
+{
+    string message = dialog.m_messageText?.text ?? "";
+    int cursor = dialog.m_cursorIndex;  // 0=Yes, 1=No
+    string selected = cursor == 0 ? "Yes" : "No";
+}
+```
+
+---
+
+### uBattleDescription (Battle Button Hints)
+
+**Class:** `uBattleDescription` (extends `uPanelBase2`)
+
+Shows button hints/instructions during battle.
+
+**Key Properties:**
+- `m_texts` (Text[]) - Array of hint text components
+- `m_buttons` (Text[]) - Array of button label texts
+- `m_itemPermitObject` (GameObject) - Item permission indicator
+- `m_tacticsPermitObject` (GameObject) - Tactics permission indicator
+
+---
+
+### Battle Detection Summary
+
+**Check if in battle:**
+```csharp
+bool isInBattle = uBattlePanel.m_instance != null && uBattlePanel.m_instance.m_enabled;
+```
+
+**Check if Order Ring is open:**
+```csharp
+var cmdPanel = FindObjectOfType<uBattlePanelCommand>();
+bool isOrderRingOpen = cmdPanel != null &&
+    cmdPanel.gameObject.activeInHierarchy &&
+    cmdPanel.m_selectMode != uBattlePanelCommand.SelectMode.None;
+```
+
+**Check if Item Menu is open:**
+```csharp
+var battlePanel = uBattlePanel.m_instance;
+bool isItemMenuOpen = battlePanel?.m_itemBox != null &&
+    battlePanel.m_itemBox.gameObject.activeInHierarchy &&
+    battlePanel.m_itemBox.m_isVisible;
+```

@@ -40,6 +40,12 @@ namespace DigimonNOAccess
         private ZonePanelHandler _zonePanelHandler;
         private FieldHudHandler _fieldHudHandler;
         private CarePanelHandler _carePanelHandler;
+        private BattleHudHandler _battleHudHandler;
+        private BattleOrderRingHandler _battleOrderRingHandler;
+        private BattleItemHandler _battleItemHandler;
+        private BattleDialogHandler _battleDialogHandler;
+        private BattleTacticsHandler _battleTacticsHandler;
+        private BattleResultHandler _battleResultHandler;
         private HarmonyLib.Harmony _harmony;
         private bool _initialized = false;
 
@@ -97,6 +103,12 @@ namespace DigimonNOAccess
             _zonePanelHandler = new ZonePanelHandler();
             _fieldHudHandler = new FieldHudHandler();
             _carePanelHandler = new CarePanelHandler();
+            _battleHudHandler = new BattleHudHandler();
+            _battleOrderRingHandler = new BattleOrderRingHandler();
+            _battleItemHandler = new BattleItemHandler();
+            _battleDialogHandler = new BattleDialogHandler();
+            _battleTacticsHandler = new BattleTacticsHandler();
+            _battleResultHandler = new BattleResultHandler();
 
             _initialized = true;
             LoggerInstance.Msg("DigimonNOAccess initialized");
@@ -139,6 +151,12 @@ namespace DigimonNOAccess
             _zonePanelHandler.Update();
             _fieldHudHandler.Update();
             _carePanelHandler.Update();
+            _battleHudHandler.Update();
+            _battleOrderRingHandler.Update();
+            _battleItemHandler.Update();
+            _battleDialogHandler.Update();
+            _battleTacticsHandler.Update();
+            _battleResultHandler.Update();
 
             // Global hotkeys
             HandleGlobalKeys();
@@ -269,6 +287,30 @@ namespace DigimonNOAccess
             else if (_digiviceTopPanelHandler.IsOpen())
             {
                 _digiviceTopPanelHandler.AnnounceStatus();
+            }
+            else if (_battleDialogHandler.IsActive())
+            {
+                ScreenReader.Say("Battle dialog");
+            }
+            else if (_battleItemHandler.IsActive())
+            {
+                ScreenReader.Say("Battle items");
+            }
+            else if (_battleOrderRingHandler.IsActive())
+            {
+                ScreenReader.Say("Order Ring");
+            }
+            else if (_battleTacticsHandler.IsActive())
+            {
+                _battleTacticsHandler.AnnounceStatus();
+            }
+            else if (_battleResultHandler.IsActive())
+            {
+                _battleResultHandler.AnnounceStatus();
+            }
+            else if (_battleHudHandler.IsActive())
+            {
+                ScreenReader.Say("In battle - use RB or LB plus D-pad for partner status");
             }
             else
             {
