@@ -116,13 +116,15 @@ Keys NOT used by game, safe for mod functions:
 - **F4** - Partner 2 full status (field only)
 
 ### Controller Combos for Partner Status (Field Only)
-Hold RB (R1) + face button for Partner 1 info:
-- **A/Cross** - HP and MP
-- **B/Circle** - Status effects (Injury, Disease, etc.)
-- **X/Square** - Mood/condition
-- **Y/Triangle** - Name and basic info
+Hold RB (R1) + D-pad for Partner 1 info:
+- **D-Up** - HP and MP
+- **D-Right** - Status effects (Injury, Disease, etc.)
+- **D-Down** - Mood/condition
+- **D-Left** - Name and basic info
 
-Hold LB (L1) + face button for Partner 2 info (same layout)
+Hold LB (L1) + D-pad for Partner 2 info (same layout)
+
+Note: D-pad is used instead of face buttons to avoid conflicts with game menus (Triangle opens Digivice, Square opens Care menu).
 
 ### Always-On Audio Systems (No Keys Required)
 - **Positional Audio Tracking** - Automatically tracks nearest object with 3D audio when player is in control
