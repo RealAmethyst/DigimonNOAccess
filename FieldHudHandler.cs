@@ -22,8 +22,6 @@ namespace DigimonNOAccess
     /// </summary>
     public class FieldHudHandler
     {
-        private bool _initialized = false;
-
         public void Update()
         {
             // Check if field panel is available
@@ -56,7 +54,7 @@ namespace DigimonNOAccess
             // Check player action state
             try
             {
-                var player = PlayerCtrl.Ref;
+                var player = Object.FindObjectOfType<PlayerCtrl>();
                 if (player != null)
                 {
                     var state = player.actionState;
@@ -93,8 +91,8 @@ namespace DigimonNOAccess
             // Check for camp/NPC menus
             try
             {
-                var campPanel = Object.FindObjectOfType<uCampPanelCommand>();
-                if (campPanel != null && campPanel.m_state == uCampPanelCommand.State.Main)
+                var campPanel = Object.FindObjectOfType<CampCommandPanel>();
+                if (campPanel != null && campPanel.gameObject.activeInHierarchy)
                     return false;
             }
             catch { }
@@ -235,45 +233,23 @@ namespace DigimonNOAccess
 
             string name = panel.m_digimon_name?.text ?? "Partner";
 
-            // Try to get mood info from the mood panel
-            var moodPanel = panel.m_moodPanel;
-            string moodText = "Normal";
+            // Get status effect from the panel
+            var statusEffect = panel.m_statusEffect;
+            string moodText;
 
-            if (moodPanel != null)
+            if (statusEffect != PartnerCtrl.FieldStatusEffect.None)
             {
-                // The mood panel shows mood level via visual indicator
-                // For now, report that mood info is available
-                moodText = "Check mood panel";
-            }
-
-            // Try to get additional status from partner controller
-            try
-            {
-                var partners = GetPartnerControllers();
-                if (partners != null && partnerIndex < partners.Length && partners[partnerIndex] != null)
+                moodText = statusEffect switch
                 {
-                    var partner = partners[partnerIndex];
-                    var fsEffect = partner.FSEffect;
-
-                    if (fsEffect != PartnerCtrl.FieldStatusEffect.None)
-                    {
-                        moodText = fsEffect switch
-                        {
-                            PartnerCtrl.FieldStatusEffect.Injury => "Injured",
-                            PartnerCtrl.FieldStatusEffect.SeriousInjury => "Seriously injured",
-                            PartnerCtrl.FieldStatusEffect.Disease => "Sick",
-                            _ => "Has condition"
-                        };
-                    }
-                    else
-                    {
-                        moodText = "Feeling fine";
-                    }
-                }
+                    PartnerCtrl.FieldStatusEffect.Injury => "Injured",
+                    PartnerCtrl.FieldStatusEffect.SeriousInjury => "Seriously injured",
+                    PartnerCtrl.FieldStatusEffect.Disease => "Sick",
+                    _ => "Has condition"
+                };
             }
-            catch
+            else
             {
-                // Fall back to basic info
+                moodText = "Feeling fine";
             }
 
             ScreenReader.Say($"{name}: {moodText}");
@@ -319,25 +295,6 @@ namespace DigimonNOAccess
                 if (panels != null && index < panels.Length)
                 {
                     return panels[index];
-                }
-            }
-            catch { }
-
-            return null;
-        }
-
-        private PartnerCtrl[] GetPartnerControllers()
-        {
-            try
-            {
-                // Try to get partner controllers from MainGameManager
-                var mgm = MainGameManager.Ref;
-                if (mgm != null)
-                {
-                    var partners = new PartnerCtrl[2];
-                    partners[0] = mgm.GetPartnerCtrl(MainGameManager.PARTNER_NO.NO_0);
-                    partners[1] = mgm.GetPartnerCtrl(MainGameManager.PARTNER_NO.NO_1);
-                    return partners;
                 }
             }
             catch { }
