@@ -294,14 +294,92 @@ namespace DigimonNOAccess
             return (bestTarget, bestType, bestSoundType, bestDist);
         }
 
-        private bool IsInBattle()
+        /// <summary>
+        /// Check if we're in any battle phase.
+        /// Uses multiple detection methods to catch tutorial battles and battle dialogs.
+        /// </summary>
+        private bool IsInBattlePhase()
         {
             try
             {
+                // Check the battle panel
                 var battlePanel = uBattlePanel.m_instance;
                 if (battlePanel != null && battlePanel.m_enabled)
                 {
                     return true;
+                }
+
+                // Check if any partner is in battle action state
+                // This catches tutorial battles even when battle panel is hidden for dialogs
+                var partnerCtrls = UnityEngine.Object.FindObjectsOfType<PartnerCtrl>();
+                foreach (var partner in partnerCtrls)
+                {
+                    if (partner != null && partner.gameObject.activeInHierarchy)
+                    {
+                        var state = partner.actionState;
+                        if (state == UnitCtrlBase.ActionState.ActionState_Battle)
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        /// <summary>
+        /// Check if the game is paused or in an event/cutscene state.
+        /// </summary>
+        private bool IsGamePausedOrInEvent()
+        {
+            try
+            {
+                var mgm = MainGameManager.m_instance;
+                if (mgm != null)
+                {
+                    // Check if game is paused (m_isPause is inherited from SceneModuleScript)
+                    if (mgm.m_isPause)
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        /// <summary>
+        /// Check if player action state indicates they cannot move.
+        /// Includes death states, events, battles, and recovery sequences.
+        /// </summary>
+        private bool IsPlayerInNonControllableState()
+        {
+            try
+            {
+                if (_playerCtrl == null)
+                {
+                    _playerCtrl = UnityEngine.Object.FindObjectOfType<PlayerCtrl>();
+                }
+
+                if (_playerCtrl == null)
+                    return true; // No player = not controllable
+
+                var actionState = _playerCtrl.actionState;
+
+                // Check for states where player cannot freely move
+                switch (actionState)
+                {
+                    case UnitCtrlBase.ActionState.ActionState_Event:
+                    case UnitCtrlBase.ActionState.ActionState_Battle:
+                    case UnitCtrlBase.ActionState.ActionState_Dead:
+                    case UnitCtrlBase.ActionState.ActionState_DeadGataway:
+                    case UnitCtrlBase.ActionState.ActionState_LiquidCrystallization:
+                    case UnitCtrlBase.ActionState.ActionState_Damage:
+                    case UnitCtrlBase.ActionState.ActionState_DownDamage:
+                    case UnitCtrlBase.ActionState.ActionState_BlowDamage:
+                    case UnitCtrlBase.ActionState.ActionState_Getup:
+                        return true;
                 }
             }
             catch { }
@@ -312,33 +390,21 @@ namespace DigimonNOAccess
         {
             try
             {
-                // Check if in battle
-                if (IsInBattle())
+                // Check if game is paused or in event
+                if (IsGamePausedOrInEvent())
+                    return false;
+
+                // Check if in any battle phase (includes tutorial battles, battle dialogs, etc.)
+                if (IsInBattlePhase())
+                    return false;
+
+                // Check player action state (catches death recovery, events, etc.)
+                if (IsPlayerInNonControllableState())
                     return false;
 
                 // Check if any menu is open that blocks player control
                 if (IsMenuOpen())
                     return false;
-
-                if (_playerCtrl == null)
-                {
-                    _playerCtrl = UnityEngine.Object.FindObjectOfType<PlayerCtrl>();
-                }
-
-                if (_playerCtrl == null)
-                    return false;
-
-                // Check player action state
-                var actionState = _playerCtrl.actionState;
-                switch (actionState)
-                {
-                    case UnitCtrlBase.ActionState.ActionState_Event:
-                    case UnitCtrlBase.ActionState.ActionState_Battle:
-                    case UnitCtrlBase.ActionState.ActionState_Dead:
-                    case UnitCtrlBase.ActionState.ActionState_DeadGataway:
-                    case UnitCtrlBase.ActionState.ActionState_LiquidCrystallization:
-                        return false;
-                }
 
                 return true;
             }
