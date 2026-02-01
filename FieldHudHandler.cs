@@ -7,14 +7,14 @@ namespace DigimonNOAccess
     /// Handles field HUD status announcements via controller combos or keyboard.
     ///
     /// Controller layout:
-    /// Hold RB + face button = Partner 1 info
-    /// Hold LB + face button = Partner 2 info
+    /// Hold RB + D-pad = Partner 1 info
+    /// Hold LB + D-pad = Partner 2 info
     ///
-    /// Face buttons:
-    /// A/Cross = HP and MP
-    /// B/Circle = Status effects (Injury, Disease, etc.)
-    /// X/Square = Current mood/condition
-    /// Y/Triangle = Name and basic info
+    /// D-pad directions:
+    /// D-Up = HP and MP
+    /// D-Right = Status effects (Injury, Disease, etc.)
+    /// D-Down = Current mood/condition
+    /// D-Left = Name and basic info
     ///
     /// Keyboard fallback:
     /// F3 = Partner 1 full status
@@ -51,13 +51,14 @@ namespace DigimonNOAccess
             }
             catch { }
 
-            // Check player action state
+            // Check player action state - exclude states where we shouldn't respond
             try
             {
                 var player = Object.FindObjectOfType<PlayerCtrl>();
                 if (player != null)
                 {
                     var state = player.actionState;
+                    // Exclude states where player is not in normal field control
                     if (state == PlayerCtrl.ActionState.ActionState_Event ||
                         state == PlayerCtrl.ActionState.ActionState_Battle ||
                         state == PlayerCtrl.ActionState.ActionState_Dead ||
@@ -67,42 +68,6 @@ namespace DigimonNOAccess
                         return false;
                     }
                 }
-            }
-            catch { }
-
-            // Check if Digivice menu is open (uses same buttons)
-            try
-            {
-                var digiviceTop = Object.FindObjectOfType<uDigiviceTopPanel>();
-                if (digiviceTop != null && digiviceTop.gameObject.activeInHierarchy)
-                    return false;
-            }
-            catch { }
-
-            // Check if any common menus are open
-            try
-            {
-                var optionPanel = Object.FindObjectOfType<uOptionPanel>();
-                if (optionPanel != null && optionPanel.m_State == uOptionPanel.State.MAIN_SETTING)
-                    return false;
-            }
-            catch { }
-
-            // Check for camp/NPC menus
-            try
-            {
-                var campPanel = Object.FindObjectOfType<CampCommandPanel>();
-                if (campPanel != null && campPanel.gameObject.activeInHierarchy)
-                    return false;
-            }
-            catch { }
-
-            // Check for training menu
-            try
-            {
-                var trainingPanel = Object.FindObjectOfType<uTrainingPanelCommand>();
-                if (trainingPanel != null && trainingPanel.m_state == uTrainingPanelCommand.State.Main)
-                    return false;
             }
             catch { }
 
@@ -144,23 +109,23 @@ namespace DigimonNOAccess
 
         private void HandlePartnerInput(uFieldPanel fieldPanel, int partnerIndex)
         {
-            // A/Cross = HP and MP
-            if (PadManager.IsTrigger(PadManager.BUTTON.bCross))
+            // D-Up = HP and MP
+            if (PadManager.IsTrigger(PadManager.BUTTON.dUp))
             {
                 AnnouncePartnerHpMp(fieldPanel, partnerIndex);
             }
-            // B/Circle = Status effects
-            else if (PadManager.IsTrigger(PadManager.BUTTON.bCircle))
+            // D-Right = Status effects
+            else if (PadManager.IsTrigger(PadManager.BUTTON.dRight))
             {
                 AnnouncePartnerStatusEffects(fieldPanel, partnerIndex);
             }
-            // X/Square = Mood/condition
-            else if (PadManager.IsTrigger(PadManager.BUTTON.bSquare))
+            // D-Down = Mood/condition
+            else if (PadManager.IsTrigger(PadManager.BUTTON.dDown))
             {
                 AnnouncePartnerMood(fieldPanel, partnerIndex);
             }
-            // Y/Triangle = Name and basic info
-            else if (PadManager.IsTrigger(PadManager.BUTTON.bTriangle))
+            // D-Left = Name and basic info
+            else if (PadManager.IsTrigger(PadManager.BUTTON.dLeft))
             {
                 AnnouncePartnerName(fieldPanel, partnerIndex);
             }
