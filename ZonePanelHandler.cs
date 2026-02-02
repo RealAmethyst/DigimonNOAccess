@@ -55,8 +55,9 @@ namespace DigimonNOAccess
 
             try
             {
-                // Check if panel is active
-                if (!panel.gameObject.activeInHierarchy)
+                // Check if panel is actually opened (not just active in hierarchy)
+                // m_isOpend is set when the panel is properly displayed to the user
+                if (!panel.m_isOpend)
                 {
                     _lastSeenText = "";
                     return;

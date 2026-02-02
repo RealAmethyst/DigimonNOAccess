@@ -221,6 +221,7 @@ All major field menus now have accessibility handlers:
   - Patches `EventWindowPanel.TextShrink(string text)` - intercepts story dialog text
   - Patches `TalkMain.PlayVoiceText` - detects voiced dialog to skip TTS
   - Patches `uCommonMessageWindow.SetMessage` - intercepts field notifications with direct text
+  - Patches `uCommonMessageWindow.SetItemMessage` (postfix) - intercepts item usage result messages (reads label after message is built)
   - Patches `uDigimonMessagePanel.StartMessage` - intercepts partner Digimon field messages
   - Patches `uFieldPanel.StartDigimonMessage` - intercepts field Digimon messages (static method)
   - Text is captured the instant it's set, before typewriter animation starts
@@ -317,8 +318,8 @@ Two approaches found in game:
 - `DialogChoiceHandler.cs` - Dialog choices (multiple options in conversation)
 - `CommonYesNoHandler.cs` - Common Yes/No confirmation dialog accessibility
 - `MessageWindowHandler.cs` - Message window/story text accessibility (uses DialogTextPatch for immediate text, IsFindActive() for proper visibility detection)
-- `DialogTextPatch.cs` - Harmony patches for text interception (EventWindowPanel.TextShrink, TalkMain.PlayVoiceText, uCommonMessageWindow.SetMessage, uDigimonMessagePanel.StartMessage, uFieldPanel.StartDigimonMessage)
-- `CommonMessageMonitor.cs` - Polls uCommonMessageWindow instances to catch recruitment/item notifications that bypass SetMessage
+- `DialogTextPatch.cs` - Harmony patches for text interception (EventWindowPanel.TextShrink, TalkMain.PlayVoiceText, uCommonMessageWindow.SetMessage, uCommonMessageWindow.SetItemMessage postfix, uDigimonMessagePanel.StartMessage, uFieldPanel.StartDigimonMessage)
+- `CommonMessageMonitor.cs` - Polls uCommonMessageWindow instances to catch recruitment notifications that bypass SetMessage
 - `SteamInputPatch.cs` - Harmony patch attempt (not used - Steam Big Picture must be disabled manually)
 - `AudioNavigationHandler.cs` - Always-on audio navigation with object tracking and wall detection (merged)
 - `PositionalAudio.cs` - NAudio-based 3D positional audio system (stereo panning, volume, WAV file loading)

@@ -1,7 +1,11 @@
 using Il2Cpp;
 using System;
 using System.Collections.Generic;
+using System.IO;
+using NAudio.Wave;
+using NAudio.Wave.SampleProviders;
 using UnityEngine;
+using UnityEngine.AI;
 
 namespace DigimonNOAccess
 {
@@ -37,6 +41,21 @@ namespace DigimonNOAccess
         private GameObject _trackedTarget;
         private string _trackedTargetType;
 
+        // Wall detection configuration
+        private const float WallDetectionDistance = 2f;
+        private const float WallCheckInterval = 0.3f;
+        private const float NavMeshSampleRadius = 0.5f;
+        private float _lastWallCheckTime = 0f;
+
+        // Wall states (to avoid repeating sounds)
+        private bool _wallAhead = false;
+        private bool _wallBehind = false;
+        private bool _wallLeft = false;
+        private bool _wallRight = false;
+
+        // Sound file path
+        private string _soundsPath;
+
         public void Initialize()
         {
             if (_initialized) return;
@@ -44,8 +63,18 @@ namespace DigimonNOAccess
             try
             {
                 _positionalAudio = new PositionalAudio();
+
+                // Set up sounds path for wall detection
+                string modPath = Path.GetDirectoryName(typeof(AudioNavigationHandler).Assembly.Location);
+                _soundsPath = Path.Combine(Path.GetDirectoryName(modPath), "sounds");
+
+                if (!Directory.Exists(_soundsPath))
+                {
+                    _soundsPath = Path.Combine(modPath, "sounds");
+                }
+
                 _initialized = true;
-                DebugLogger.Log("[AudioNav] Initialized - always-on mode");
+                DebugLogger.Log("[AudioNav] Initialized - always-on mode with wall detection");
             }
             catch (Exception ex)
             {
@@ -70,8 +99,11 @@ namespace DigimonNOAccess
                 _lastSearchTime = currentTime;
             }
 
-            // Update tracking
+            // Update object tracking
             UpdatePositionalAudioTracking();
+
+            // Update wall detection
+            UpdateWallDetection();
         }
 
         private void UpdatePositionalAudioTracking()
@@ -293,6 +325,157 @@ namespace DigimonNOAccess
 
             return (bestTarget, bestType, bestSoundType, bestDist);
         }
+
+        #region Wall Detection
+
+        private void UpdateWallDetection()
+        {
+            // Stop if player is not in control
+            if (!IsPlayerInControl())
+            {
+                ResetWallStates();
+                return;
+            }
+
+            if (_playerCtrl == null) return;
+
+            // Rate limit checking
+            float currentTime = Time.time;
+            if (currentTime - _lastWallCheckTime < WallCheckInterval) return;
+            _lastWallCheckTime = currentTime;
+
+            DetectWallsNavMesh();
+        }
+
+        private void DetectWallsNavMesh()
+        {
+            if (_playerCtrl == null) return;
+
+            try
+            {
+                Vector3 playerPos = _playerCtrl.transform.position;
+                Vector3 forward = _playerCtrl.transform.forward;
+                Vector3 right = _playerCtrl.transform.right;
+
+                bool wallAhead = !IsPositionWalkable(playerPos + forward * WallDetectionDistance);
+                bool wallBehind = !IsPositionWalkable(playerPos - forward * WallDetectionDistance);
+                bool wallLeft = !IsPositionWalkable(playerPos - right * WallDetectionDistance);
+                bool wallRight = !IsPositionWalkable(playerPos + right * WallDetectionDistance);
+
+                if (wallAhead && !_wallAhead)
+                {
+                    PlayWallSound("wall up.wav", 0f, 0.4f);
+                }
+                if (wallBehind && !_wallBehind)
+                {
+                    PlayWallSound("wall down.wav", 0f, 0.5f);
+                }
+                if (wallLeft && !_wallLeft)
+                {
+                    PlayWallSound("wall left.wav", -0.8f, 0.3f);
+                }
+                if (wallRight && !_wallRight)
+                {
+                    PlayWallSound("wall right.wav", 0.8f, 0.3f);
+                }
+
+                _wallAhead = wallAhead;
+                _wallBehind = wallBehind;
+                _wallLeft = wallLeft;
+                _wallRight = wallRight;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[AudioNav] Wall detection error: {ex.Message}");
+            }
+        }
+
+        private bool IsPositionWalkable(Vector3 position)
+        {
+            try
+            {
+                NavMeshHit hit;
+                bool foundNavMesh = NavMesh.SamplePosition(position, out hit, NavMeshSampleRadius, NavMesh.AllAreas);
+
+                if (!foundNavMesh)
+                {
+                    return false;
+                }
+
+                float horizontalDistance = Vector2.Distance(
+                    new Vector2(position.x, position.z),
+                    new Vector2(hit.position.x, hit.position.z)
+                );
+
+                return horizontalDistance < NavMeshSampleRadius;
+            }
+            catch
+            {
+                // Fallback to raycast if NavMesh fails
+                return !Physics.Raycast(
+                    _playerCtrl.transform.position + Vector3.up * 0.5f,
+                    (position - _playerCtrl.transform.position).normalized,
+                    WallDetectionDistance
+                );
+            }
+        }
+
+        private void ResetWallStates()
+        {
+            _wallAhead = false;
+            _wallBehind = false;
+            _wallLeft = false;
+            _wallRight = false;
+        }
+
+        private void PlayWallSound(string filename, float pan, float volume = 0.5f)
+        {
+            try
+            {
+                string filePath = Path.Combine(_soundsPath, filename);
+                if (!File.Exists(filePath)) return;
+
+                var audioFile = new AudioFileReader(filePath);
+
+                ISampleProvider sampleProvider;
+                if (audioFile.WaveFormat.Channels == 2)
+                {
+                    sampleProvider = new StereoToMonoSampleProvider(audioFile);
+                }
+                else
+                {
+                    sampleProvider = audioFile;
+                }
+
+                var panner = new PanningSampleProvider(sampleProvider)
+                {
+                    Pan = pan
+                };
+
+                var volumeProvider = new VolumeSampleProvider(panner)
+                {
+                    Volume = volume
+                };
+
+                var waveOut = new WaveOutEvent();
+                waveOut.Init(volumeProvider);
+
+                waveOut.PlaybackStopped += (sender, args) =>
+                {
+                    try
+                    {
+                        waveOut.Dispose();
+                        audioFile.Dispose();
+                    }
+                    catch { }
+                };
+
+                waveOut.Play();
+            }
+            catch { }
+        }
+
+        #endregion
 
         /// <summary>
         /// Check if we're in any battle phase, including the result screen.

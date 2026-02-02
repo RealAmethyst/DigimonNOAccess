@@ -12,23 +12,17 @@ namespace DigimonNOAccess
     /// </summary>
     public class CommonMessageMonitor
     {
-        // Track announced messages to avoid duplicates
-        private HashSet<string> _recentlyAnnounced = new HashSet<string>();
-        private DateTime _lastCleanup = DateTime.Now;
-
         // Track last seen text per window instance to detect changes
+        // When window closes, tracking is cleared, allowing re-announcement when reopened
         private Dictionary<int, string> _lastTextPerWindow = new Dictionary<int, string>();
 
         public void Update()
         {
             try
             {
-                // Cleanup old announced messages periodically
-                if ((DateTime.Now - _lastCleanup).TotalSeconds > 5)
-                {
-                    _recentlyAnnounced.Clear();
-                    _lastCleanup = DateTime.Now;
-                }
+                // Skip if game is still loading
+                if (IsGameLoading())
+                    return;
 
                 // Find ALL uCommonMessageWindow instances in the scene
                 var commonWindows = UnityEngine.Object.FindObjectsOfType<uCommonMessageWindow>();
@@ -53,10 +47,19 @@ namespace DigimonNOAccess
         {
             try
             {
-                // Check if window is active
-                if (window.gameObject == null || !window.gameObject.activeInHierarchy)
+                // Check if window is visible - use m_isOpend OR activeInHierarchy with text
+                // Some windows may have text set before m_isOpend is true
+                bool isVisible = window.m_isOpend;
+                if (!isVisible && window.gameObject != null && window.gameObject.activeInHierarchy)
                 {
-                    // Window closed, clear tracking
+                    // Fallback: check if there's actually text in the label
+                    if (window.m_label != null && !string.IsNullOrEmpty(window.m_label.text))
+                        isVisible = true;
+                }
+
+                if (!isVisible)
+                {
+                    // Window not opened, clear tracking
                     _lastTextPerWindow.Remove(windowIndex);
                     return;
                 }
@@ -81,29 +84,28 @@ namespace DigimonNOAccess
                 if (ShouldSkipText(text))
                     return;
 
-                // Skip if we recently announced this exact text
-                if (_recentlyAnnounced.Contains(text))
-                    return;
-
-                _recentlyAnnounced.Add(text);
-
-                // Announce the text
-                ScreenReader.Say(text);
+                // Announce the text (strip rich text tags for clean screen reader output)
+                DebugLogger.Log($"[CommonMessageMonitor] {text}");
+                ScreenReader.Say(DialogTextPatch.StripRichTextTags(text));
             }
             catch { }
+        }
+
+        private bool IsGameLoading()
+        {
+            try
+            {
+                var mgr = MainGameManager.m_instance;
+                if (mgr != null)
+                    return mgr._IsLoad();
+            }
+            catch { }
+            return false;
         }
 
         private bool ShouldSkipText(string text)
         {
             if (string.IsNullOrEmpty(text))
-                return true;
-
-            // Skip Japanese placeholder text
-            if (text.Contains("メッセージ入力欄"))
-                return true;
-
-            // Skip "Language not found" error
-            if (text.Contains("ランゲージが見つかりません"))
                 return true;
 
             // Skip Japanese placeholder characters

@@ -5,6 +5,7 @@ namespace DigimonNOAccess
 {
     /// <summary>
     /// Handles field HUD status announcements via controller combos or keyboard.
+    /// Also monitors contextual prompts like fishing notifications.
     ///
     /// Controller layout:
     /// Hold RB + D-pad = Partner 1 info
@@ -22,12 +23,19 @@ namespace DigimonNOAccess
     /// </summary>
     public class FieldHudHandler
     {
+        // Fishing prompt tracking
+        private bool _wasFishingPromptActive = false;
+        private string _lastFishingText = "";
+
         public void Update()
         {
             // Check if field panel is available
             var fieldPanel = uFieldPanel.m_instance;
             if (fieldPanel == null || !fieldPanel.m_enabled)
                 return;
+
+            // Always check fishing prompts (they can appear during various states)
+            UpdateFishingPrompt(fieldPanel);
 
             // Check if we're in a state where we should respond (not in menus, battles, etc.)
             if (!IsPlayerInFieldControl())
@@ -265,6 +273,67 @@ namespace DigimonNOAccess
             catch { }
 
             return null;
+        }
+
+        /// <summary>
+        /// Check and announce fishing prompts when they appear.
+        /// Fishing prompts appear on uFieldPanel.m_fishing_ok panel with text in m_fishing_ok_text.
+        /// </summary>
+        private void UpdateFishingPrompt(uFieldPanel fieldPanel)
+        {
+            try
+            {
+                var fishingPanel = fieldPanel.m_fishing_ok;
+                bool isActive = fishingPanel != null && fishingPanel.gameObject != null && fishingPanel.gameObject.activeInHierarchy;
+
+                if (isActive && !_wasFishingPromptActive)
+                {
+                    // Fishing prompt just appeared
+                    string text = GetFishingPromptText(fieldPanel);
+                    if (!string.IsNullOrEmpty(text))
+                    {
+                        ScreenReader.Say(text);
+                        _lastFishingText = text;
+                    }
+                }
+                else if (isActive && _wasFishingPromptActive)
+                {
+                    // Check for text changes while prompt is visible
+                    string text = GetFishingPromptText(fieldPanel);
+                    if (!string.IsNullOrEmpty(text) && text != _lastFishingText)
+                    {
+                        ScreenReader.Say(text);
+                        _lastFishingText = text;
+                    }
+                }
+                else if (!isActive && _wasFishingPromptActive)
+                {
+                    // Prompt closed
+                    _lastFishingText = "";
+                }
+
+                _wasFishingPromptActive = isActive;
+            }
+            catch { }
+        }
+
+        private string GetFishingPromptText(uFieldPanel fieldPanel)
+        {
+            try
+            {
+                var textComponent = fieldPanel.m_fishing_ok_text;
+                if (textComponent != null)
+                {
+                    string text = textComponent.text;
+                    if (!string.IsNullOrEmpty(text))
+                    {
+                        return text.Trim();
+                    }
+                }
+            }
+            catch { }
+
+            return "";
         }
 
         public bool IsActive()

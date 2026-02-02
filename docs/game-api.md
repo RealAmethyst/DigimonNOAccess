@@ -551,9 +551,16 @@ Used for: Managing the overall Digi-Egg selection scene flow.
 - PartnerL = 1
 - RightUp = 2
 
+**Key Methods:**
+- `SetMessage(string str, Pos window_pos)` - Set message text directly (used for system messages)
+- `SetItemMessage(ItemData item_data, Pos pos, bool is_use, ...)` - Set item usage result message (builds message internally, does NOT call SetMessage)
+
+**IMPORTANT - Item Messages:**
+`SetItemMessage` does NOT call `SetMessage` internally. It builds the message from ItemData and sets the label text directly. To catch item usage messages, you must patch `SetItemMessage` with a postfix and read `m_label.text` after the method completes.
+
 **Manager Class:** `CommonMessageWindowManager`
 - `GetCenter()` - Get center window
-- `Get00()` / `Get01()` - Get partner windows
+- `Get00()` / `Get01()` - Get partner windows (for two partners)
 - `GetRightUp()` - Get right-up window
 - `IsFindActive()` - Check if any window active
 
@@ -844,6 +851,7 @@ float dot = forwardX * dx + forwardZ * dz;  // positive = front, negative = back
 - Automatically initializes and starts tracking on first Update
 - Continuously scans for nearest target every 0.5 seconds
 - Automatically switches between targets as player moves
+- Includes integrated wall detection using NavMesh
 - Pauses during battles, cutscenes, events (ActionState_Event, ActionState_Battle, etc.)
 - No toggle keys - always active when player is in control
 
@@ -854,19 +862,14 @@ float dot = forwardX * dx + forwardZ * dz;  // positive = front, negative = back
 4. NPCs (`NpcManager.m_NpcCtrlArray`) - range 120m
 5. Partners (`PartnerCtrl`) - range 200m (fallback only)
 
-### WallDetectionHandler - Always-On Mode
-
-**File:** `WallDetectionHandler.cs`
-
-**Behavior:**
+**Wall Detection (Integrated):**
 - Uses NavMesh.SamplePosition to detect impassable areas
 - Checks 4 directions relative to player: ahead, behind, left, right
 - Plays directional sounds with stereo panning
 - Volume levels: ahead 0.4, behind 0.5, left/right 0.3
-- Pauses during battles, cutscenes, events
-- No toggle key - always active when player is in control
+- Check interval: 0.3 seconds
 
-**Sound Files:**
+**Wall Sound Files:**
 - `wall up.wav` - Wall ahead (center pan)
 - `wall down.wav` - Wall behind (center pan)
 - `wall left.wav` - Wall to left (left speaker)

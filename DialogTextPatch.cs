@@ -2,6 +2,8 @@ using HarmonyLib;
 using Il2Cpp;
 using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
+using UnityEngine;
 
 namespace DigimonNOAccess
 {
@@ -48,6 +50,7 @@ namespace DigimonNOAccess
         private static string _lastFieldDigimonMessage = "";
         private static DateTime _lastFieldDigimonMessageTime = DateTime.MinValue;
 
+
         /// <summary>
         /// Mark the text as consumed (after announcement).
         /// </summary>
@@ -86,6 +89,14 @@ namespace DigimonNOAccess
                     harmony.Patch(setMessageMethod, prefix: new HarmonyMethod(AccessTools.Method(typeof(DialogTextPatch), nameof(SetMessagePrefix))));
                 }
 
+                // Patch uCommonMessageWindow.SetItemMessage (postfix to read built message)
+                var setItemMessageMethod = AccessTools.Method(typeof(uCommonMessageWindow), "SetItemMessage",
+                    new Type[] { typeof(ItemData), typeof(uCommonMessageWindow.Pos), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool) });
+                if (setItemMessageMethod != null)
+                {
+                    harmony.Patch(setItemMessageMethod, postfix: new HarmonyMethod(AccessTools.Method(typeof(DialogTextPatch), nameof(SetItemMessagePostfix))));
+                }
+
                 // Patch uDigimonMessagePanel.StartMessage
                 var digimonMsgMethod = AccessTools.Method(typeof(uDigimonMessagePanel), "StartMessage",
                     new Type[] { typeof(string), typeof(float) });
@@ -103,6 +114,38 @@ namespace DigimonNOAccess
                 }
             }
             catch { }
+        }
+
+        /// <summary>
+        /// Checks if the game is still loading (shouldn't announce during load).
+        /// </summary>
+        private static bool IsGameLoading()
+        {
+            try
+            {
+                var mgr = MainGameManager.m_instance;
+                if (mgr != null)
+                {
+                    return mgr._IsLoad();
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        /// <summary>
+        /// Checks if a panel is actually visible (active in hierarchy).
+        /// </summary>
+        private static bool IsPanelVisible(UnityEngine.Component panel)
+        {
+            try
+            {
+                if (panel == null || panel.gameObject == null)
+                    return false;
+                return panel.gameObject.activeInHierarchy;
+            }
+            catch { }
+            return false;
         }
 
         private static void PlayVoiceTextPrefix(string name, string text, string id)
@@ -132,6 +175,10 @@ namespace DigimonNOAccess
                 if (string.IsNullOrEmpty(str))
                     return;
 
+                // Skip during game loading to avoid initialization text
+                if (IsGameLoading())
+                    return;
+
                 if (str == _lastCommonMessage && (DateTime.Now - _lastCommonMessageTime).TotalMilliseconds < 500)
                     return;
 
@@ -145,8 +192,36 @@ namespace DigimonNOAccess
                 if (IsPlaceholderText(str))
                     return;
 
-                ScreenReader.Say(str);
+                DebugLogger.Log($"[SetMessage] {str}");
+                ScreenReader.Say(StripRichTextTags(str));
                 OnCommonMessageIntercepted?.Invoke(str);
+            }
+            catch { }
+        }
+
+        private static void SetItemMessagePostfix(uCommonMessageWindow __instance)
+        {
+            try
+            {
+                // Skip during game loading
+                if (IsGameLoading())
+                    return;
+
+                // Read the label text that was just set by SetItemMessage
+                if (__instance == null || __instance.m_label == null)
+                    return;
+
+                string text = __instance.m_label.text;
+                if (string.IsNullOrEmpty(text))
+                    return;
+
+                if (IsPlaceholderText(text))
+                    return;
+
+                // Always announce - SetItemMessage is called each time user tries to use an item
+                // No duplicate check here because repeated attempts should be announced
+                DebugLogger.Log($"[SetItemMessage] {text}");
+                ScreenReader.Say(StripRichTextTags(text));
             }
             catch { }
         }
@@ -158,6 +233,11 @@ namespace DigimonNOAccess
                 if (string.IsNullOrEmpty(message))
                     return;
 
+                // Skip if panel isn't already opened (means it's being initialized, not updated)
+                // m_isOpend is inherited from UiDispBase
+                if (__instance == null || !__instance.m_isOpend)
+                    return;
+
                 if (message == _lastDigimonMessage && (DateTime.Now - _lastDigimonMessageTime).TotalMilliseconds < 500)
                     return;
 
@@ -167,7 +247,8 @@ namespace DigimonNOAccess
                 if (IsPlaceholderText(message))
                     return;
 
-                ScreenReader.Say(message);
+                DebugLogger.Log($"[DigimonMessage] {message}");
+                ScreenReader.Say(StripRichTextTags(message));
             }
             catch { }
         }
@@ -179,6 +260,11 @@ namespace DigimonNOAccess
                 if (string.IsNullOrEmpty(message))
                     return;
 
+                // Skip if field panel isn't active yet (means game is still initializing)
+                var fieldPanel = uFieldPanel.m_instance;
+                if (fieldPanel == null || !fieldPanel.gameObject.activeInHierarchy)
+                    return;
+
                 if (message == _lastFieldDigimonMessage && (DateTime.Now - _lastFieldDigimonMessageTime).TotalMilliseconds < 500)
                     return;
 
@@ -188,7 +274,8 @@ namespace DigimonNOAccess
                 if (IsPlaceholderText(message))
                     return;
 
-                ScreenReader.Say(message);
+                DebugLogger.Log($"[FieldDigimonMessage] {message}");
+                ScreenReader.Say(StripRichTextTags(message));
             }
             catch { }
         }
@@ -228,6 +315,16 @@ namespace DigimonNOAccess
                 OnTextIntercepted?.Invoke(speakerName, text);
             }
             catch { }
+        }
+
+        /// <summary>
+        /// Strips Unity rich text tags like <color>, <b>, etc. for clean screen reader output.
+        /// </summary>
+        public static string StripRichTextTags(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return text;
+            return Regex.Replace(text, @"<[^>]+>", "");
         }
 
         private static bool IsPlaceholderText(string text)

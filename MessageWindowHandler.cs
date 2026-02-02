@@ -87,8 +87,13 @@ namespace DigimonNOAccess
             // We still track panel state for status queries
             UpdateEventPanelState();
 
-            UpdateCommonMessageWindow();
-            UpdateDigimonMessagePanel();
+            // Common messages are handled by CommonMessageMonitor and DialogTextPatch.SetMessagePrefix
+            // UpdateCommonMessageWindow() was causing duplicate/stale announcements
+            // UpdateCommonMessageWindow();
+
+            // Digimon messages are handled by DialogTextPatch.DigimonMessagePrefix and FieldDigimonMessagePrefix
+            // UpdateDigimonMessagePanel() was causing duplicate announcements
+            // UpdateDigimonMessagePanel();
             UpdateBattleDialog();
             UpdateCaption();
         }
@@ -155,9 +160,7 @@ namespace DigimonNOAccess
                         {
                             foreach (var panel in talk.m_ui_root)
                             {
-                                if (panel != null &&
-                                    panel.gameObject != null &&
-                                    panel.gameObject.activeInHierarchy)
+                                if (panel != null && panel.m_isOpend)
                                 {
                                     _eventPanel = panel;
                                     return true;
@@ -173,9 +176,7 @@ namespace DigimonNOAccess
                 {
                     foreach (var panel in panels)
                     {
-                        if (panel != null &&
-                            panel.gameObject != null &&
-                            panel.gameObject.activeInHierarchy)
+                        if (panel != null && panel.m_isOpend)
                         {
                             _eventPanel = panel;
                             return true;
@@ -467,9 +468,7 @@ namespace DigimonNOAccess
                 {
                     foreach (var panel in panels)
                     {
-                        if (panel != null &&
-                            panel.gameObject != null &&
-                            panel.gameObject.activeInHierarchy)
+                        if (panel != null && panel.m_isOpend)
                         {
                             _digimonMessagePanel = panel;
                             return true;
@@ -569,9 +568,7 @@ namespace DigimonNOAccess
                 {
                     foreach (var dialog in dialogs)
                     {
-                        if (dialog != null &&
-                            dialog.gameObject != null &&
-                            dialog.gameObject.activeInHierarchy)
+                        if (dialog != null && dialog.m_isOpend)
                         {
                             _battleDialog = dialog;
                             return true;
@@ -685,9 +682,7 @@ namespace DigimonNOAccess
                 {
                     foreach (var caption in captions)
                     {
-                        if (caption != null &&
-                            caption.gameObject != null &&
-                            caption.gameObject.activeInHierarchy)
+                        if (caption != null && caption.m_isOpend)
                         {
                             // Check if it has text
                             string text = GetCaptionTextFromPanel(caption);
@@ -852,7 +847,8 @@ namespace DigimonNOAccess
             if (currentTime - _lastAnnouncementTime < MIN_ANNOUNCEMENT_INTERVAL)
                 return;
 
-            ScreenReader.Say(message);
+            DebugLogger.Log($"[MessageWindow:{source}] {message}");
+            ScreenReader.Say(CleanText(message));
             _lastAnnouncementTime = currentTime;
         }
 
@@ -901,7 +897,7 @@ namespace DigimonNOAccess
 
             if (!string.IsNullOrEmpty(announcement))
             {
-                ScreenReader.Say(announcement);
+                ScreenReader.Say(CleanText(announcement));
             }
             else
             {
