@@ -21,7 +21,6 @@ namespace DigimonNOAccess
         private DialogChoiceHandler _dialogChoiceHandler;
         private CommonYesNoHandler _commonYesNoHandler;
         private AudioNavigationHandler _audioNavigationHandler;
-        private WallDetectionHandler _wallDetectionHandler;
         private CampCommandHandler _campCommandHandler;
         private CommonSelectWindowHandler _commonSelectWindowHandler;
         private TradePanelHandler _tradePanelHandler;
@@ -46,6 +45,7 @@ namespace DigimonNOAccess
         private BattleDialogHandler _battleDialogHandler;
         private BattleTacticsHandler _battleTacticsHandler;
         private BattleResultHandler _battleResultHandler;
+        private CommonMessageMonitor _commonMessageMonitor;
         private HarmonyLib.Harmony _harmony;
         private bool _initialized = false;
 
@@ -84,7 +84,6 @@ namespace DigimonNOAccess
             _dialogChoiceHandler = new DialogChoiceHandler();
             _commonYesNoHandler = new CommonYesNoHandler();
             _audioNavigationHandler = new AudioNavigationHandler();
-            _wallDetectionHandler = new WallDetectionHandler();
             _campCommandHandler = new CampCommandHandler();
             _commonSelectWindowHandler = new CommonSelectWindowHandler();
             _tradePanelHandler = new TradePanelHandler();
@@ -109,6 +108,7 @@ namespace DigimonNOAccess
             _battleDialogHandler = new BattleDialogHandler();
             _battleTacticsHandler = new BattleTacticsHandler();
             _battleResultHandler = new BattleResultHandler();
+            _commonMessageMonitor = new CommonMessageMonitor();
 
             _initialized = true;
             LoggerInstance.Msg("DigimonNOAccess initialized");
@@ -132,7 +132,6 @@ namespace DigimonNOAccess
             _dialogChoiceHandler.Update();
             _commonYesNoHandler.Update();
             _audioNavigationHandler.Update();
-            _wallDetectionHandler.Update();
             _campCommandHandler.Update();
             _commonSelectWindowHandler.Update();
             _tradePanelHandler.Update();
@@ -157,6 +156,7 @@ namespace DigimonNOAccess
             _battleDialogHandler.Update();
             _battleTacticsHandler.Update();
             _battleResultHandler.Update();
+            _commonMessageMonitor.Update();
 
             // Global hotkeys
             HandleGlobalKeys();
@@ -330,7 +330,6 @@ namespace DigimonNOAccess
         {
             LoggerInstance.Msg("DigimonNOAccess shutdown");
             _audioNavigationHandler?.Cleanup();
-            _wallDetectionHandler?.Dispose();
             ScreenReader.Shutdown();
         }
     }

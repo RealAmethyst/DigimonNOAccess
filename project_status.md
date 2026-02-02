@@ -36,16 +36,18 @@
 ## Current Phase
 New game flow complete through Digi-Egg selection with confirmation dialogs. Dialog choices now track properly using TalkMain.m_cursor. Voice detection filters voiced dialog from TTS. **3D positional audio navigation fully working** using NAudio (bypasses game's CRI audio system). **Always-on audio system** - no toggle keys required, all navigation sounds are automatic when player is in control.
 
-### Battle System Accessibility (IN PROGRESS)
-Handlers implemented:
-- **BattleHudHandler** - Partner HP/MP status via D-pad (D-Up/Down for HP, D-Left/Right for orders). **Known issue:** D-pad input may be consumed by game. Use F3/F4 keyboard fallback.
-- **BattleOrderRingHandler** - Order Ring command selection announcements (WORKING)
-- **BattleItemHandler** - Battle item menu with target selection (WORKING)
-- **BattleDialogHandler** - Battle Yes/No dialogs (escape confirmation, etc.) (WORKING)
+### Battle System Accessibility (COMPLETE)
+All battle handlers implemented and working:
+- **BattleHudHandler** - Partner HP/MP status via Right Stick (RS-Up/Down for HP/MP, RS-Left/Right for orders). F3/F4/F6/F7 keyboard fallback.
+- **BattleOrderRingHandler** - Order Ring command selection announcements
+- **BattleItemHandler** - Battle item menu with target selection
+- **BattleDialogHandler** - Battle Yes/No dialogs (escape confirmation, etc.)
 - **BattleTacticsHandler** - Square button menu tabs (Escape, MP Usage, Target)
-- **BattleResultHandler** - Victory screen announcements and reward logging
+- **BattleResultHandler** - Victory screen with proper two-phase detection (preview gains, then applied)
 
-Controls: D-pad only for battle status (no shoulder buttons). F3/F4 keyboard fallback for partner status.
+Controls: Right Stick for battle status (RB/LB open Order Ring so D-pad unavailable). F3/F4/F6/F7 keyboard fallback.
+
+**F5 Toggle:** Press F5 to toggle reading voiced text. Useful for players using non-English voice but want to hear TTS for all dialog.
 
 ### NPC Menu Accessibility (COMPLETE)
 All major NPC dialog menus now have accessibility handlers:
@@ -68,8 +70,14 @@ All major field menus now have accessibility handlers:
 - **MailPanelHandler** - Digital messenger/mail reading
 - **DigiviceTopPanelHandler** - Digivice main menu
 - **ZonePanelHandler** - Zone/area selection
-- **FieldHudHandler** - Partner status via controller combos (RB/LB + face buttons)
+- **FieldHudHandler** - Partner status via controller combos (RB/LB + face buttons), fishing prompts
 - **CarePanelHandler** - Care menu (Square button) with command selection, item tabs (Consumption/Foodstuff/etc.), and proper state detection
+
+### Field Contextual Prompts
+- **Fishing Prompts** - Monitored via `uFieldPanel.m_fishing_ok` panel and `m_fishing_ok_text` text (handled by FieldHudHandler)
+- **Interaction Hints** - Monitored via `uCaptionBase.m_text` (handled by MessageWindowHandler)
+- **Recruitment Notifications** - "Tentomon joined the city!" style messages monitored via `CommonMessageMonitor` polling `uCommonMessageWindow` instances
+- **Item Get Notifications** - "You got Recovery Disk x 1!" style messages monitored via `CommonMessageMonitor`
 
 ## Known Issues
 
@@ -205,14 +213,24 @@ All major field menus now have accessibility handlers:
 - **Text Fields:**
   - `EventWindowPanel.m_normalText` - Main story dialog text
   - `EventWindowPanel.m_nameText` - Speaker name
-  - `uCommonMessageWindow.m_label` - Field message text
+  - `uCommonMessageWindow.m_label` - Field message text (Center, Get00, Get01, GetRightUp positions)
   - `uDigimonMessagePanel.m_text` - Partner status messages
   - `uCaptionBase.m_text` - Field hints/instructions
+- **Message Positions:** Uses `CommonMessageWindowManager` to check Center, Get00, Get01, and GetRightUp positions for notifications
 - **Harmony Patch Integration:**
-  - Patches `EventWindowPanel.TextShrink(string text)` - intercepts actual localized text
+  - Patches `EventWindowPanel.TextShrink(string text)` - intercepts story dialog text
   - Patches `TalkMain.PlayVoiceText` - detects voiced dialog to skip TTS
+  - Patches `uCommonMessageWindow.SetMessage` - intercepts field notifications with direct text
+  - Patches `uDigimonMessagePanel.StartMessage` - intercepts partner Digimon field messages
+  - Patches `uFieldPanel.StartDigimonMessage` - intercepts field Digimon messages (static method)
   - Text is captured the instant it's set, before typewriter animation starts
   - `DialogTextPatch.OnTextIntercepted` event fires immediately with full text
+  - `DialogTextPatch.OnCommonMessageIntercepted` event fires for field notifications
+- **CommonMessageMonitor:**
+  - Polls all `uCommonMessageWindow` instances via `FindObjectsOfType`
+  - Detects text changes in windows and announces new text
+  - Catches recruitment notifications ("X joined the city!") that bypass SetMessage localization
+  - Filters placeholder text (メッセージ入力欄) and "Language not found" errors
 - **Features:**
   - **Immediate text announcement** - no waiting for typewriter animation
   - **Voice detection** - skips TTS for voiced dialog (500ms timing window)
@@ -231,6 +249,20 @@ All major field menus now have accessibility handlers:
 - `TalkMain.PlayVoiceText` is called when dialog has voice audio - use for voice detection
 - Prefix patches capture parameters before the original method runs
 - Event-based notification allows handlers to react immediately
+
+### Field Notification System
+- `uCommonMessageWindow` handles some field notifications
+  - `SetMessage(string str, Pos window_pos)` - receives direct text string
+  - Window positions: Center, PartnerR (Get00), PartnerL (Get01), RightUp
+  - **Important:** Some notifications pass unlocalized keys to SetMessage, then the actual text appears later via a different code path
+- `uDigimonMessagePanel.StartMessage(string message, float time)` - partner Digimon field messages ("Hmph... Someone's here.")
+- `uFieldPanel.StartDigimonMessage(UNITID id, string message, float time)` - static method that triggers field Digimon messages
+- **CommonMessageMonitor Pattern:**
+  - Some notifications (recruitment, item get) bypass SetMessage localization
+  - SetMessage receives "ランゲージが見つかりません" (Language not found) error
+  - Actual text appears in `uCommonMessageWindow.m_label` shortly after
+  - Solution: Poll all uCommonMessageWindow instances and announce when text changes
+  - Filter placeholder text (メッセージ入力欄) and error messages
 
 ### Voice Detection Pattern
 - `TalkMain.PlayVoiceText` is called before `EventWindowPanel.TextShrink` for voiced dialog
@@ -285,11 +317,11 @@ Two approaches found in game:
 - `DialogChoiceHandler.cs` - Dialog choices (multiple options in conversation)
 - `CommonYesNoHandler.cs` - Common Yes/No confirmation dialog accessibility
 - `MessageWindowHandler.cs` - Message window/story text accessibility (uses DialogTextPatch for immediate text, IsFindActive() for proper visibility detection)
-- `DialogTextPatch.cs` - Harmony patches for EventWindowPanel.TextShrink and TalkMain.PlayVoiceText
+- `DialogTextPatch.cs` - Harmony patches for text interception (EventWindowPanel.TextShrink, TalkMain.PlayVoiceText, uCommonMessageWindow.SetMessage, uDigimonMessagePanel.StartMessage, uFieldPanel.StartDigimonMessage)
+- `CommonMessageMonitor.cs` - Polls uCommonMessageWindow instances to catch recruitment/item notifications that bypass SetMessage
 - `SteamInputPatch.cs` - Harmony patch attempt (not used - Steam Big Picture must be disabled manually)
-- `AudioNavigationHandler.cs` - Always-on audio navigation (auto-tracks nearest object with positional audio)
+- `AudioNavigationHandler.cs` - Always-on audio navigation with object tracking and wall detection (merged)
 - `PositionalAudio.cs` - NAudio-based 3D positional audio system (stereo panning, volume, WAV file loading)
-- `WallDetectionHandler.cs` - Always-on wall detection via NavMesh (directional wall sounds)
 - `ToneGenerator.cs` - Legacy programmatic audio tone generation (not currently used)
 - `CampCommandHandler.cs` - Camp menu accessibility
 - `CommonSelectWindowHandler.cs` - Generic selection window accessibility
@@ -307,7 +339,7 @@ Two approaches found in game:
 - `MailPanelHandler.cs` - Mail/messenger accessibility
 - `DigiviceTopPanelHandler.cs` - Digivice main menu accessibility
 - `ZonePanelHandler.cs` - Zone selection accessibility
-- `FieldHudHandler.cs` - Partner status via controller combos
+- `FieldHudHandler.cs` - Partner status via controller combos, fishing prompts
 - `CarePanelHandler.cs` - Care menu accessibility (command selection + education/discipline mode)
 - `BattleHudHandler.cs` - Battle partner HP/MP status via D-pad (F3/F4 keyboard fallback)
 - `BattleOrderRingHandler.cs` - Order Ring command selection
@@ -322,7 +354,7 @@ Two approaches found in game:
 - **Mode:** Always active when player is in control (no toggle keys)
 - **Auto-stops during:** Battles, cutscenes, events, death states
 - **Menu pause:** Automatically pauses when Care menu, Digivice, or Save menu is open
-- **Classes:** `AudioNavigationHandler`, `PositionalAudio`, `WallDetectionHandler`
+- **Classes:** `AudioNavigationHandler` (includes wall detection), `PositionalAudio`
 - **Detection Sources:**
   - `ItemPickPointManager.m_instance.m_itemPickPoints` - Collectible items (range 100m)
   - `MapTriggerScript` with `enterID == MapChange` - Area transitions (range 80m)
@@ -372,9 +404,11 @@ Two approaches found in game:
 - **Dependencies:** NAudio NuGet package (NAudio.dll, NAudio.Core.dll, NAudio.WinMM.dll, NAudio.Wasapi.dll deployed to Mods folder)
 
 ## Next Steps
-1. **Fix D-pad in Battle** - Investigate why D-pad input isn't detected during battle (game may consume it)
-2. **Battle Result Improvements** - Read actual item/TP/Bit text from uResultPanelGet
-3. **Tactics Tab Names** - Find proper text source for tab names instead of hardcoded strings
-4. **Partner Interaction** - Handle talking to partner Digimon outside battle (uPartnerTacticsPanel?)
-5. **Battle State Announcements** - Add battle start/victory/defeat announcements
-6. **Cutscene Subtitles** - MovieSubtitle class for cutscene accessibility
+1. **Cutscene Subtitles** - MovieSubtitle class for cutscene accessibility
+2. **Partner Interaction** - Handle talking to partner Digimon outside battle (uPartnerTacticsPanel?)
+3. **Enemy Detection Improvements** - Announce enemy types/levels when tracking
+4. **Item Description Readout** - Add key to read item description in field menus
+
+## Known Issues (Documented)
+- **Death Audio Plays During Recovery** - Audio navigation may briefly play during death recovery sequence before detection kicks in. Low priority as it's a brief moment.
+- **Tutorial Battle Dialog** - Audio navigation properly pauses during tutorial battle dialog sequences.

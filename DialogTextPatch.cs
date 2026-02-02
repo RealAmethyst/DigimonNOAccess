@@ -11,10 +11,12 @@ namespace DigimonNOAccess
     /// before the typewriter animation starts. This gives us the full text
     /// immediately without any delay.
     ///
-    /// We patch EventWindowPanel.TextShrink(string text) which receives the
-    /// actual localized text ready for display (not the localization key).
-    ///
-    /// We also patch TalkMain.PlayVoiceText to detect voiced dialog and skip TTS for it.
+    /// We patch:
+    /// - EventWindowPanel.TextShrink(string text) - story dialog text
+    /// - TalkMain.PlayVoiceText - to detect voiced dialog and skip TTS
+    /// - uCommonMessageWindow.SetMessage - field notifications (recruitment, etc.)
+    /// - uDigimonMessagePanel.StartMessage - Digimon-specific field messages (recruitment notifications)
+    /// - uFieldPanel.StartDigimonMessage - static method for field Digimon messages
     /// </summary>
     public static class DialogTextPatch
     {
@@ -79,6 +81,51 @@ namespace DigimonNOAccess
                     DebugLogger.Log("[DialogTextPatch] WARNING: Could not find TalkMain.PlayVoiceText method");
                 }
 
+                // Patch uCommonMessageWindow.SetMessage - this is used for field notifications
+                // like "Digimon joined the city" after NPC dialog
+                var setMessageMethod = AccessTools.Method(typeof(uCommonMessageWindow), "SetMessage",
+                    new Type[] { typeof(string), typeof(uCommonMessageWindow.Pos) });
+                if (setMessageMethod != null)
+                {
+                    var msgPrefix = AccessTools.Method(typeof(DialogTextPatch), nameof(SetMessagePrefix));
+                    harmony.Patch(setMessageMethod, prefix: new HarmonyMethod(msgPrefix));
+                    DebugLogger.Log("[DialogTextPatch] Patched uCommonMessageWindow.SetMessage");
+                }
+                else
+                {
+                    DebugLogger.Log("[DialogTextPatch] WARNING: Could not find uCommonMessageWindow.SetMessage method");
+                }
+
+                // Patch uDigimonMessagePanel.StartMessage - this is used for Digimon-specific field messages
+                // like recruitment notifications after talking to NPC Digimon
+                var digimonMsgMethod = AccessTools.Method(typeof(uDigimonMessagePanel), "StartMessage",
+                    new Type[] { typeof(string), typeof(float) });
+                if (digimonMsgMethod != null)
+                {
+                    var digimonMsgPrefix = AccessTools.Method(typeof(DialogTextPatch), nameof(DigimonMessagePrefix));
+                    harmony.Patch(digimonMsgMethod, prefix: new HarmonyMethod(digimonMsgPrefix));
+                    DebugLogger.Log("[DialogTextPatch] Patched uDigimonMessagePanel.StartMessage");
+                }
+                else
+                {
+                    DebugLogger.Log("[DialogTextPatch] WARNING: Could not find uDigimonMessagePanel.StartMessage method");
+                }
+
+                // Patch uFieldPanel.StartDigimonMessage - static method for field Digimon messages
+                // This is called with UNITID, message string, and display time
+                var fieldDigimonMsgMethod = AccessTools.Method(typeof(uFieldPanel), "StartDigimonMessage",
+                    new Type[] { typeof(MainGameManager.UNITID), typeof(string), typeof(float) });
+                if (fieldDigimonMsgMethod != null)
+                {
+                    var fieldDigimonMsgPrefix = AccessTools.Method(typeof(DialogTextPatch), nameof(FieldDigimonMessagePrefix));
+                    harmony.Patch(fieldDigimonMsgMethod, prefix: new HarmonyMethod(fieldDigimonMsgPrefix));
+                    DebugLogger.Log("[DialogTextPatch] Patched uFieldPanel.StartDigimonMessage");
+                }
+                else
+                {
+                    DebugLogger.Log("[DialogTextPatch] WARNING: Could not find uFieldPanel.StartDigimonMessage method");
+                }
+
                 DebugLogger.Log("[DialogTextPatch] Patches applied successfully");
             }
             catch (Exception ex)
@@ -122,6 +169,142 @@ namespace DigimonNOAccess
         {
             // If voice was triggered within the last 500ms, consider this voiced dialog
             return (DateTime.Now - _lastVoiceTime).TotalMilliseconds < 500;
+        }
+
+        // Track last common message to avoid duplicates
+        private static string _lastCommonMessage = "";
+        private static DateTime _lastCommonMessageTime = DateTime.MinValue;
+
+        // Event for common message window notifications
+        public static event Action<string> OnCommonMessageIntercepted;
+
+        /// <summary>
+        /// Prefix patch for uCommonMessageWindow.SetMessage(string str, Pos window_pos)
+        /// This catches field notifications like "Digimon joined the city"
+        /// </summary>
+        private static void SetMessagePrefix(uCommonMessageWindow __instance, string str, uCommonMessageWindow.Pos window_pos)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(str))
+                    return;
+
+                // Skip if we just announced this (avoid duplicates within 500ms)
+                if (str == _lastCommonMessage && (DateTime.Now - _lastCommonMessageTime).TotalMilliseconds < 500)
+                    return;
+
+                _lastCommonMessage = str;
+                _lastCommonMessageTime = DateTime.Now;
+
+                DebugLogger.Log($"[DialogTextPatch] SetMessage intercepted: pos={window_pos}, text='{TruncateForLog(str)}'");
+
+                // Skip "Language not found" error - the real text will be caught by CommonMessageMonitor
+                if (str.Contains("ランゲージが見つかりません"))
+                {
+                    DebugLogger.Log($"[DialogTextPatch] Skipping 'Language not found' error - monitor will catch real text");
+                    return;
+                }
+
+                // Skip placeholder or system text
+                if (IsPlaceholderText(str))
+                {
+                    DebugLogger.Log($"[DialogTextPatch] Skipping placeholder text in SetMessage");
+                    return;
+                }
+
+                // Announce directly via ScreenReader
+                ScreenReader.Say(str);
+                DebugLogger.Log($"[DialogTextPatch] Announced common message: '{TruncateForLog(str)}'");
+
+                // Fire event for any handlers that want to track this
+                OnCommonMessageIntercepted?.Invoke(str);
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[DialogTextPatch] Error in SetMessagePrefix: {ex.Message}");
+            }
+        }
+
+        // Track last Digimon message to avoid duplicates
+        private static string _lastDigimonMessage = "";
+        private static DateTime _lastDigimonMessageTime = DateTime.MinValue;
+
+        /// <summary>
+        /// Prefix patch for uDigimonMessagePanel.StartMessage(string message, float time)
+        /// This catches Digimon-specific field messages like recruitment notifications
+        /// </summary>
+        private static void DigimonMessagePrefix(uDigimonMessagePanel __instance, string message, float time)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(message))
+                    return;
+
+                // Skip if we just announced this (avoid duplicates within 500ms)
+                if (message == _lastDigimonMessage && (DateTime.Now - _lastDigimonMessageTime).TotalMilliseconds < 500)
+                    return;
+
+                _lastDigimonMessage = message;
+                _lastDigimonMessageTime = DateTime.Now;
+
+                DebugLogger.Log($"[DialogTextPatch] DigimonMessage intercepted: time={time}, text='{TruncateForLog(message)}'");
+
+                // Skip placeholder or system text
+                if (IsPlaceholderText(message))
+                {
+                    DebugLogger.Log($"[DialogTextPatch] Skipping placeholder text in DigimonMessage");
+                    return;
+                }
+
+                // Announce directly via ScreenReader
+                ScreenReader.Say(message);
+                DebugLogger.Log($"[DialogTextPatch] Announced Digimon message: '{TruncateForLog(message)}'");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[DialogTextPatch] Error in DigimonMessagePrefix: {ex.Message}");
+            }
+        }
+
+        // Track last field Digimon message to avoid duplicates
+        private static string _lastFieldDigimonMessage = "";
+        private static DateTime _lastFieldDigimonMessageTime = DateTime.MinValue;
+
+        /// <summary>
+        /// Prefix patch for uFieldPanel.StartDigimonMessage(UNITID id, string message, float time)
+        /// This is a static method that triggers Digimon-specific field messages
+        /// </summary>
+        private static void FieldDigimonMessagePrefix(MainGameManager.UNITID id, string message, float time)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(message))
+                    return;
+
+                // Skip if we just announced this (avoid duplicates within 500ms)
+                if (message == _lastFieldDigimonMessage && (DateTime.Now - _lastFieldDigimonMessageTime).TotalMilliseconds < 500)
+                    return;
+
+                _lastFieldDigimonMessage = message;
+                _lastFieldDigimonMessageTime = DateTime.Now;
+
+                DebugLogger.Log($"[DialogTextPatch] FieldDigimonMessage intercepted: id={id}, time={time}, text='{TruncateForLog(message)}'");
+
+                // Skip placeholder or system text
+                if (IsPlaceholderText(message))
+                {
+                    DebugLogger.Log($"[DialogTextPatch] Skipping placeholder text in FieldDigimonMessage");
+                    return;
+                }
+
+                // Announce directly via ScreenReader
+                ScreenReader.Say(message);
+                DebugLogger.Log($"[DialogTextPatch] Announced field Digimon message: '{TruncateForLog(message)}'");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[DialogTextPatch] Error in FieldDigimonMessagePrefix: {ex.Message}");
+            }
         }
 
         /// <summary>
