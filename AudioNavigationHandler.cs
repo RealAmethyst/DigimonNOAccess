@@ -295,18 +295,84 @@ namespace DigimonNOAccess
         }
 
         /// <summary>
-        /// Check if we're in any battle phase.
+        /// Check if we're in any battle phase, including the result screen.
         /// Uses multiple detection methods to catch tutorial battles and battle dialogs.
+        /// Also checks MainGameBattle's internal step to catch the transition gap
+        /// between battle ending and result panel appearing.
         /// </summary>
         private bool IsInBattlePhase()
         {
             try
             {
+                // FIRST: Check MainGameComponent's current step - most reliable for battle detection
+                var mgc = MainGameComponent.m_instance;
+                if (mgc != null)
+                {
+                    var curStep = mgc.m_CurStep;
+
+                    // If we're in Battle mode at all, check the battle's internal step
+                    if (curStep == Il2CppMainGame.STEP.Battle)
+                    {
+                        // Check MainGameBattle's step for Win/Lose/Escape states
+                        // These occur BEFORE the result panel is shown
+                        try
+                        {
+                            var stepProc = mgc.m_StepProc;
+                            if (stepProc != null && stepProc.Length > 1)
+                            {
+                                var battleIF = stepProc[1]; // Index 1 = Battle
+                                if (battleIF != null)
+                                {
+                                    var mainGameBattle = battleIF.TryCast<MainGameBattle>();
+                                    if (mainGameBattle != null)
+                                    {
+                                        var stepProg = mainGameBattle.m_Step;
+                                        if (stepProg != null)
+                                        {
+                                            var battleStep = stepProg.step;
+                                            // Any step in battle means we're still in battle
+                                            // Win, Lose, Miracle, Escape, Break = battle ended but transitioning
+                                            if (battleStep != MainGameBattle.STEP.Idle)
+                                            {
+                                                return true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        catch { }
+
+                        // Even if we couldn't check internal step, we're in Battle mode
+                        return true;
+                    }
+                }
+
                 // Check the battle panel
                 var battlePanel = uBattlePanel.m_instance;
-                if (battlePanel != null && battlePanel.m_enabled)
+                if (battlePanel != null)
                 {
-                    return true;
+                    // Battle UI is active
+                    if (battlePanel.m_enabled)
+                    {
+                        return true;
+                    }
+
+                    // Check if result panel is showing (victory/defeat screen)
+                    // This is shown AFTER battle panel is disabled, player still can't move
+                    // ONLY use m_enabled - gameObject.activeInHierarchy is unreliable
+                    var resultPanel = battlePanel.m_result;
+                    if (resultPanel != null)
+                    {
+                        try
+                        {
+                            if (resultPanel.m_enabled)
+                            {
+                                return true;
+                            }
+                        }
+                        catch { }
+                    }
                 }
 
                 // Check if any partner is in battle action state
@@ -346,6 +412,61 @@ namespace DigimonNOAccess
                 }
             }
             catch { }
+            return false;
+        }
+
+        /// <summary>
+        /// Check if the player just lost a battle (death/game over recovery).
+        /// During this time the player is returned to overworld but cannot move.
+        ///
+        /// Key: Check MainGameField.m_Step.step == RestartLose, which is the definitive
+        /// indicator that the game is in the death recovery sequence.
+        /// </summary>
+        private bool IsInDeathRecovery()
+        {
+            try
+            {
+                var mgc = MainGameComponent.m_instance;
+                if (mgc == null)
+                    return false;
+
+                // Only check when we're supposed to be in field mode
+                var curStep = mgc.m_CurStep;
+                if (curStep != Il2CppMainGame.STEP.Field)
+                    return false;
+
+                // Check MainGameField's internal step state
+                var stepProc = mgc.m_StepProc;
+                if (stepProc == null || stepProc.Length == 0)
+                    return false;
+
+                var fieldIF = stepProc[0]; // Index 0 = Field
+                if (fieldIF == null)
+                    return false;
+
+                // Try to cast to MainGameField and check m_Step
+                var mainGameField = fieldIF.TryCast<MainGameField>();
+                if (mainGameField == null)
+                    return false;
+
+                var stepProg = mainGameField.m_Step;
+                if (stepProg == null)
+                    return false;
+
+                var fieldStep = stepProg.step;
+                // RestartLose = death recovery, RestartEscape = escape recovery
+                if (fieldStep == MainGameField.STEP.RestartLose ||
+                    fieldStep == MainGameField.STEP.RestartEscape)
+                {
+                    DebugLogger.Log($"[AudioNav] Death recovery detected: {fieldStep}");
+                    return true;
+                }
+            }
+            catch (System.Exception ex)
+            {
+                // Log but don't block audio - if we can't determine, assume not in recovery
+                DebugLogger.Log($"[AudioNav] IsInDeathRecovery error (ignoring): {ex.Message}");
+            }
             return false;
         }
 
@@ -394,8 +515,12 @@ namespace DigimonNOAccess
                 if (IsGamePausedOrInEvent())
                     return false;
 
-                // Check if in any battle phase (includes tutorial battles, battle dialogs, etc.)
+                // Check if in any battle phase (includes tutorial battles, battle dialogs, result screen)
                 if (IsInBattlePhase())
+                    return false;
+
+                // Check if in death recovery (after losing battle)
+                if (IsInDeathRecovery())
                     return false;
 
                 // Check player action state (catches death recovery, events, etc.)

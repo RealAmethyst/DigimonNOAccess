@@ -855,6 +855,14 @@ namespace DigimonNOAccess
 
         private void UpdateCaption()
         {
+            // Skip caption announcements during battle result screen
+            // BattleResultHandler handles those announcements
+            if (IsBattleResultActive())
+            {
+                _wasCaptionActive = false;
+                return;
+            }
+
             bool isActive = IsCaptionOpen();
 
             if (isActive && !_wasCaptionActive)
@@ -871,6 +879,28 @@ namespace DigimonNOAccess
             }
 
             _wasCaptionActive = isActive;
+        }
+
+        /// <summary>
+        /// Check if the battle result panel is currently active.
+        /// Used to suppress caption announcements during result screen.
+        /// </summary>
+        private bool IsBattleResultActive()
+        {
+            try
+            {
+                var battlePanel = uBattlePanel.m_instance;
+                if (battlePanel != null)
+                {
+                    var resultPanel = battlePanel.m_result;
+                    if (resultPanel != null && resultPanel.m_enabled)
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch { }
+            return false;
         }
 
         private void OnCaptionOpen()

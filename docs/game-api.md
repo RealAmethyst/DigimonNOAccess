@@ -1453,15 +1453,46 @@ Used for: Main Digivice menu with navigation to sub-menus.
 
 **Detection:** `FindObjectOfType<uDigiviceTopPanel>()`, check panel is active
 
-## Zone Panel
+## Zone Panel (uZonePanel)
 
-Used for: Zone/area selection when traveling.
+**Class:** `uZonePanel`
+
+Used for: Displaying zone/area name notification when entering new areas. Briefly appears to show current location.
 
 **Key Properties:**
-- Zone list with cursor selection
-- Zone name and description
+- `m_zone_label` (Text) - The zone name text display
 
-**Detection:** Check for zone selection panel active state
+**Access Pattern:**
+```csharp
+// Preferred: Access via uFieldPanel singleton
+var fieldPanel = uFieldPanel.m_instance;
+if (fieldPanel != null)
+{
+    var zonePanel = fieldPanel.m_zone_panel;
+    if (zonePanel != null && zonePanel.gameObject.activeInHierarchy)
+    {
+        string zoneName = zonePanel.m_zone_label?.text ?? "";
+    }
+}
+
+// Fallback: FindObjectOfType
+var zonePanel = Object.FindObjectOfType<uZonePanel>();
+```
+
+**Detection Pattern:**
+```csharp
+public bool IsZonePanelOpen()
+{
+    var panel = FindZonePanel();
+    if (panel == null || !panel.gameObject.activeInHierarchy)
+        return false;
+
+    var label = panel.m_zone_label;
+    return label != null && !string.IsNullOrWhiteSpace(label.text);
+}
+```
+
+**Note:** The panel object may persist in the scene even when not visible. Always check both `activeInHierarchy` and that the label has actual text content.
 
 ## Care Panel (uCarePanel)
 
@@ -1918,4 +1949,154 @@ var battlePanel = uBattlePanel.m_instance;
 bool isItemMenuOpen = battlePanel?.m_itemBox != null &&
     battlePanel.m_itemBox.gameObject.activeInHierarchy &&
     battlePanel.m_itemBox.m_isVisible;
+```
+
+---
+
+### uBattlePanelResult (Battle Result Screen)
+
+**Class:** `uBattlePanelResult` (extends `uResultBase`)
+
+Displays battle results after winning a fight. Shows partner stat gains and rewards.
+
+**Key Properties:**
+- `m_enabled` (bool) - Whether result panel is currently active
+- `m_resultPanelDigimons` (uResultPanelDigimonBase[]) - Array of partner result panels (2 max)
+- `m_getPanel` (uResultPanelGet) - Center rewards panel (EXP, Bits, Items)
+- `m_skillPanel` (uResultPanelSkill) - Skill learning panel (if applicable)
+
+**Access Pattern:**
+```csharp
+var battlePanel = uBattlePanel.m_instance;
+if (battlePanel != null)
+{
+    var resultPanel = battlePanel.m_result;
+    if (resultPanel != null && resultPanel.m_enabled)
+    {
+        // Battle result is showing
+    }
+}
+```
+
+---
+
+### uResultPanelDigimonBase (Partner Result Panel)
+
+**Class:** `uResultPanelDigimonBase` (extends `UiDispBase`)
+
+Shows individual partner stat gains in battle results.
+
+**Key Properties:**
+- `m_partnerName` (Text) - Partner Digimon name
+- `m_isRise` (bool) - **KEY FIELD** - True when showing +X stat gains (Screen 1), False after applied (Screen 2)
+- `m_riseValues` (int[]) - Array of stat gain values [HP, MP, STR, STA, WIS, SPD]
+- `m_riseTexts` (Text[]) - Text components showing +X values
+- `m_isOpend` (bool) - Whether panel is open (from UiDispBase)
+- `m_isActive` (bool) - Whether panel is active (from UiDispBase)
+
+**Screen Flow Detection:**
+The battle result screen has TWO phases shown on the SAME visual layout:
+
+- **Screen 1 (Preview):** `m_isRise = true`
+  - All three panels shown simultaneously (left partner, right partner, center rewards)
+  - Shows stat gains as "+X" values
+  - Player sees what they're about to receive
+
+- **Screen 2 (Applied):** `m_isRise = false`
+  - Same layout but +X indicators removed
+  - Stats have been applied to partners
+  - Only final values shown
+
+**Detection Pattern:**
+```csharp
+private bool CheckIsShowingRise(uBattlePanelResult resultPanel)
+{
+    var digimonPanels = resultPanel.m_resultPanelDigimons;
+    if (digimonPanels == null || digimonPanels.Length == 0)
+        return false;
+
+    // Check if any panel has m_isRise = true
+    for (int i = 0; i < digimonPanels.Length && i < 2; i++)
+    {
+        var panel = digimonPanels[i];
+        if (panel != null && panel.m_isRise)
+            return true;
+    }
+    return false;
+}
+```
+
+**Reading Partner Stats:**
+```csharp
+var panel = resultPanel.m_resultPanelDigimons[0];
+string name = panel.m_partnerName?.text ?? "Partner 1";
+
+// Read from m_riseValues array (preferred)
+int[] riseValues = panel.m_riseValues;  // [HP, MP, STR, STA, WIS, SPD]
+if (riseValues != null)
+{
+    int hpGain = riseValues[0];
+    int mpGain = riseValues[1];
+    // etc.
+}
+
+// Or read from text fields (fallback)
+var riseTexts = panel.m_riseTexts;
+string hpText = riseTexts[0]?.text ?? "";  // e.g., "+5"
+```
+
+---
+
+### uResultPanelGet (Rewards Panel)
+
+**Class:** `uResultPanelGet` (extends `UiDispBase`)
+
+Shows battle rewards (EXP, Bits, Items) in center of result screen.
+
+**Key Properties:**
+- `m_tpText` (Text) - Tamer EXP gained
+- `m_bitText` (Text) - Bits (money) gained
+- `m_itemText` (Text[]) - Array of item name texts
+- `m_itemNumText` (Text[]) - Array of item quantity texts
+
+**Reading Rewards:**
+```csharp
+var getPanel = resultPanel.m_getPanel;
+string exp = getPanel.m_tpText?.text ?? "0";
+string bits = getPanel.m_bitText?.text ?? "0";
+
+// Items (up to 5)
+var itemTexts = getPanel.m_itemText;
+var itemNums = getPanel.m_itemNumText;
+for (int i = 0; i < itemTexts?.Length && i < 5; i++)
+{
+    string itemName = itemTexts[i]?.text;
+    string quantity = itemNums?[i]?.text ?? "1";
+    if (!string.IsNullOrEmpty(itemName))
+    {
+        // Got item: itemName x quantity
+    }
+}
+```
+
+---
+
+### Battle Result Accessibility Pattern
+
+**Recommended approach for screen reader announcement:**
+
+```csharp
+// Screen 1: Announce everything when m_isRise = true
+if (isShowingRise && !announcedScreen1)
+{
+    // Announce: Partner 1 gains, Partner 2 gains, Rewards
+    announcedScreen1 = true;
+}
+
+// Screen 2: Simple confirmation when m_isRise becomes false
+if (!isShowingRise && wasShowingRise && !announcedScreen2)
+{
+    ScreenReader.Say("Results applied. Press Continue to return to field.");
+    announcedScreen2 = true;
+}
 ```
