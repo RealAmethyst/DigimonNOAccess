@@ -51,8 +51,6 @@ namespace DigimonNOAccess
         // General tracking
         private float _lastAnnouncementTime = 0f;
         private const float MIN_ANNOUNCEMENT_INTERVAL = 0.1f;
-        private int _frameCounter = 0;
-        private const int DEBUG_LOG_INTERVAL = 300; // Log every 5 seconds at 60fps
 
         // Placeholder/system text patterns to ignore
         private static readonly string[] IGNORED_TEXT_PATTERNS = new string[]
@@ -83,16 +81,6 @@ namespace DigimonNOAccess
             {
                 DialogTextPatch.OnTextIntercepted += OnDialogTextIntercepted;
                 _subscribedToPatch = true;
-                DebugLogger.Log("[MessageWindow] Subscribed to DialogTextPatch events");
-            }
-
-            _frameCounter++;
-
-            // Periodic debug logging
-            if (_frameCounter >= DEBUG_LOG_INTERVAL)
-            {
-                _frameCounter = 0;
-                LogActiveUIState();
             }
 
             // Story dialog is now handled by the patch callback (OnDialogTextIntercepted)
@@ -140,162 +128,8 @@ namespace DigimonNOAccess
                 _lastAnnouncedEventText = cleanedText;
                 _lastAnnouncedEventName = cleanedName;
 
-                DebugLogger.Log($"[MessageWindow] Immediate announcement: name='{cleanedName}', text='{TruncateText(cleanedText, 50)}'");
             }
-            catch (System.Exception ex)
-            {
-                DebugLogger.Log($"[MessageWindow] Error in OnDialogTextIntercepted: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Log what UI elements are currently active for debugging.
-        /// </summary>
-        private void LogActiveUIState()
-        {
-            try
-            {
-                // Check EventWindowPanel
-                var eventPanels = Object.FindObjectsOfType<EventWindowPanel>();
-                if (eventPanels != null && eventPanels.Length > 0)
-                {
-                    foreach (var panel in eventPanels)
-                    {
-                        if (panel != null && panel.gameObject != null)
-                        {
-                            bool active = panel.gameObject.activeInHierarchy;
-                            string text = "";
-                            string name = "";
-                            try
-                            {
-                                if (panel.m_normalText != null)
-                                    text = panel.m_normalText.text ?? "";
-                                if (panel.m_nameText != null)
-                                    name = panel.m_nameText.text ?? "";
-                            }
-                            catch { }
-                            if (active && !string.IsNullOrEmpty(text))
-                            {
-                                DebugLogger.Log($"[Debug] EventWindowPanel: name='{name}', text='{TruncateText(text, 50)}'");
-                            }
-                        }
-                    }
-                }
-
-                // Check uCommonMessageWindow
-                var commonWindows = Object.FindObjectsOfType<uCommonMessageWindow>();
-                if (commonWindows != null && commonWindows.Length > 0)
-                {
-                    foreach (var window in commonWindows)
-                    {
-                        if (window != null && window.gameObject != null)
-                        {
-                            bool active = window.gameObject.activeInHierarchy;
-                            string text = "";
-                            try
-                            {
-                                if (window.m_label != null)
-                                    text = window.m_label.text ?? "";
-                            }
-                            catch { }
-                            DebugLogger.Log($"[Debug] uCommonMessageWindow: active={active}, text='{TruncateText(text, 50)}'");
-                        }
-                    }
-                }
-
-                // Check MainGameManager
-                try
-                {
-                    var mgm = MainGameManager.m_instance;
-                    if (mgm != null)
-                    {
-                        var msgMgr = mgm.MessageManager;
-                        if (msgMgr != null)
-                        {
-                            bool hasActive = msgMgr.IsFindActive();
-                            DebugLogger.Log($"[Debug] MainGameManager.MessageManager.IsFindActive() = {hasActive}");
-
-                            if (hasActive)
-                            {
-                                var centerWindow = msgMgr.GetCenter();
-                                if (centerWindow != null && centerWindow.m_label != null)
-                                {
-                                    DebugLogger.Log($"[Debug] Center window text: '{TruncateText(centerWindow.m_label.text, 50)}'");
-                                }
-                            }
-                        }
-                    }
-                }
-                catch (System.Exception ex)
-                {
-                    DebugLogger.Log($"[Debug] MainGameManager access error: {ex.Message}");
-                }
-
-                // Check TalkMain instances
-                var talkMains = Object.FindObjectsOfType<TalkMain>();
-                if (talkMains != null && talkMains.Length > 0)
-                {
-                    foreach (var talk in talkMains)
-                    {
-                        if (talk != null)
-                        {
-                            DebugLogger.Log($"[Debug] TalkMain found, m_isGameActive={talk.m_isGameActive}");
-
-                            // Check ui_root (EventWindowPanel array)
-                            var uiRoot = talk.m_ui_root;
-                            if (uiRoot != null)
-                            {
-                                for (int i = 0; i < uiRoot.Length; i++)
-                                {
-                                    var panel = uiRoot[i];
-                                    if (panel != null && panel.gameObject != null && panel.gameObject.activeInHierarchy)
-                                    {
-                                        string txt = panel.m_normalText?.text ?? "";
-                                        string nm = panel.m_nameText?.text ?? "";
-                                        DebugLogger.Log($"[Debug] TalkMain.m_ui_root[{i}]: name='{nm}', text='{TruncateText(txt, 50)}'");
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Check TypewriterEffect
-                try
-                {
-                    var typewriter = TypewriterEffect.current;
-                    if (typewriter != null)
-                    {
-                        bool isActive = typewriter.isActive;
-                        string fullText = typewriter.mFullText ?? "";
-                        int offset = typewriter.mCurrentOffset;
-                        DebugLogger.Log($"[Debug] TypewriterEffect: isActive={isActive}, offset={offset}/{fullText.Length}, fullText='{TruncateText(fullText, 50)}'");
-                    }
-                }
-                catch { }
-
-                // Check uCaptionBase
-                var captions = Object.FindObjectsOfType<uCaptionBase>();
-                if (captions != null && captions.Length > 0)
-                {
-                    foreach (var caption in captions)
-                    {
-                        if (caption != null && caption.gameObject != null && caption.gameObject.activeInHierarchy)
-                        {
-                            string txt = "";
-                            try { if (caption.m_text != null) txt = caption.m_text.text ?? ""; } catch { }
-                            if (!string.IsNullOrEmpty(txt))
-                            {
-                                DebugLogger.Log($"[Debug] uCaptionBase: active=True, text='{TruncateText(txt, 50)}'");
-                            }
-                        }
-                    }
-                }
-            }
-            catch (System.Exception ex)
-            {
-                DebugLogger.Log($"[Debug] Error in LogActiveUIState: {ex.Message}");
-            }
+            catch { }
         }
 
         private string TruncateText(string text, int maxLength)
@@ -505,6 +339,25 @@ namespace DigimonNOAccess
                     if (!string.IsNullOrEmpty(text) && !IsIgnoredText(text))
                     {
                         _commonMessageWindow = partner1;
+                        return true;
+                    }
+                }
+
+                // Also check RightUp window (recruitment notifications, etc.)
+                var rightUp = msgMgr.GetRightUp();
+                if (rightUp != null)
+                {
+                    string text = "";
+                    try
+                    {
+                        if (rightUp.m_label != null)
+                            text = rightUp.m_label.text ?? "";
+                    }
+                    catch { }
+
+                    if (!string.IsNullOrEmpty(text) && !IsIgnoredText(text))
+                    {
+                        _commonMessageWindow = rightUp;
                         return true;
                     }
                 }
@@ -993,19 +846,13 @@ namespace DigimonNOAccess
 
             // Filter out placeholder/system text
             if (IsIgnoredText(message))
-            {
-                DebugLogger.Log($"[{source}] IGNORED (placeholder/system): {TruncateText(message, 40)}");
                 return;
-            }
 
             float currentTime = Time.time;
             if (currentTime - _lastAnnouncementTime < MIN_ANNOUNCEMENT_INTERVAL)
-            {
                 return;
-            }
 
             ScreenReader.Say(message);
-            DebugLogger.Log($"[{source}] {message}");
             _lastAnnouncementTime = currentTime;
         }
 

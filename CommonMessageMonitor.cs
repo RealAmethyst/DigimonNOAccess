@@ -46,10 +46,7 @@ namespace DigimonNOAccess
                     CheckWindowForNewText(window, windowId);
                 }
             }
-            catch (Exception ex)
-            {
-                DebugLogger.Log($"[CommonMessageMonitor] Error: {ex.Message}");
-            }
+            catch { }
         }
 
         private void CheckWindowForNewText(uCommonMessageWindow window, int windowIndex)
@@ -91,7 +88,6 @@ namespace DigimonNOAccess
                 _recentlyAnnounced.Add(text);
 
                 // Announce the text
-                DebugLogger.Log($"[CommonMessageMonitor] New message detected: '{TruncateForLog(text)}'");
                 ScreenReader.Say(text);
             }
             catch { }
@@ -123,13 +119,6 @@ namespace DigimonNOAccess
                 return true;
 
             return false;
-        }
-
-        private string TruncateForLog(string text)
-        {
-            if (string.IsNullOrEmpty(text)) return "";
-            text = text.Replace("\n", " ").Replace("\r", "");
-            return text.Length > 60 ? text.Substring(0, 60) + "..." : text;
         }
     }
 }
