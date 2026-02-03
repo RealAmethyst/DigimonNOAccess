@@ -5,13 +5,48 @@
 - **Engine:** Unity 2019.4.11f1 (Il2Cpp)
 - **Main Namespace:** Il2Cpp
 
-## Title Menu (uTitlePanel)
+## Title Screen (MainTitle)
+
+**Class:** `MainTitle` (extends `MonoBehaviour`)
+
+Controls the title screen state machine. Use this to detect when the title menu is actually usable (can accept input), not just visually displayed.
+
+**Key Properties:**
+- `m_State` (State enum) - Current title screen state
+- `m_title_panel` (uTitlePanel) - Reference to the title panel
+
+**State Enum:**
+- `Idle` - Menu is usable, can accept input
+- `LoadWait` - Loading in progress
+- `ErrorMsg` - Error message displayed
+- `Option` - Options menu open
+- `SelectDifficulty` - Difficulty selection
+- `AgreeEula` - EULA agreement
+- `AgreePP` - Privacy policy agreement
+- `AgreeKPI` - KPI agreement
+- `PostAgreeKPI` / `PostAgreeKPIWait` - Post-agreement states
+- `TakeOverGame` - Data transfer
+- `CharaSelect` - Character selection
+- `NameEntry` - Name entry
+- `LoadSystemData` / `SaveSystemData` - System data operations
+- `OnlineLoad` / `Load` - Loading states
+
+**Detection Pattern:**
+```csharp
+// Title menu is only usable when state is Idle
+var mainTitle = FindObjectOfType<MainTitle>();
+bool isMenuUsable = mainTitle != null && mainTitle.m_State == MainTitle.State.Idle;
+```
+
+## Title Menu Panel (uTitlePanel)
 
 **Class:** `uTitlePanel` (extends `uPanelBase2`)
 
 **Key Properties:**
 - `cursorPosition` (int) - Current selection (0-3)
 - `m_Text` (Text[]) - Array of menu item Text components
+- `m_isOpend` (bool) - Panel is visually open (inherited from UiDispBase)
+- `m_playVoice` (bool) - **True WHILE menu voice is playing**, False before/after
 
 **SelectItem Enum:**
 - 0 = Start (New Game)
@@ -22,7 +57,38 @@
 **Methods:**
 - `enablePanel(bool enable, bool finished_disable)` - Show/hide panel
 
-**Detection:** Check if `uTitlePanel` instance exists and gameObject is active
+**Detection:**
+- Panel open: `uTitlePanel.m_isOpend == true`
+- Menu usable: Check `MainTitle.m_State == Idle` (see above)
+
+**Voice Detection Pattern (for accessibility):**
+The title screen has a "press any button" phase before the menu is usable. The menu voice plays when the menu becomes ready (triggered by button press OR waiting). To detect when the menu is truly ready:
+
+```csharp
+private bool _wasPlayingVoice = false;
+private bool _voiceHasFinished = false;
+
+private bool IsPanelReady()
+{
+    bool playVoice = _titlePanel.m_playVoice;
+
+    // Track voice state transitions: True -> False means voice finished
+    if (playVoice && !_wasPlayingVoice)
+    {
+        // Voice just started playing
+        _wasPlayingVoice = true;
+    }
+    else if (!playVoice && _wasPlayingVoice && !_voiceHasFinished)
+    {
+        // Voice just finished (was playing, now stopped)
+        _voiceHasFinished = true;
+    }
+
+    return _voiceHasFinished;
+}
+```
+
+**IMPORTANT:** Do NOT check only when `m_playVoice` becomes True - that fires the instant the voice is queued, before it actually plays. Wait for the True → False transition to ensure the voice has finished.
 
 ## Options Panel (uOptionPanel)
 

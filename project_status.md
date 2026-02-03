@@ -89,11 +89,21 @@ All major field menus now have accessibility handlers:
 ## Implemented Features
 
 ### Title Menu (COMPLETE)
-- **Class:** `uTitlePanel`
-- **Detection:** `FindObjectOfType<uTitlePanel>()`, check `gameObject.activeInHierarchy`
+- **Classes:** `MainTitle` (state controller), `uTitlePanel` (UI panel)
+- **Detection:** Two-phase check required:
+  1. Wait for `uTitlePanel.m_playVoice` to transition True → False (voice finished)
+  2. Check `MainTitle.m_State == MainTitle.State.Idle` for when menu is usable
+  - Panel opens before accepting input ("press any button" phase)
+  - `m_playVoice` is True WHILE the menu voice is playing, False before/after
+  - States like LoadWait, Option, SelectDifficulty mean menu is not usable
+- **Voice Detection Pattern:**
+  - Track when `m_playVoice` becomes True (voice started)
+  - Wait for `m_playVoice` to become False (voice finished)
+  - Only then announce menu - this works whether user pressed button or waited for auto-trigger
 - **Cursor:** `cursorPosition` (0-3)
 - **Items:** Start, Continue, Option, Quit
-- **Status:** Fully accessible
+- **Localization:** Wait for `Localization.isActive` before reading text
+- **Status:** Fully accessible with proper voice detection
 
 ### Options Menu System (COMPLETE)
 - **Class:** `uOptionPanel`

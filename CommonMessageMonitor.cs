@@ -20,6 +20,10 @@ namespace DigimonNOAccess
         {
             try
             {
+                // Skip if localization isn't ready (avoids placeholder text)
+                if (!IsLocalizationReady())
+                    return;
+
                 // Skip if game is still loading
                 if (IsGameLoading())
                     return;
@@ -91,16 +95,30 @@ namespace DigimonNOAccess
             catch { }
         }
 
+        private bool IsLocalizationReady()
+        {
+            try
+            {
+                return Localization.isActive;
+            }
+            catch { }
+            return false;
+        }
+
         private bool IsGameLoading()
         {
             try
             {
                 var mgr = MainGameManager.m_instance;
-                if (mgr != null)
-                    return mgr._IsLoad();
+                // If MainGameManager doesn't exist yet, we're probably at title screen
+                // Skip monitoring during this phase
+                if (mgr == null)
+                    return true;
+                return mgr._IsLoad();
             }
             catch { }
-            return false;
+            // On exception, assume loading to be safe
+            return true;
         }
 
         private bool ShouldSkipText(string text)
@@ -110,6 +128,14 @@ namespace DigimonNOAccess
 
             // Skip Japanese placeholder characters
             if (text.Contains("■") || text.Contains("□"))
+                return true;
+
+            // Skip "Language not found" error messages (Japanese)
+            if (text.Contains("ランゲージ"))
+                return true;
+
+            // Skip Japanese placeholder text "メッセージ入力欄" (Message input field)
+            if (text.Contains("メッセージ入力欄"))
                 return true;
 
             // Skip color-tagged warning messages (already announced via SetMessage)

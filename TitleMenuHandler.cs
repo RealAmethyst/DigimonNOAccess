@@ -6,26 +6,110 @@ namespace DigimonNOAccess
 {
     /// <summary>
     /// Handles accessibility for the title/main menu.
+    /// Uses m_playVoice to detect when menu voice has played - this indicates the menu
+    /// is truly ready for input (after "press any button" phase completes).
+    /// Also checks MainTitle.m_State == Idle to ensure no dialogs/loading are active.
+    /// Uses Localization.isActive to ensure text is ready before reading.
     /// </summary>
     public class TitleMenuHandler
     {
         private uTitlePanel _titlePanel;
-        private bool _wasActive = false;
+        private MainTitle _mainTitle;
+        private bool _wasUsable = false;
         private int _lastCursor = -1;
+        private bool _voiceHasFinished = false;
+        private bool _wasOpen = false;
+        private bool _wasPlayingVoice = false;
 
         /// <summary>
-        /// Check if title menu is currently open.
+        /// Check if title menu panel exists and is ready for input.
+        /// Waits for m_playVoice to go from True back to False (voice finished playing).
         /// </summary>
-        public bool IsOpen()
+        private bool IsPanelReady()
         {
             if (_titlePanel == null)
             {
                 _titlePanel = Object.FindObjectOfType<uTitlePanel>();
             }
 
-            return _titlePanel != null &&
-                   _titlePanel.gameObject != null &&
-                   _titlePanel.gameObject.activeInHierarchy;
+            if (_titlePanel == null)
+            {
+                _voiceHasFinished = false;
+                _wasOpen = false;
+                _wasPlayingVoice = false;
+                return false;
+            }
+
+            bool isOpen = _titlePanel.m_isOpend;
+            bool playVoice = _titlePanel.m_playVoice;
+
+            // Reset flags when panel freshly opens
+            if (isOpen && !_wasOpen)
+            {
+                _voiceHasFinished = false;
+                _wasPlayingVoice = false;
+                DebugLogger.Log($"[TitleMenu] Panel opened, resetting voice tracking. playVoice={playVoice}");
+            }
+            _wasOpen = isOpen;
+
+            if (!isOpen)
+            {
+                return false;
+            }
+
+            // Track voice state transitions: True -> False means voice finished
+            if (playVoice && !_wasPlayingVoice)
+            {
+                // Voice just started playing
+                _wasPlayingVoice = true;
+                DebugLogger.Log("[TitleMenu] Voice started playing");
+            }
+            else if (!playVoice && _wasPlayingVoice && !_voiceHasFinished)
+            {
+                // Voice just finished (was playing, now stopped)
+                _voiceHasFinished = true;
+                DebugLogger.Log("[TitleMenu] Voice finished playing, menu now ready");
+            }
+
+            return _voiceHasFinished;
+        }
+
+        /// <summary>
+        /// Check if title menu is actually usable (can accept input).
+        /// Panel must be ready (voice has played) AND MainTitle must be in Idle state.
+        /// </summary>
+        public bool IsUsable()
+        {
+            if (!IsPanelReady())
+                return false;
+
+            // Find MainTitle if not cached
+            if (_mainTitle == null)
+            {
+                _mainTitle = Object.FindObjectOfType<MainTitle>();
+            }
+
+            if (_mainTitle == null)
+                return false;
+
+            // Menu is only truly usable when MainTitle state is Idle
+            // Other states: LoadWait, ErrorMsg, Option, SelectDifficulty, etc.
+            return _mainTitle.m_State == MainTitle.State.Idle;
+        }
+
+        /// <summary>
+        /// Check if localization is loaded and ready.
+        /// </summary>
+        private bool IsLocalizationReady()
+        {
+            try
+            {
+                return Localization.isActive;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         /// <summary>
@@ -33,33 +117,40 @@ namespace DigimonNOAccess
         /// </summary>
         public void Update()
         {
-            bool isActive = IsOpen();
+            bool isUsable = IsUsable();
 
-            // Menu just opened
-            if (isActive && !_wasActive)
+            // Menu just became usable
+            if (isUsable && !_wasUsable)
             {
-                OnOpen();
+                OnBecameUsable();
             }
-            // Menu just closed
-            else if (!isActive && _wasActive)
+            // Menu just became unusable
+            else if (!isUsable && _wasUsable)
             {
-                OnClose();
+                OnBecameUnusable();
             }
-            // Menu is active, check for cursor changes
-            else if (isActive)
+            // Menu is usable, check for cursor changes
+            else if (isUsable)
             {
                 CheckCursorChange();
             }
 
-            _wasActive = isActive;
+            _wasUsable = isUsable;
         }
 
-        private void OnOpen()
+        private void OnBecameUsable()
         {
             _lastCursor = -1; // Reset to force announcement
 
             if (_titlePanel == null)
                 return;
+
+            // Wait for localization to be ready
+            if (!IsLocalizationReady())
+            {
+                DebugLogger.Log("[TitleMenu] Menu usable but localization not ready yet");
+                return;
+            }
 
             int cursor = _titlePanel.cursorPosition;
             string itemText = GetMenuItemText(cursor);
@@ -68,20 +159,28 @@ namespace DigimonNOAccess
             string announcement = $"Title Menu. {itemText}, {cursor + 1} of {total}";
             ScreenReader.Say(announcement);
 
-            Melon<Main>.Logger.Msg($"[TitleMenu] Menu opened, cursor={cursor}");
+            DebugLogger.Log($"[TitleMenu] Menu now usable (Idle state), cursor={cursor}, text={itemText}");
             _lastCursor = cursor;
         }
 
-        private void OnClose()
+        private void OnBecameUnusable()
         {
             _titlePanel = null;
+            _mainTitle = null;
             _lastCursor = -1;
-            Melon<Main>.Logger.Msg("[TitleMenu] Menu closed");
+            _voiceHasFinished = false;
+            _wasOpen = false;
+            _wasPlayingVoice = false;
+            DebugLogger.Log("[TitleMenu] Menu no longer usable");
         }
 
         private void CheckCursorChange()
         {
             if (_titlePanel == null)
+                return;
+
+            // Don't announce if localization isn't ready
+            if (!IsLocalizationReady())
                 return;
 
             int cursor = _titlePanel.cursorPosition;
@@ -94,7 +193,7 @@ namespace DigimonNOAccess
                 string announcement = $"{itemText}, {cursor + 1} of {total}";
                 ScreenReader.Say(announcement);
 
-                Melon<Main>.Logger.Msg($"[TitleMenu] Cursor changed: {itemText}");
+                DebugLogger.Log($"[TitleMenu] Cursor changed: {itemText}");
                 _lastCursor = cursor;
             }
         }
@@ -102,7 +201,11 @@ namespace DigimonNOAccess
         private string GetMenuItemText(int index)
         {
             if (_titlePanel == null)
-                return $"Item {index + 1}";
+                return GetFallbackText(index);
+
+            // Only try to read from UI if localization is ready
+            if (!IsLocalizationReady())
+                return GetFallbackText(index);
 
             try
             {
@@ -118,18 +221,23 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                Melon<Main>.Logger.Warning($"[TitleMenu] Error reading text: {ex.Message}");
+                DebugLogger.Log($"[TitleMenu] Error reading text: {ex.Message}");
             }
 
+            return GetFallbackText(index);
+        }
+
+        private string GetFallbackText(int index)
+        {
             // Fallback to known menu items
-            switch (index)
+            return index switch
             {
-                case 0: return "New Game";
-                case 1: return "Load Game";
-                case 2: return "System Settings";
-                case 3: return "Quit Game";
-                default: return $"Item {index + 1}";
-            }
+                0 => "New Game",
+                1 => "Load Game",
+                2 => "System Settings",
+                3 => "Quit Game",
+                _ => $"Item {index + 1}"
+            };
         }
 
         private int GetMenuItemCount()
@@ -143,7 +251,10 @@ namespace DigimonNOAccess
         /// </summary>
         public void AnnounceStatus()
         {
-            if (!IsOpen())
+            if (!IsUsable())
+                return;
+
+            if (!IsLocalizationReady())
                 return;
 
             int cursor = _titlePanel.cursorPosition;
@@ -152,6 +263,15 @@ namespace DigimonNOAccess
 
             string announcement = $"Title Menu. {itemText}, {cursor + 1} of {total}";
             ScreenReader.Say(announcement);
+        }
+
+        /// <summary>
+        /// Check if title menu is currently open (for external callers).
+        /// Returns true only when menu is actually usable.
+        /// </summary>
+        public bool IsOpen()
+        {
+            return IsUsable();
         }
     }
 }
