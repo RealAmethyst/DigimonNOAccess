@@ -56,6 +56,10 @@ namespace DigimonNOAccess
         // Sound file path
         private string _soundsPath;
 
+        // Cooldown after training result to allow evolution detection
+        private const float PostTrainingCooldown = 0.5f;
+        private float _lastTrainingResultSeenTime = 0f;
+
         public void Initialize()
         {
             if (_initialized) return;
@@ -750,6 +754,45 @@ namespace DigimonNOAccess
                         state == uSavePanelCommand.State.LOAD_CHECK)
                         return true;
                 }
+
+                // Training panel check - main training selection
+                var trainingPanel = UnityEngine.Object.FindObjectOfType<uTrainingPanelCommand>();
+                if (trainingPanel != null && trainingPanel.gameObject.activeInHierarchy)
+                {
+                    var state = trainingPanel.m_state;
+                    if (state != uTrainingPanelCommand.State.None && state != uTrainingPanelCommand.State.Close)
+                        return true;
+                }
+
+                // Training bonus roulette panel check
+                var bonusPanel = UnityEngine.Object.FindObjectOfType<uTrainingPanelBonus>();
+                if (bonusPanel != null && bonusPanel.gameObject.activeInHierarchy)
+                {
+                    var state = bonusPanel.m_state;
+                    if (state != uTrainingPanelBonus.State.None)
+                        return true;
+                }
+
+                // Training result panel check
+                var resultPanel = UnityEngine.Object.FindObjectOfType<uTrainingPanelResult>();
+                bool isTrainingResultOpen = resultPanel != null && resultPanel.gameObject.activeInHierarchy;
+
+                if (isTrainingResultOpen)
+                {
+                    // Track when we last saw the training result panel
+                    _lastTrainingResultSeenTime = Time.time;
+                    return true;
+                }
+
+                // Cooldown period after training result closes
+                // This allows evolution to start before audio nav kicks in
+                if (Time.time - _lastTrainingResultSeenTime < PostTrainingCooldown)
+                    return true;
+
+                // Evolution/Digivolution check
+                var evolution = UnityEngine.Object.FindObjectOfType<EvolutionBase>();
+                if (evolution != null && evolution.gameObject.activeInHierarchy)
+                    return true;
 
                 return false;
             }

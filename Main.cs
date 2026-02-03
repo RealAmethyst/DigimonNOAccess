@@ -51,6 +51,7 @@ namespace DigimonNOAccess
         private BattleTacticsHandler _battleTacticsHandler;
         private BattleResultHandler _battleResultHandler;
         private CommonMessageMonitor _commonMessageMonitor;
+        private EvolutionHandler _evolutionHandler;
         private HarmonyLib.Harmony _harmony;
         private bool _initialized = false;
 
@@ -136,6 +137,7 @@ namespace DigimonNOAccess
             _battleTacticsHandler = new BattleTacticsHandler();
             _battleResultHandler = new BattleResultHandler();
             _commonMessageMonitor = new CommonMessageMonitor();
+            _evolutionHandler = new EvolutionHandler();
 
             _initialized = true;
             LoggerInstance.Msg("DigimonNOAccess initialized");
@@ -190,6 +192,7 @@ namespace DigimonNOAccess
             _battleTacticsHandler.Update();
             _battleResultHandler.Update();
             _commonMessageMonitor.Update();
+            _evolutionHandler.Update();
 
             // Global hotkeys
             HandleGlobalKeys();

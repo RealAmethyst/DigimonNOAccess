@@ -34,7 +34,7 @@
 ```
 
 ## Current Phase
-New game flow complete through Digi-Egg selection with confirmation dialogs. Dialog choices now track properly using TalkMain.m_cursor. Voice detection filters voiced dialog from TTS. **3D positional audio navigation fully working** using NAudio (bypasses game's CRI audio system). **Always-on audio system** - no toggle keys required, all navigation sounds are automatic when player is in control. **Full PlayStation controller support** via SDL3 with proper Western button convention and hotkey configuration.
+New game flow complete through Digi-Egg selection with confirmation dialogs. Dialog choices now track properly using TalkMain.m_cursor. Voice detection filters voiced dialog from TTS. **3D positional audio navigation fully working** using NAudio (bypasses game's CRI audio system). **Always-on audio system** - no toggle keys required, all navigation sounds are automatic when player is in control. **Full PlayStation controller support** via SDL3 with proper Western button convention and hotkey configuration. **Digivolution announcements** now properly identify which partner is digivolving and what they digivolve into.
 
 ### Battle System Accessibility (COMPLETE)
 All battle handlers implemented and working:
@@ -73,6 +73,13 @@ All major field menus now have accessibility handlers:
 - **FieldHudHandler** - Partner status via controller combos (RB/LB + face buttons), fishing prompts
 - **CarePanelHandler** - Care menu (Square button) with command selection, item tabs (Consumption/Foodstuff/etc.), and proper state detection
 - **TamerPanelHandler** - Tamer menu with Status and SkillGet/SkillCheck tabs, skill name reading, and index tracking
+
+### Digivolution Accessibility (COMPLETE)
+- **EvolutionHandler** - Announces when digivolution starts and completes
+  - Identifies WHICH partner is digivolving by name (e.g., "Botamon is digivolving")
+  - Announces the result (e.g., "Botamon digivolved to Koromon")
+  - Uses `m_BeforeModelName` to look up original Digimon name before evolution data changes
+  - Works for both normal digivolution and miracle digivolution
 
 ### Field Contextual Prompts
 - **Fishing Prompts** - Monitored via `uFieldPanel.m_fishing_ok` panel and `m_fishing_ok_text` text (handled by FieldHudHandler)
@@ -362,6 +369,7 @@ Two approaches found in game:
 - `BattleDialogHandler.cs` - Battle Yes/No dialog accessibility
 - `BattleTacticsHandler.cs` - Square button tactics menu (Escape, MP Usage, Target tabs)
 - `BattleResultHandler.cs` - Victory screen and rewards announcement
+- `EvolutionHandler.cs` - Digivolution sequence accessibility (partner identification, result announcement)
 - `ModInputManager.cs` - Central input handler with unified action bindings (keyboard + controller)
 - `InputConfig.cs` - INI parser with readable button names for keyboard/controller
 - `SDL2Controller.cs` - SDL3 wrapper for DualSense/DualShock/Xbox controller support
@@ -486,3 +494,7 @@ BattlePartner2Order = RStickRight
 ## Known Issues (Documented)
 - **Death Audio Plays During Recovery** - Audio navigation may briefly play during death recovery sequence before detection kicks in. Low priority as it's a brief moment.
 - **Tutorial Battle Dialog** - Audio navigation properly pauses during tutorial battle dialog sequences.
+
+## Recent Fixes (v0.2)
+- **Audio Navigation Post-Training Cooldown** - Added 500ms cooldown after training result panel closes to prevent audio navigation from playing briefly before digivolution sequence starts.
+- **Save Panel Speech Timing** - Added 50ms delay and uses queued speech so "Loading data" message speaks first when opening save panel from digivice.

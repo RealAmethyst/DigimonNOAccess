@@ -14,6 +14,11 @@ namespace DigimonNOAccess
         private int _lastCursor = -1;
         private uSavePanelCommand.State _lastState = uSavePanelCommand.State.NONE;
 
+        // Small delay so "Loading data" message can be detected first
+        private const float OpenAnnouncementDelay = 0.05f;
+        private float _openTime = 0f;
+        private bool _pendingOpenAnnouncement = false;
+
         public bool IsOpen()
         {
             if (_panel == null)
@@ -44,6 +49,13 @@ namespace DigimonNOAccess
             }
             else if (isActive)
             {
+                // Check if pending open announcement is ready
+                if (_pendingOpenAnnouncement && UnityEngine.Time.time - _openTime >= OpenAnnouncementDelay)
+                {
+                    AnnounceCurrentSlot();
+                    _pendingOpenAnnouncement = false;
+                }
+
                 CheckCursorChange();
                 CheckStateChange();
             }
@@ -55,22 +67,16 @@ namespace DigimonNOAccess
         {
             _lastCursor = -1;
             _lastState = uSavePanelCommand.State.NONE;
+            _openTime = UnityEngine.Time.time;
+            _pendingOpenAnnouncement = true;
 
             if (_panel == null)
                 return;
 
             _lastState = _panel.m_State;
-            int cursor = GetCursorPosition();
-            int total = GetSlotCount();
+            _lastCursor = GetCursorPosition();
 
-            string headline = GetHeadlineText();
-            string slotInfo = GetSlotInfo(cursor);
-
-            string announcement = $"{headline}. {slotInfo}, slot {cursor + 1} of {total}";
-            ScreenReader.Say(announcement);
-
-            DebugLogger.Log($"[SavePanel] Menu opened, state={_lastState}, cursor={cursor}");
-            _lastCursor = cursor;
+            DebugLogger.Log($"[SavePanel] Menu opened, state={_lastState}, cursor={_lastCursor}");
         }
 
         private void OnClose()
@@ -78,7 +84,26 @@ namespace DigimonNOAccess
             _panel = null;
             _lastCursor = -1;
             _lastState = uSavePanelCommand.State.NONE;
+            _pendingOpenAnnouncement = false;
             DebugLogger.Log("[SavePanel] Menu closed");
+        }
+
+        private void AnnounceCurrentSlot()
+        {
+            if (_panel == null)
+                return;
+
+            int cursor = GetCursorPosition();
+            int total = GetSlotCount();
+
+            string headline = GetHeadlineText();
+            string slotInfo = GetSlotInfo(cursor);
+
+            // Use SayQueued so "Loading data" message speaks first
+            string announcement = $"{headline}. {slotInfo}, slot {cursor + 1} of {total}";
+            ScreenReader.SayQueued(announcement);
+
+            _lastCursor = cursor;
         }
 
         private void CheckCursorChange()
@@ -90,6 +115,9 @@ namespace DigimonNOAccess
 
             if (cursor != _lastCursor)
             {
+                // Cancel pending open announcement - cursor change will announce
+                _pendingOpenAnnouncement = false;
+
                 int total = GetSlotCount();
                 string slotInfo = GetSlotInfo(cursor);
 

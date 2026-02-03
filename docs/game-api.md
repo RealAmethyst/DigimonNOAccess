@@ -1305,6 +1305,74 @@ if (panel != null && panel.m_state != uFarmPanelCommand.State.None)
 }
 ```
 
+### Evolution/Digivolution (EvolutionBase)
+
+**Class:** `EvolutionBase` (extends `MonoBehaviour`)
+
+Base class for digivolution sequences. Both normal digivolution (`EvolutionMain`) and miracle digivolution (`MiracleMain`) extend this class.
+
+**Key Properties:**
+- `m_state` (State enum) - Current evolution state
+- `m_DigimonName` (string) - The NEW Digimon name (what it evolves INTO)
+- `m_BeforeModelName` (string[]) - Model names BEFORE evolution (e.g., "a001" for Botamon)
+- `m_DigimonCtrl` (DigimonCtrl[]) - Array of Digimon controllers
+
+**State Enum:**
+- `Loading` = 0 - Loading resources
+- `Initialize` = 1 - Initializing sequence
+- `Start` = 2 - Starting animation
+- `Update` = 3 - Evolution in progress
+- `Finish` = 4 - Evolution complete (announce result here)
+- `Wait` = 5 - Waiting state
+
+**Getting Original Digimon Name (before evolution):**
+The `m_BeforeModelName` field stores model names (like "a001"). To get the localized display name, search `AppMainScript.parameterManager.digimonData` for a matching `m_mdlName`:
+
+```csharp
+private string GetBeforeEvolutionName(EvolutionBase evolution)
+{
+    var beforeModelNames = evolution.m_BeforeModelName;
+    if (beforeModelNames == null || beforeModelNames.Length == 0)
+        return null;
+
+    string modelName = beforeModelNames[0]; // First partner
+
+    var paramManager = AppMainScript.parameterManager;
+    var digimonData = paramManager.digimonData;
+    int count = digimonData.GetRecordMax();
+
+    for (int i = 0; i < count; i++)
+    {
+        var paramData = digimonData.GetParams(i);
+        if (paramData != null && paramData.m_mdlName == modelName)
+        {
+            return paramData.GetDefaultName(); // Localized name
+        }
+    }
+    return null;
+}
+```
+
+**Detection:**
+```csharp
+var evolution = FindObjectOfType<EvolutionBase>();
+if (evolution != null && evolution.gameObject.activeInHierarchy)
+{
+    // Evolution sequence is active
+    var state = evolution.m_state;
+
+    if (state == EvolutionBase.State.Finish)
+    {
+        // Announce result: evolution.m_DigimonName
+    }
+}
+```
+
+**Important Notes:**
+- `m_DigimonName` contains the NEW Digimon name, available after evolution completes
+- `m_BeforeModelName` must be read at the START of evolution, before data changes
+- Use `FindObjectOfType<EvolutionBase>()` to catch both EvolutionMain and MiracleMain
+
 ## Common Patterns for NPC Menus
 
 ### uItemBase Pattern
