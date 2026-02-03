@@ -38,6 +38,7 @@ namespace DigimonNOAccess
         private ItemPickPanelHandler _itemPickPanelHandler;
         private MailPanelHandler _mailPanelHandler;
         private DigiviceTopPanelHandler _digiviceTopPanelHandler;
+        private TamerPanelHandler _tamerPanelHandler;
         private ZonePanelHandler _zonePanelHandler;
         private FieldHudHandler _fieldHudHandler;
         private CarePanelHandler _carePanelHandler;
@@ -120,6 +121,7 @@ namespace DigimonNOAccess
             _itemPickPanelHandler = new ItemPickPanelHandler();
             _mailPanelHandler = new MailPanelHandler();
             _digiviceTopPanelHandler = new DigiviceTopPanelHandler();
+            _tamerPanelHandler = new TamerPanelHandler();
             _zonePanelHandler = new ZonePanelHandler();
             _fieldHudHandler = new FieldHudHandler();
             _carePanelHandler = new CarePanelHandler();
@@ -171,6 +173,7 @@ namespace DigimonNOAccess
             _itemPickPanelHandler.Update();
             _mailPanelHandler.Update();
             _digiviceTopPanelHandler.Update();
+            _tamerPanelHandler.Update();
             _zonePanelHandler.Update();
             _fieldHudHandler.Update();
             _carePanelHandler.Update();
@@ -327,6 +330,10 @@ namespace DigimonNOAccess
             else if (_mailPanelHandler.IsOpen())
             {
                 _mailPanelHandler.AnnounceStatus();
+            }
+            else if (_tamerPanelHandler.IsOpen())
+            {
+                _tamerPanelHandler.AnnounceStatus();
             }
             else if (_digiviceTopPanelHandler.IsOpen())
             {

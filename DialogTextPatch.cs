@@ -248,7 +248,7 @@ namespace DigimonNOAccess
                     return;
 
                 DebugLogger.Log($"[DigimonMessage] {message}");
-                ScreenReader.Say(StripRichTextTags(message));
+                ScreenReader.SayQueued(StripRichTextTags(message));
             }
             catch { }
         }
@@ -275,7 +275,7 @@ namespace DigimonNOAccess
                     return;
 
                 DebugLogger.Log($"[FieldDigimonMessage] {message}");
-                ScreenReader.Say(StripRichTextTags(message));
+                ScreenReader.SayQueued(StripRichTextTags(message));
             }
             catch { }
         }

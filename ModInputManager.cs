@@ -678,24 +678,23 @@ AnnounceStatus = None
 ToggleVoicedText = None
 
 ; === Field Partner Status ===
-; Partner 1: Hold RB + D-Pad direction
-Partner1Status = RB+DPadUp
-Partner1Effects = RB+DPadRight
-Partner1Mood = RB+DPadDown
-Partner1Info = RB+DPadLeft
+; Partner 1
+Partner1Status = RT+DPadUp
+Partner1Effects = RT+DPadRight
+Partner1Mood = RT+DPadDown
+Partner1Info = RT+DPadLeft
 
-; Partner 2: Hold LB + D-Pad direction
-Partner2Status = LB+DPadUp
-Partner2Effects = LB+DPadRight
-Partner2Mood = LB+DPadDown
-Partner2Info = LB+DPadLeft
+; Partner 2
+Partner2Status = LT+DPadUp
+Partner2Effects = LT+DPadRight
+Partner2Mood = LT+DPadDown
+Partner2Info = LT+DPadLeft
 
 ; === Battle Partner Status ===
-; Use Right Stick directions (no modifier needed)
-BattlePartner1HP = RStickUp
-BattlePartner2HP = RStickDown
-BattlePartner1Order = RStickLeft
-BattlePartner2Order = RStickRight
+BattlePartner1HP = LT+DPadUp
+BattlePartner2HP = LT+DPadDown
+BattlePartner1Order = LT+DPadLeft
+BattlePartner2Order = LT+DPadRight
 ";
 
             try

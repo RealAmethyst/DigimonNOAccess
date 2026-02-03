@@ -109,7 +109,7 @@ namespace DigimonNOAccess
             { "L1", ControllerButton.LB },
             { "R1", ControllerButton.RB },
 
-            // Triggers - Xbox names (NOTE: May not work - game doesn't expose triggers)
+            // Triggers - Xbox names
             { "LT", ControllerButton.LT },
             { "RT", ControllerButton.RT },
             { "LeftTrigger", ControllerButton.LT },

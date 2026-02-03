@@ -2198,3 +2198,244 @@ if (!isShowingRise && wasShowingRise && !announcedScreen2)
     announcedScreen2 = true;
 }
 ```
+
+## Tamer Panel (uDigiviceTamerPanel)
+
+**Class:** `uDigiviceTamerPanel` (extends `MonoBehaviour`)
+
+Used for: Tamer status menu showing tamer stats and learned skills. Accessed from Digivice menu.
+
+**State Enum:**
+- None = 0
+- Status = 1 (showing tamer stats)
+- SkillGet = 2 (skill acquisition/list view)
+- SkillCheck = 3 (skill details view)
+- Close = 4
+- Max = 5
+
+**Key Properties:**
+- `m_state` (State enum) - Current panel state
+- `m_skillGetPanel` (uDigiviceTamerPanelSkillGet) - Skill list panel
+- `m_skillCheckPanel` (uDigiviceTamerPanelSkill_Check) - Skill details panel
+- `m_statusPanel` (uDigiviceTamerPanelStatus) - Status display panel
+
+**Detection:**
+```csharp
+var panel = FindObjectOfType<uDigiviceTamerPanel>();
+if (panel != null && panel.m_state != uDigiviceTamerPanel.State.None)
+{
+    var state = panel.m_state;
+    // Status, SkillGet, or SkillCheck
+}
+```
+
+---
+
+### uDigiviceTamerPanelSkill_Check (Skill Details View)
+
+**Class:** `uDigiviceTamerPanelSkill_Check` (extends `MonoBehaviour`)
+
+Shows detailed information about a selected tamer skill.
+
+**Key Properties:**
+- `m_tamerSkillPanel` (uTamerSkillPanel) - Skill panel with selection tracking
+- `m_descriptionText` (Text) - Skill description text
+- `m_DescriptionHeadLineText` (Text) - **WARNING: This is a UI LABEL ("Skill Description"), NOT the skill name!**
+
+**Getting Current Skill Name:**
+```csharp
+// Use GetCurrentSelectSkill() to get TamerSkill enum, then map to name
+var skillPanel = panel.m_skillCheckPanel.m_tamerSkillPanel;
+var skill = skillPanel.GetCurrentSelectSkill();
+string skillName = GetTamerSkillName(skill);  // Custom mapping function
+```
+
+**Getting Skill Index:**
+```csharp
+// m_SelectSubSklIndex tracks position within skill list
+int index = skillPanel.m_SelectSubSklIndex;  // 0-based
+int total = GetSkillCount(subKind);  // From ParameterTamerSkill.GetSkillInSubKind()
+```
+
+---
+
+### uTamerSkillPanel (Skill Selection Tracking)
+
+**Class:** `uTamerSkillPanel` (extends `MonoBehaviour`)
+
+Tracks which skill is currently selected in skill views.
+
+**Key Properties:**
+- `m_SelectSubSklIndex` (int) - Currently selected skill index within category
+- `m_tabPanels` (uGetSkillPanelBase[]) - Array of tab panels by category
+
+**Key Methods:**
+- `GetCurrentSelectSkill()` - Returns `TamerSkill` enum for currently selected skill
+
+---
+
+### TamerSkill Enum (All Tamer Skills)
+
+**Namespace:** `ParameterTamerSkill.TamerSkill`
+
+70+ skills organized by category. Key examples:
+
+**Basic Skills (0-9):**
+- `Atk_Up_I/II/III` - Attack boost
+- `Def_Up_I/II/III` - Defense boost
+- `StatusPlus_I/II/III` - Stats boost
+
+**Trainer Skills (10-29):**
+- `Tamer_Atk_Up_I/II/III` - Tamer attack
+- `Tamer_Def_Up_I/II/III` - Tamer defense
+- `Order_Gauge_Plus_I/II/III` - Order Power gain
+- `Tamer_SP_Atk_Up_I/II/III` - Special attack boost
+- `Tamer_SP_Def_Up_I/II/III` - Special defense boost
+
+**Survivor Skills (30-49):**
+- `Satiety_Plus_I/II/III` - Hunger reduction
+- `Tiredness_Plus_I/II/III` - Fatigue reduction
+- `Faint_Plus_I/II/III` - Faint resistance
+- `Disease_Plus_I/II/III` - Disease resistance
+- `Life_Plus_I/II/III` - Lifespan boost
+
+**Commander Skills (50-69):**
+- `Partner_Atk_Up_I/II/III` - Partner attack
+- `Partner_Def_Up_I/II/III` - Partner defense
+- `ExE_Gauge_Plus_I/II/III` - ExE gauge boost
+- `Miracle_Gauge_Plus_I/II/III` - Miracle gauge boost
+- `Skill_Power_Plus_I/II/III` - Skill power boost
+
+**Reading Skill Names:**
+```csharp
+private string GetTamerSkillName(ParameterTamerSkill.TamerSkill skill)
+{
+    return skill switch
+    {
+        TamerSkill.Atk_Up_I => "Attack Up I",
+        TamerSkill.Atk_Up_II => "Attack Up II",
+        TamerSkill.Def_Up_I => "Defense Up I",
+        TamerSkill.Satiety_Plus_I => "Hunger Reduction I",
+        TamerSkill.Order_Gauge_Plus_I => "Order Gauge Plus I",
+        // ... etc for all 70+ skills
+        _ => skill.ToString().Replace("_", " ")
+    };
+}
+```
+
+---
+
+### ParameterTamerSkill (Skill Data Provider)
+
+**Class:** `ParameterTamerSkill`
+
+Static class for accessing tamer skill data.
+
+**TamerSkillSubKind Enum (Skill Categories):**
+- `Basic` = 0
+- `Trainer` = 1
+- `Survivor` = 2
+- `Commander` = 3
+
+**Key Methods:**
+- `GetSkillInSubKind(TamerSkillSubKind kind)` - Returns list of skills in category (use for count)
+- `GetSkillName(TamerSkill skill)` - Returns localized skill name (may need localization active)
+- `GetSkillDescription(TamerSkill skill)` - Returns skill description
+
+**Getting Skill Count:**
+```csharp
+var skillList = ParameterTamerSkill.GetSkillInSubKind(subKind);
+int total = skillList?.Count ?? 0;
+```
+
+---
+
+### uDigiviceTamerPanelSkillGet (Skill List View)
+
+**Class:** `uDigiviceTamerPanelSkillGet` (extends `MonoBehaviour`)
+
+Shows list of learned skills organized by category tabs.
+
+**Key Properties:**
+- `m_tab` (int) - Current tab index (0=Basic, 1=Trainer, 2=Survivor, 3=Commander)
+- `m_tabPanels` (uGetSkillPanelBase[]) - Array of category panels
+
+**Tab Panels (derived from uGetSkillPanelBase):**
+- `uDigiviceTamerSKillPanel_GetBasic` (tab 0)
+- `uDigiviceTamerSKillPanel_GetTrainer` (tab 1)
+- `uDigiviceTamerSKillPanel_GetSurvivor` (tab 2)
+- `uDigiviceTamerSKillPanel_GetCommander` (tab 3)
+
+**Each has:**
+- `m_SkillCursorIndex` (int) - Current skill cursor position within this tab
+- `m_SkillArray` (uGetSkillArray) - Skill display array
+
+**Getting Current Index in SkillGet:**
+```csharp
+var tabPanel = skillGetPanel.m_tabPanels[currentTab];
+int index = tabPanel switch
+{
+    uDigiviceTamerSKillPanel_GetBasic basic => basic.m_SkillCursorIndex,
+    uDigiviceTamerSKillPanel_GetTrainer trainer => trainer.m_SkillCursorIndex,
+    uDigiviceTamerSKillPanel_GetSurvivor survivor => survivor.m_SkillCursorIndex,
+    uDigiviceTamerSKillPanel_GetCommander commander => commander.m_SkillCursorIndex,
+    _ => -1
+};
+```
+
+**IMPORTANT:** Do NOT use `m_SelectSubSklIndex` from the base class for SkillGet view - it doesn't track correctly. Use `m_SkillCursorIndex` from the specific derived panel type.
+
+---
+
+### Tamer Panel Accessibility Pattern
+
+**State tracking for announcements:**
+```csharp
+private uDigiviceTamerPanel.State _lastTamerState = State.None;
+private int _lastSkillCheckSelectNo = -1;
+private int _lastSkillGetIndex = -1;
+
+public void OnUpdate()
+{
+    var panel = FindObjectOfType<uDigiviceTamerPanel>();
+    if (panel == null || panel.m_state == State.None)
+    {
+        Reset();
+        return;
+    }
+
+    // State change
+    if (panel.m_state != _lastTamerState)
+    {
+        AnnounceStateChange(panel.m_state);
+        _lastTamerState = panel.m_state;
+    }
+
+    // Track selection changes per state
+    switch (panel.m_state)
+    {
+        case State.SkillCheck:
+            CheckSkillCheckChange();
+            break;
+        case State.SkillGet:
+            CheckSkillGetChange();
+            break;
+    }
+}
+
+// For first announcement, set index to -1 to trigger on next frame
+// This ensures game has populated the description
+private void GetSkillCheckInfo()
+{
+    _lastSkillCheckSelectNo = -1;  // Triggers announcement next frame
+}
+```
+
+**Speech queueing for initial announcements:**
+```csharp
+// Initial announcement should queue (not interrupt state change speech)
+if (_lastSkillCheckSelectNo == -1)
+    ScreenReader.SayQueued(announcement);
+else
+    ScreenReader.Say(announcement);
+```

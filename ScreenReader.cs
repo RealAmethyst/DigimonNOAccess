@@ -109,6 +109,17 @@ namespace DigimonNOAccess
         }
 
         /// <summary>
+        /// Speak text without interrupting current speech.
+        /// The text will be queued and spoken after current speech finishes.
+        /// Use this for non-critical messages like field Digimon chatter.
+        /// </summary>
+        /// <param name="text">Text to speak</param>
+        public static void SayQueued(string text)
+        {
+            Say(text, interrupt: false);
+        }
+
+        /// <summary>
         /// Stop current speech.
         /// </summary>
         public static void Silence()

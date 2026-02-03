@@ -72,6 +72,7 @@ All major field menus now have accessibility handlers:
 - **ZonePanelHandler** - Zone/area selection
 - **FieldHudHandler** - Partner status via controller combos (RB/LB + face buttons), fishing prompts
 - **CarePanelHandler** - Care menu (Square button) with command selection, item tabs (Consumption/Foodstuff/etc.), and proper state detection
+- **TamerPanelHandler** - Tamer menu with Status and SkillGet/SkillCheck tabs, skill name reading, and index tracking
 
 ### Field Contextual Prompts
 - **Fishing Prompts** - Monitored via `uFieldPanel.m_fishing_ok` panel and `m_fishing_ok_text` text (handled by FieldHudHandler)
@@ -352,6 +353,7 @@ Two approaches found in game:
 - `ZonePanelHandler.cs` - Zone selection accessibility
 - `FieldHudHandler.cs` - Partner status via controller combos, fishing prompts
 - `CarePanelHandler.cs` - Care menu accessibility (command selection + education/discipline mode)
+- `TamerPanelHandler.cs` - Tamer panel accessibility (Status, SkillGet, SkillCheck tabs with skill names and index tracking)
 - `BattleHudHandler.cs` - Battle partner HP/MP status via D-pad (F3/F4 keyboard fallback)
 - `BattleOrderRingHandler.cs` - Order Ring command selection
 - `BattleItemHandler.cs` - Battle item menu accessibility
