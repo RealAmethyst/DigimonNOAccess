@@ -1129,12 +1129,13 @@ if (panel != null && panel.m_state != uRestaurantPanel.State.None)
 
 **Class:** `uTrainingPanelCommand` (extends `MonoBehaviour`)
 
-Used for: Gym training selection menu.
+Used for: Gym training selection menu. Has TWO independent cursors (one per partner).
 
 **Key Properties:**
 - `m_state` (State enum) - Panel state
-- `m_trainingCursors` (TrainingCursor[]) - Cursor objects
-- `m_trainingContents` (TrainingContent[]) - Training slot data
+- `m_trainingCursors` (TrainingCursor[2]) - Cursor objects (index 0 = Partner 1/Right, index 1 = Partner 2/Left)
+- `m_trainingContents` (TrainingContent[]) - Training slot data (7 slots for HP, MP, STR, STA, WIS, SPD, Rest)
+- `m_trainingInformations` (TrainingInformation[2]) - Partner info panels on left/right sides
 
 **State Enum:**
 - None, Main, Dialog, ChangeStateDigimonHistory, ChangeStateBonus, Close, Wait, Tutorial
@@ -1143,9 +1144,21 @@ Used for: Gym training selection menu.
 - `index` (TrainingKindIndex) - Current position as enum
 
 **TrainingContent:**
-- `level` (int) - Training level
+- `level` (int) - Training level (1-5)
 - `index` (TrainingKindIndex) - Training type
-- `bonusCount` (int) - Number of bonuses
+- `bonusCount` (int) - Number of bonuses active
+- `bounses` (TrainingCorrectionKindIndex[]) - Array of active bonus types
+
+**TrainingInformation (partner info panels):**
+- `_refTextValue_Name` (Text) - Partner Digimon name
+- `m_bonusInformation` (BonusInformation) - Bonus tab info panel
+- `m_parameterInformation` (ParameterInformation) - Stats tab info panel
+
+**Info Tab Detection (RB to switch tabs):**
+- Each info panel has `isShow` (bool) property
+- Check `m_trainingInformations[0].m_bonusInformation.isShow` to detect Bonus tab
+- When false, Stats tab is showing; when true, Bonus tab is showing
+- Tabs cycle: Stats → Bonus → Stats (press RB)
 
 **TrainingKindIndex Enum (ParameterTrainingData.TrainingKindIndex):**
 - Hp = 0
@@ -1157,6 +1170,16 @@ Used for: Gym training selection menu.
 - Rest = 6
 - Max = 7
 
+**TrainingCorrectionKindIndex Enum (ParameterTrainingData.TrainingCorrectionKindIndex):**
+- FriendBonus - Friend bonus active
+- RivalBonus - Rival bonus active
+- GrowthBonus - Growth bonus active
+- DayBonus - Day of week bonus
+- PlayerSkillBonus - Tamer skill bonus
+- MealBonus - Food/meal bonus
+- TimeZoonBonus - Time of day bonus
+- MoodBonus - Digimon mood bonus
+
 **Detection:** `FindObjectOfType<uTrainingPanelCommand>()`, check `m_state != None && m_state != Close`
 
 **Example:**
@@ -1164,12 +1187,21 @@ Used for: Gym training selection menu.
 var panel = FindObjectOfType<uTrainingPanelCommand>();
 if (panel != null && panel.m_state == uTrainingPanelCommand.State.Main)
 {
-    int cursor = (int)panel.m_trainingCursors[0].index;
-    int total = panel.m_trainingContents.Length;
+    // Get Partner 1 (Right) cursor position
+    int cursor1 = (int)panel.m_trainingCursors[0].index;
+    // Get Partner 2 (Left) cursor position
+    int cursor2 = (int)panel.m_trainingCursors[1].index;
 
-    var content = panel.m_trainingContents[cursor];
+    // Get partner names from TrainingInformation panels
+    string partner1Name = panel.m_trainingInformations[0]?._refTextValue_Name?.text ?? "Partner 1";
+    string partner2Name = panel.m_trainingInformations[1]?._refTextValue_Name?.text ?? "Partner 2";
+
+    // Get training content at Partner 1's cursor
+    var content = panel.m_trainingContents[cursor1];
     int level = content.level;
     var kindIndex = content.index;
+    int bonusCount = content.bonusCount;
+    var bonuses = content.bounses; // Array of bonus types
 
     // Map to readable name
     string name = kindIndex switch
@@ -1183,6 +1215,13 @@ if (panel != null && panel.m_state == uTrainingPanelCommand.State.Main)
         TrainingKindIndex.Rest => "Rest",
         _ => $"Training {(int)kindIndex + 1}"
     };
+
+    // Build announcement with level and bonuses
+    string announcement = $"{partner1Name}: {name}, Level {level}";
+    if (bonusCount > 0)
+    {
+        announcement += $", {bonusCount} bonuses";
+    }
 }
 ```
 

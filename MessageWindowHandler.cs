@@ -711,6 +711,15 @@ namespace DigimonNOAccess
                 return;
             }
 
+            // Skip caption announcements during training panel
+            // The button hint captions ("or Bonus", "or Skill") aren't useful
+            // TrainingPanelHandler handles its own tab announcements
+            if (IsTrainingPanelActive())
+            {
+                _wasCaptionActive = false;
+                return;
+            }
+
             bool isActive = IsCaptionOpen();
 
             if (isActive && !_wasCaptionActive)
@@ -745,6 +754,26 @@ namespace DigimonNOAccess
                     {
                         return true;
                     }
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        /// <summary>
+        /// Check if the training panel is currently active.
+        /// Used to suppress caption announcements during training.
+        /// </summary>
+        private bool IsTrainingPanelActive()
+        {
+            try
+            {
+                var panel = Object.FindObjectOfType<uTrainingPanelCommand>();
+                if (panel != null && panel.gameObject != null && panel.gameObject.activeInHierarchy)
+                {
+                    var state = panel.m_state;
+                    return state != uTrainingPanelCommand.State.None &&
+                           state != uTrainingPanelCommand.State.Close;
                 }
             }
             catch { }

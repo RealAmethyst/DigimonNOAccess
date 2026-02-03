@@ -55,7 +55,7 @@ All major NPC dialog menus now have accessibility handlers:
 - **CommonSelectWindowHandler** - Generic selection windows (items, locations)
 - **TradePanelHandler** - Shop buy/sell menus
 - **RestaurantPanelHandler** - Restaurant and camp cooking menus
-- **TrainingPanelHandler** - Gym training selection (HP, MP, STR, STA, WIS, SPD)
+- **TrainingPanelHandler** - Gym training selection with dual cursor support (one per partner), partner name reading, training level and bonus announcements
 - **ColosseumPanelHandler** - Battle arena selection
 - **FarmPanelHandler** - Farm goods management
 - **SavePanelHandler** - Save/load game menu
@@ -339,7 +339,9 @@ Two approaches found in game:
 - `CommonSelectWindowHandler.cs` - Generic selection window accessibility
 - `TradePanelHandler.cs` - Shop/trade menu accessibility
 - `RestaurantPanelHandler.cs` - Restaurant/cooking menu accessibility
-- `TrainingPanelHandler.cs` - Training gym menu accessibility
+- `TrainingPanelHandler.cs` - Training gym menu accessibility (dual cursor tracking, partner names from TrainingInformation, level/bonus announcements, info tab switching via RB)
+- `TrainingBonusHandler.cs` - Training roulette wheel accessibility (announces "Bonus!" or "No bonus" when wheel stops)
+- `TrainingResultHandler.cs` - Training result screen accessibility (announces stat gains after training)
 - `ColosseumPanelHandler.cs` - Colosseum battle selection accessibility
 - `FarmPanelHandler.cs` - Farm management menu accessibility
 - `SavePanelHandler.cs` - Save/load menu accessibility
@@ -475,10 +477,11 @@ BattlePartner2Order = RStickRight
 - **F9** - Toggle input debug mode (logs all button presses)
 
 ## Next Steps
-1. **Cutscene Subtitles** - MovieSubtitle class for cutscene accessibility
-2. **Partner Interaction** - Handle talking to partner Digimon outside battle (uPartnerTacticsPanel?)
-3. **Enemy Detection Improvements** - Announce enemy types/levels when tracking
-4. **Item Description Readout** - Add key to read item description in field menus
+1. **Training Panel Tab Content** - When switching tabs (RB) in training panel, also read the tab content (Stats: current stat values, Bonus: active bonuses like "Friend Bonus")
+2. **Cutscene Subtitles** - MovieSubtitle class for cutscene accessibility
+3. **Partner Interaction** - Handle talking to partner Digimon outside battle (uPartnerTacticsPanel?)
+4. **Enemy Detection Improvements** - Announce enemy types/levels when tracking
+5. **Item Description Readout** - Add key to read item description in field menus
 
 ## Known Issues (Documented)
 - **Death Audio Plays During Recovery** - Audio navigation may briefly play during death recovery sequence before detection kicks in. Low priority as it's a brief moment.

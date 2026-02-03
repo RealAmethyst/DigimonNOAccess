@@ -28,6 +28,8 @@ namespace DigimonNOAccess
         private TradePanelHandler _tradePanelHandler;
         private RestaurantPanelHandler _restaurantPanelHandler;
         private TrainingPanelHandler _trainingPanelHandler;
+        private TrainingBonusHandler _trainingBonusHandler;
+        private TrainingResultHandler _trainingResultHandler;
         private ColosseumPanelHandler _colosseumPanelHandler;
         private FarmPanelHandler _farmPanelHandler;
         private SavePanelHandler _savePanelHandler;
@@ -111,6 +113,8 @@ namespace DigimonNOAccess
             _tradePanelHandler = new TradePanelHandler();
             _restaurantPanelHandler = new RestaurantPanelHandler();
             _trainingPanelHandler = new TrainingPanelHandler();
+            _trainingBonusHandler = new TrainingBonusHandler();
+            _trainingResultHandler = new TrainingResultHandler();
             _colosseumPanelHandler = new ColosseumPanelHandler();
             _farmPanelHandler = new FarmPanelHandler();
             _savePanelHandler = new SavePanelHandler();
@@ -163,6 +167,8 @@ namespace DigimonNOAccess
             _tradePanelHandler.Update();
             _restaurantPanelHandler.Update();
             _trainingPanelHandler.Update();
+            _trainingBonusHandler.Update();
+            _trainingResultHandler.Update();
             _colosseumPanelHandler.Update();
             _farmPanelHandler.Update();
             _savePanelHandler.Update();
