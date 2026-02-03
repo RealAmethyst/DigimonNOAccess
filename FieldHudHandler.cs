@@ -84,14 +84,13 @@ namespace DigimonNOAccess
 
         private void HandleKeyboardInput(uFieldPanel fieldPanel)
         {
-            // F3 = Partner 1 full status
-            if (Input.GetKeyDown(KeyCode.F3))
+            // Use configurable input system
+            if (ModInputManager.IsActionTriggered("Partner1Status"))
             {
                 AnnouncePartnerFullStatus(fieldPanel, 0);
             }
 
-            // F4 = Partner 2 full status
-            if (Input.GetKeyDown(KeyCode.F4))
+            if (ModInputManager.IsActionTriggered("Partner2Status"))
             {
                 AnnouncePartnerFullStatus(fieldPanel, 1);
             }
@@ -99,43 +98,34 @@ namespace DigimonNOAccess
 
         private void HandleControllerInput(uFieldPanel fieldPanel)
         {
-            // Check if RB is held (Partner 1)
-            bool rbHeld = PadManager.IsInput(PadManager.BUTTON.bR);
-            // Check if LB is held (Partner 2)
-            bool lbHeld = PadManager.IsInput(PadManager.BUTTON.bL);
+            // Partner 1 controller inputs (RB + D-Pad by default)
+            // Note: Partner1Status is handled in keyboard section (both keyboard and controller bindings)
+            if (ModInputManager.IsActionTriggered("Partner1Effects"))
+            {
+                AnnouncePartnerStatusEffects(fieldPanel, 0);
+            }
+            else if (ModInputManager.IsActionTriggered("Partner1Mood"))
+            {
+                AnnouncePartnerMood(fieldPanel, 0);
+            }
+            else if (ModInputManager.IsActionTriggered("Partner1Info"))
+            {
+                AnnouncePartnerName(fieldPanel, 0);
+            }
 
-            // Only process if one modifier is held (not both)
-            if (rbHeld && !lbHeld)
+            // Partner 2 controller inputs (LB + D-Pad by default)
+            // Note: Partner2Status is handled in keyboard section (both keyboard and controller bindings)
+            if (ModInputManager.IsActionTriggered("Partner2Effects"))
             {
-                HandlePartnerInput(fieldPanel, 0);
+                AnnouncePartnerStatusEffects(fieldPanel, 1);
             }
-            else if (lbHeld && !rbHeld)
+            else if (ModInputManager.IsActionTriggered("Partner2Mood"))
             {
-                HandlePartnerInput(fieldPanel, 1);
+                AnnouncePartnerMood(fieldPanel, 1);
             }
-        }
-
-        private void HandlePartnerInput(uFieldPanel fieldPanel, int partnerIndex)
-        {
-            // D-Up = HP and MP
-            if (PadManager.IsTrigger(PadManager.BUTTON.dUp))
+            else if (ModInputManager.IsActionTriggered("Partner2Info"))
             {
-                AnnouncePartnerHpMp(fieldPanel, partnerIndex);
-            }
-            // D-Right = Status effects
-            else if (PadManager.IsTrigger(PadManager.BUTTON.dRight))
-            {
-                AnnouncePartnerStatusEffects(fieldPanel, partnerIndex);
-            }
-            // D-Down = Mood/condition
-            else if (PadManager.IsTrigger(PadManager.BUTTON.dDown))
-            {
-                AnnouncePartnerMood(fieldPanel, partnerIndex);
-            }
-            // D-Left = Name and basic info
-            else if (PadManager.IsTrigger(PadManager.BUTTON.dLeft))
-            {
-                AnnouncePartnerName(fieldPanel, partnerIndex);
+                AnnouncePartnerName(fieldPanel, 1);
             }
         }
 

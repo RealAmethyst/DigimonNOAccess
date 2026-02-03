@@ -4,26 +4,20 @@ using UnityEngine;
 namespace DigimonNOAccess
 {
     /// <summary>
-    /// Handles battle HUD status announcements via keyboard.
+    /// Handles battle HUD status announcements via keyboard and controller.
     ///
+    /// Default bindings (configurable in hotkeys.ini):
     /// Keyboard:
-    /// F3 = Partner 1 full status
-    /// F4 = Partner 2 full status
-    /// F6 = Partner 1 HP/MP
-    /// F7 = Partner 2 HP/MP
+    ///   F3 = Partner 1 full status
+    ///   F4 = Partner 2 full status
+    ///   F6 = Partner 1 HP/MP
+    ///   F7 = Partner 2 HP/MP
     ///
-    /// CONTROLLER ATTEMPTS (none worked - for future reference):
-    /// - D-pad alone: Game consumes D-pad for targeting/camera
-    /// - RB/LB + D-pad: RB/LB open Order Ring during battle
-    /// - Select + D-pad: PadManager.IsInput didn't detect Select
-    /// - B (Circle) + D-pad: PadManager.IsInput didn't detect it
-    /// - L2/R2 triggers: Game uses Steam Input which doesn't expose triggers
-    ///   (tried Unity Input.GetAxisRaw - axes not configured in Steam Input)
-    /// - Right Stick (srUp/srDown/etc): PadManager.IsTrigger didn't fire
-    ///
-    /// The game uses Steam Input for controller, which intercepts all input.
-    /// PadManager only exposes buttons the game explicitly mapped.
-    /// Triggers (L2/R2) are not mapped in the game's Steam Input config.
+    /// Controller (via SDL3):
+    ///   RStickUp = Partner 1 HP/MP
+    ///   RStickDown = Partner 2 HP/MP
+    ///   RStickLeft = Partner 1 Order
+    ///   RStickRight = Partner 2 Order
     /// </summary>
     public class BattleHudHandler
     {
@@ -110,40 +104,49 @@ namespace DigimonNOAccess
 
         private void HandleKeyboardInput()
         {
-            // F3 = Partner 1 full status
-            if (Input.GetKeyDown(KeyCode.F3))
+            // Use configurable input system for all battle inputs
+            // Each action checks both keyboard and controller bindings automatically
+
+            // Partner 1 full status (F3 or controller binding)
+            if (ModInputManager.IsActionTriggered("Partner1Status"))
             {
-                DebugLogger.Log("[BattleHudHandler] F3 pressed in battle");
+                DebugLogger.Log("[BattleHudHandler] Partner1Status triggered in battle");
                 AnnouncePartnerFullStatus(0);
             }
 
-            // F4 = Partner 2 full status
-            if (Input.GetKeyDown(KeyCode.F4))
+            // Partner 2 full status (F4 or controller binding)
+            if (ModInputManager.IsActionTriggered("Partner2Status"))
             {
-                DebugLogger.Log("[BattleHudHandler] F4 pressed in battle");
+                DebugLogger.Log("[BattleHudHandler] Partner2Status triggered in battle");
                 AnnouncePartnerFullStatus(1);
             }
 
-            // F6 = Partner 1 HP/MP only (simpler)
-            if (Input.GetKeyDown(KeyCode.F6))
+            // Partner 1 HP/MP only (F6 or RStickUp)
+            if (ModInputManager.IsActionTriggered("BattlePartner1HP"))
             {
-                DebugLogger.Log("[BattleHudHandler] F6 pressed - Partner 1 HP/MP");
+                DebugLogger.Log("[BattleHudHandler] BattlePartner1HP triggered");
                 AnnouncePartnerHpMp(0);
             }
 
-            // F7 = Partner 2 HP/MP only (simpler)
-            if (Input.GetKeyDown(KeyCode.F7))
+            // Partner 2 HP/MP only (F7 or RStickDown)
+            if (ModInputManager.IsActionTriggered("BattlePartner2HP"))
             {
-                DebugLogger.Log("[BattleHudHandler] F7 pressed - Partner 2 HP/MP");
+                DebugLogger.Log("[BattleHudHandler] BattlePartner2HP triggered");
                 AnnouncePartnerHpMp(1);
             }
 
-            // F8 = Debug: log all joystick axes to find trigger mapping
-            if (Input.GetKeyDown(KeyCode.F8))
+            // Partner 1 Order (RStickLeft)
+            if (ModInputManager.IsActionTriggered("BattlePartner1Order"))
             {
-                DebugLogger.Log("[BattleHudHandler] F8 pressed - logging all joystick inputs");
-                TriggerInput.DebugLogAllAxes();
-                ScreenReader.Say("Logging joystick inputs to debug file");
+                DebugLogger.Log("[BattleHudHandler] BattlePartner1Order triggered");
+                AnnouncePartnerOrder(0);
+            }
+
+            // Partner 2 Order (RStickRight)
+            if (ModInputManager.IsActionTriggered("BattlePartner2Order"))
+            {
+                DebugLogger.Log("[BattleHudHandler] BattlePartner2Order triggered");
+                AnnouncePartnerOrder(1);
             }
         }
 

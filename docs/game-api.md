@@ -207,6 +207,35 @@ Right Stick directions:
 - **Wall Detection** - Automatically plays directional sounds when walls are nearby
 - Both systems pause during battles, cutscenes, events, and menus
 
+### Configurable Hotkeys System
+All mod hotkeys are configurable via `hotkeys.ini` in the Mods folder.
+
+**Keyboard bindings:**
+- Single key: `F1`, `F2`, `A`, `Space`, etc.
+- With modifiers: `Ctrl+F1`, `Alt+S`, `Shift+Tab`
+
+**Controller bindings:**
+- Single button (safe only): `RStickUp`, `RStickDown`, `RStickLeft`, `RStickRight`
+- Combos (required for game buttons): `RB+DPadUp`, `LB+DPadLeft`, etc.
+
+**Button names (Xbox / PlayStation):**
+- Face: `A/Cross`, `B/Circle`, `X/Square`, `Y/Triangle`
+- Shoulders: `LB/L1`, `RB/R1`
+- D-Pad: `DPadUp`, `DPadDown`, `DPadLeft`, `DPadRight`
+- Sticks: `LStickUp`, `RStickUp`, etc.
+- Special: `Start`, `Select/Back`
+
+**TRIGGER SUPPORT (LT/RT / L2/R2):**
+- **With SDL3.dll**: Triggers work fully! Can be used as modifiers (e.g., `LT+DPadUp`)
+- **Without SDL3.dll**: Triggers are NOT supported by the game's input system
+
+**SDL3 Setup (for PlayStation controllers and trigger support):**
+1. Download SDL3.dll from https://github.com/libsdl-org/SDL/releases (v3.x, Windows x64)
+2. Place SDL3.dll in game root folder (same folder as the .exe)
+3. Restart the game - mod will detect SDL3 and enable full controller support
+
+Press **F8** to reload hotkey configuration at any time.
+
 ## Options Top Panel Command (uOptionTopPanelCommand)
 
 **Class:** `uOptionTopPanelCommand` (extends `uOptionPanelCommandBase`)

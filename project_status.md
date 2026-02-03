@@ -34,7 +34,7 @@
 ```
 
 ## Current Phase
-New game flow complete through Digi-Egg selection with confirmation dialogs. Dialog choices now track properly using TalkMain.m_cursor. Voice detection filters voiced dialog from TTS. **3D positional audio navigation fully working** using NAudio (bypasses game's CRI audio system). **Always-on audio system** - no toggle keys required, all navigation sounds are automatic when player is in control.
+New game flow complete through Digi-Egg selection with confirmation dialogs. Dialog choices now track properly using TalkMain.m_cursor. Voice detection filters voiced dialog from TTS. **3D positional audio navigation fully working** using NAudio (bypasses game's CRI audio system). **Always-on audio system** - no toggle keys required, all navigation sounds are automatic when player is in control. **Full PlayStation controller support** via SDL3 with proper Western button convention and hotkey configuration.
 
 ### Battle System Accessibility (COMPLETE)
 All battle handlers implemented and working:
@@ -358,6 +358,11 @@ Two approaches found in game:
 - `BattleDialogHandler.cs` - Battle Yes/No dialog accessibility
 - `BattleTacticsHandler.cs` - Square button tactics menu (Escape, MP Usage, Target tabs)
 - `BattleResultHandler.cs` - Victory screen and rewards announcement
+- `ModInputManager.cs` - Central input handler with unified action bindings (keyboard + controller)
+- `InputConfig.cs` - INI parser with readable button names for keyboard/controller
+- `SDL2Controller.cs` - SDL3 wrapper for DualSense/DualShock/Xbox controller support
+- `GamepadInputPatch.cs` - Harmony patches to inject SDL3 controller input into game (button/stick/D-pad)
+- `hotkeys.ini` - User-editable hotkey configuration with [Keyboard] and [Controller] sections
 - `docs/game-api.md` - Documented game API reference
 - `battle-system-checklist.md` - Battle system implementation checklist
 
@@ -413,6 +418,59 @@ Two approaches found in game:
 - **Game Audio (CRI Atom):** The game uses CRI Atom middleware. Common SE sounds are baked as 2D at authoring time and cannot be made 3D via code. EV3D and Cry cue sheets are 3D but have limited/unknown cue names.
 - **Solution:** NAudio provides Windows-level audio playback, completely independent of the game's audio system. This allows true positional audio simulation via stereo panning.
 - **Dependencies:** NAudio NuGet package (NAudio.dll, NAudio.Core.dll, NAudio.WinMM.dll, NAudio.Wasapi.dll deployed to Mods folder)
+
+### Configurable Input System
+- **ModInputManager** - Central input handler with unified action names and dual bindings
+- **InputConfig** - INI parser with readable button names
+- **SDL2Controller** - SDL3 wrapper for PlayStation controller support (DualSense, DualShock 4)
+- **GamepadInputPatch** - Harmony patches to inject SDL3 controller input into game
+- **hotkeys.ini** - User-editable config file with separate [Keyboard] and [Controller] sections
+
+**Controller Support:**
+- **With SDL3** (recommended): Full support for DualSense, DualShock 4, Xbox, and many other controllers
+  - PlayStation button layout fixed for Western convention (Cross=Confirm, Circle=Cancel)
+  - LT/RT (L2/R2) triggers work as modifiers
+  - Touchpad button mapped to Select
+  - D-pad works in all menus including title menu
+  - Auto-detects controller connection/disconnection
+  - Announces controller name when connected
+- **Without SDL3**: Uses game's PadManager (Xbox only, no trigger support)
+
+**SDL3 Setup:**
+1. Download SDL3.dll from https://github.com/libsdl-org/SDL/releases (v3.x, Windows x64)
+2. Place SDL3.dll in game root folder (same folder as the .exe)
+
+**Config file format (separate sections for keyboard and controller):**
+```ini
+[Keyboard]
+RepeatLast = F1
+AnnounceStatus = F2
+Partner1Status = F3
+Partner2Status = F4
+BattlePartner1HP = F6
+BattlePartner2HP = F7
+
+[Controller]
+; Field partner status: Hold RB/LB + D-Pad
+Partner1Status = RB+DPadUp
+Partner1Effects = RB+DPadRight
+Partner1Mood = RB+DPadDown
+Partner1Info = RB+DPadLeft
+Partner2Status = LB+DPadUp
+Partner2Effects = LB+DPadRight
+Partner2Mood = LB+DPadDown
+Partner2Info = LB+DPadLeft
+
+; Battle status: Right Stick (no modifier needed)
+BattlePartner1HP = RStickUp
+BattlePartner2HP = RStickDown
+BattlePartner1Order = RStickLeft
+BattlePartner2Order = RStickRight
+```
+
+**Fixed Keys (not configurable):**
+- **F8** - Reload hotkey configuration
+- **F9** - Toggle input debug mode (logs all button presses)
 
 ## Next Steps
 1. **Cutscene Subtitles** - MovieSubtitle class for cutscene accessibility

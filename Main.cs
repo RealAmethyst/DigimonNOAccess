@@ -1,6 +1,7 @@
 using HarmonyLib;
 using MelonLoader;
 using UnityEngine;
+using System.IO;
 
 [assembly: MelonInfo(typeof(DigimonNOAccess.Main), "DigimonNOAccess", "1.0.0", "Accessibility Mod")]
 [assembly: MelonGame("Bandai Namco Entertainment", "Digimon World Next Order")]
@@ -9,6 +10,7 @@ namespace DigimonNOAccess
 {
     public class Main : MelonMod
     {
+        private static string _modFolderPath;
         private TitleMenuHandler _titleMenuHandler;
         private OptionsMenuHandler _optionsMenuHandler;
         private NameEntryHandler _nameEntryHandler;
@@ -53,8 +55,15 @@ namespace DigimonNOAccess
         {
             LoggerInstance.Msg("DigimonNOAccess initializing...");
 
+            // Set up mod folder path for config files
+            _modFolderPath = Path.GetDirectoryName(MelonAssembly.Location);
+
             // Initialize debug file logger
             DebugLogger.Initialize();
+
+            // Initialize the input manager with config
+            ModInputManager.Initialize(_modFolderPath);
+            LoggerInstance.Msg($"Input manager initialized, config at: {_modFolderPath}");
 
             // Initialize screen reader
             if (ScreenReader.Initialize())
@@ -69,7 +78,19 @@ namespace DigimonNOAccess
             // Initialize Harmony patches for immediate text interception
             _harmony = new HarmonyLib.Harmony("com.digimonoaccess.patches");
             DialogTextPatch.Apply(_harmony);
-            LoggerInstance.Msg("Harmony patches applied");
+            LoggerInstance.Msg("Dialog text patches applied");
+
+            // Apply gamepad input injection patch for PlayStation controller support
+            // Apply if SDL3 is available (even if controller not connected yet)
+            if (ModInputManager.IsUsingSDL2)
+            {
+                GamepadInputPatch.Apply(_harmony);
+                LoggerInstance.Msg("Gamepad input injection enabled - SDL3 will provide controller input to game");
+            }
+            else
+            {
+                LoggerInstance.Msg("SDL3 not available - using game's default input (Xbox controllers via Steam)");
+            }
 
             // Create handlers
             _titleMenuHandler = new TitleMenuHandler();
@@ -119,6 +140,9 @@ namespace DigimonNOAccess
             if (!_initialized)
                 return;
 
+            // Update the input manager first (tracks button states)
+            ModInputManager.Update();
+
             // Update all handlers
             _titleMenuHandler.Update();
             _optionsMenuHandler.Update();
@@ -164,24 +188,36 @@ namespace DigimonNOAccess
 
         private void HandleGlobalKeys()
         {
-            // F1 = Repeat last announcement
-            if (Input.GetKeyDown(KeyCode.F1))
+            // Use the new input manager for configurable hotkeys
+            if (ModInputManager.IsActionTriggered("RepeatLast"))
             {
                 ScreenReader.RepeatLast();
             }
 
-            // F2 = Announce current status
-            if (Input.GetKeyDown(KeyCode.F2))
+            if (ModInputManager.IsActionTriggered("AnnounceStatus"))
             {
                 AnnounceCurrentStatus();
             }
 
-            // F5 = Toggle reading voiced text (for non-English voice users)
-            if (Input.GetKeyDown(KeyCode.F5))
+            if (ModInputManager.IsActionTriggered("ToggleVoicedText"))
             {
                 DialogTextPatch.AlwaysReadText = !DialogTextPatch.AlwaysReadText;
                 string state = DialogTextPatch.AlwaysReadText ? "on" : "off";
                 ScreenReader.Say($"Read voiced text: {state}");
+            }
+
+            // F8 = Reload hotkey config (always F8, not configurable)
+            if (Input.GetKeyDown(KeyCode.F8))
+            {
+                ModInputManager.ReloadConfig();
+            }
+
+            // F9 = Toggle input debug mode (logs all button presses)
+            if (Input.GetKeyDown(KeyCode.F9))
+            {
+                GamepadInputPatch.DebugMode = !GamepadInputPatch.DebugMode;
+                string state = GamepadInputPatch.DebugMode ? "on" : "off";
+                ScreenReader.Say($"Input debug mode: {state}");
             }
         }
 
@@ -330,6 +366,7 @@ namespace DigimonNOAccess
         {
             LoggerInstance.Msg("DigimonNOAccess shutdown");
             _audioNavigationHandler?.Cleanup();
+            SDL2Controller.Shutdown();
             ScreenReader.Shutdown();
         }
     }
