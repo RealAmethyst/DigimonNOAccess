@@ -223,7 +223,7 @@ namespace DigimonNOAccess
 
                 if (string.IsNullOrWhiteSpace(partnerName))
                 {
-                    partnerName = $"Partner {index + 1}";
+                    partnerName = AnnouncementBuilder.FallbackItem("Partner", index);
                 }
 
                 // Get rise values
@@ -233,7 +233,7 @@ namespace DigimonNOAccess
                 if (riseValues != null && riseValues.Length > 0)
                 {
                     // Order: HP, MP, STR, STA, WIS, SPD (indices 0-5)
-                    string[] statNames = { "HP", "MP", "STR", "STA", "WIS", "SPD" };
+                    var statNames = PartnerUtilities.StatNames;
 
                     for (int j = 0; j < riseValues.Length && j < statNames.Length; j++)
                     {
@@ -273,7 +273,7 @@ namespace DigimonNOAccess
 
                 if (riseTexts != null)
                 {
-                    string[] statNames = { "HP", "MP", "STR", "STA", "WIS", "SPD" };
+                    var statNames = PartnerUtilities.StatNames;
 
                     for (int j = 0; j < riseTexts.Length && j < statNames.Length; j++)
                     {

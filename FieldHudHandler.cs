@@ -134,12 +134,12 @@ namespace DigimonNOAccess
             var panel = GetDigimonPanel(fieldPanel, partnerIndex);
             if (panel == null)
             {
-                ScreenReader.Say($"Partner {partnerIndex + 1} not available");
+                ScreenReader.Say(PartnerUtilities.GetPartnerNotAvailableMessage(partnerIndex));
                 return;
             }
 
             string name = panel.m_digimon_name?.text ?? "Unknown";
-            string partnerLabel = partnerIndex == 0 ? "Partner 1" : "Partner 2";
+            string partnerLabel = PartnerUtilities.GetPartnerLabel(partnerIndex);
             ScreenReader.Say($"{partnerLabel}: {name}");
         }
 
@@ -148,7 +148,7 @@ namespace DigimonNOAccess
             var panel = GetDigimonPanel(fieldPanel, partnerIndex);
             if (panel == null)
             {
-                ScreenReader.Say($"Partner {partnerIndex + 1} not available");
+                ScreenReader.Say(PartnerUtilities.GetPartnerNotAvailableMessage(partnerIndex));
                 return;
             }
 
@@ -166,21 +166,14 @@ namespace DigimonNOAccess
             var panel = GetDigimonPanel(fieldPanel, partnerIndex);
             if (panel == null)
             {
-                ScreenReader.Say($"Partner {partnerIndex + 1} not available");
+                ScreenReader.Say(PartnerUtilities.GetPartnerNotAvailableMessage(partnerIndex));
                 return;
             }
 
             string name = panel.m_digimon_name?.text ?? "Partner";
             var statusEffect = panel.m_statusEffect;
 
-            string statusText = statusEffect switch
-            {
-                PartnerCtrl.FieldStatusEffect.None => "Healthy",
-                PartnerCtrl.FieldStatusEffect.Injury => "Injured",
-                PartnerCtrl.FieldStatusEffect.SeriousInjury => "Seriously Injured",
-                PartnerCtrl.FieldStatusEffect.Disease => "Sick",
-                _ => "Unknown status"
-            };
+            string statusText = PartnerUtilities.GetStatusEffectText(statusEffect);
 
             ScreenReader.Say($"{name}: {statusText}");
         }
@@ -190,7 +183,7 @@ namespace DigimonNOAccess
             var panel = GetDigimonPanel(fieldPanel, partnerIndex);
             if (panel == null)
             {
-                ScreenReader.Say($"Partner {partnerIndex + 1} not available");
+                ScreenReader.Say(PartnerUtilities.GetPartnerNotAvailableMessage(partnerIndex));
                 return;
             }
 
@@ -198,22 +191,7 @@ namespace DigimonNOAccess
 
             // Get status effect from the panel
             var statusEffect = panel.m_statusEffect;
-            string moodText;
-
-            if (statusEffect != PartnerCtrl.FieldStatusEffect.None)
-            {
-                moodText = statusEffect switch
-                {
-                    PartnerCtrl.FieldStatusEffect.Injury => "Injured",
-                    PartnerCtrl.FieldStatusEffect.SeriousInjury => "Seriously injured",
-                    PartnerCtrl.FieldStatusEffect.Disease => "Sick",
-                    _ => "Has condition"
-                };
-            }
-            else
-            {
-                moodText = "Feeling fine";
-            }
+            string moodText = PartnerUtilities.GetStatusEffectText(statusEffect, "Feeling fine", "Has condition");
 
             ScreenReader.Say($"{name}: {moodText}");
         }
@@ -223,7 +201,7 @@ namespace DigimonNOAccess
             var panel = GetDigimonPanel(fieldPanel, partnerIndex);
             if (panel == null)
             {
-                ScreenReader.Say($"Partner {partnerIndex + 1} not available");
+                ScreenReader.Say(PartnerUtilities.GetPartnerNotAvailableMessage(partnerIndex));
                 return;
             }
 
@@ -232,14 +210,7 @@ namespace DigimonNOAccess
             string mpText = panel.m_mpText?.text ?? panel.m_now_mp.ToString();
 
             var statusEffect = panel.m_statusEffect;
-            string statusText = statusEffect switch
-            {
-                PartnerCtrl.FieldStatusEffect.None => "Healthy",
-                PartnerCtrl.FieldStatusEffect.Injury => "Injured",
-                PartnerCtrl.FieldStatusEffect.SeriousInjury => "Seriously Injured",
-                PartnerCtrl.FieldStatusEffect.Disease => "Sick",
-                _ => ""
-            };
+            string statusText = PartnerUtilities.GetStatusEffectText(statusEffect, "Healthy", "");
 
             string announcement = $"{name}: HP {hpText}, MP {mpText}";
             if (!string.IsNullOrEmpty(statusText) && statusText != "Healthy")

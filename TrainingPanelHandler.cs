@@ -298,7 +298,7 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[TrainingPanel] Error getting partner name: {ex.Message}");
             }
 
-            return partnerIndex == 0 ? "Partner 1" : "Partner 2";
+            return PartnerUtilities.GetPartnerLabel(partnerIndex);
         }
 
         private string GetTrainingText(int index)
@@ -346,7 +346,7 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[TrainingPanel] Error reading training text: {ex.Message}");
             }
 
-            return $"Training {index + 1}";
+            return AnnouncementBuilder.FallbackItem("Training", index);
         }
 
         private string GetBonusTypes(TrainingContent content)
@@ -417,7 +417,7 @@ namespace DigimonNOAccess
                 case ParameterTrainingData.TrainingKindIndex.Rest:
                     return "Rest";
                 default:
-                    return $"Training {(int)index + 1}";
+                    return AnnouncementBuilder.FallbackItem("Training", (int)index);
             }
         }
 

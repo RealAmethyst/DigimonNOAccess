@@ -199,7 +199,7 @@ namespace DigimonNOAccess
             if (panel == null)
             {
                 DebugLogger.Log($"[BattleHudHandler] Panel is null for partner {partnerIndex}");
-                ScreenReader.Say($"Partner {partnerIndex + 1} not available");
+                ScreenReader.Say(PartnerUtilities.GetPartnerNotAvailableMessage(partnerIndex));
                 return;
             }
 
@@ -276,7 +276,7 @@ namespace DigimonNOAccess
                 }
             }
 
-            string partnerLabel = partnerIndex == 0 ? "Partner 1" : "Partner 2";
+            string partnerLabel = PartnerUtilities.GetPartnerLabel(partnerIndex);
             DebugLogger.Log($"[BattleHudHandler] Final values: HP={hp}, MP={mp}");
             ScreenReader.Say($"{partnerLabel}: HP {hp}, MP {mp}");
         }
@@ -286,7 +286,7 @@ namespace DigimonNOAccess
             var panel = GetDigimonPanel(partnerIndex);
             if (panel == null)
             {
-                ScreenReader.Say($"Partner {partnerIndex + 1} not available");
+                ScreenReader.Say(PartnerUtilities.GetPartnerNotAvailableMessage(partnerIndex));
                 return;
             }
 
@@ -299,7 +299,7 @@ namespace DigimonNOAccess
             }
             catch { }
 
-            string partnerLabel = partnerIndex == 0 ? "Partner 1" : "Partner 2";
+            string partnerLabel = PartnerUtilities.GetPartnerLabel(partnerIndex);
             ScreenReader.Say($"{partnerLabel} current order: {order}");
         }
 
@@ -308,11 +308,11 @@ namespace DigimonNOAccess
             var panel = GetDigimonPanel(partnerIndex);
             if (panel == null)
             {
-                ScreenReader.Say($"Partner {partnerIndex + 1} not available");
+                ScreenReader.Say(PartnerUtilities.GetPartnerNotAvailableMessage(partnerIndex));
                 return;
             }
 
-            string name = partnerIndex == 0 ? "Partner 1" : "Partner 2";
+            string name = PartnerUtilities.GetPartnerLabel(partnerIndex);
             string hpText = "0";
             string mpText = "0";
             string order = "";
