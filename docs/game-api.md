@@ -1373,6 +1373,116 @@ if (evolution != null && evolution.gameObject.activeInHierarchy)
 - `m_BeforeModelName` must be read at the START of evolution, before data changes
 - Use `FindObjectOfType<EvolutionBase>()` to catch both EvolutionMain and MiracleMain
 
+**Evolution and Field State:**
+- Evolution plays on the field (MainGameComponent step remains `Field`)
+- During evolution, field objects (items, transitions, some facilities) are disabled
+- NavigationListHandler treats evolution as "not in field" via `SetEvolutionActive(bool)` so it doesn't scan while objects are disabled
+- After evolution ends, the "returned to field after extended absence" logic triggers a proper rescan
+- Main.cs passes evolution state: `_navigationListHandler.SetEvolutionActive(_evolutionHandler.IsActive())`
+
+### Facility Detection (EventTriggerManager + NpcManager)
+
+Facilities (Item Storage, Training, Shops, etc.) use two different systems depending on the area:
+
+**Strategy 1: EventTriggerManager (field areas like Training Hall, Vast Plateau)**
+
+**Class:** `EventTriggerManager`
+- `m_TriggerDictionary` (Dictionary<uint, EventTriggerScript>) - Maps placement IDs to trigger scripts
+- `m_CsvbPlacementData` (Csvb<ParameterPlacementNpc>) - CSV data with NPC placement info
+- `GetFacilityType(ParameterPlacementNpc)` - Returns `MainGameManager.Facility` enum
+
+```csharp
+var triggerDict = eventTriggerMgr.m_TriggerDictionary;
+var placementData = eventTriggerMgr.m_CsvbPlacementData;
+
+var enumerator = triggerDict.GetEnumerator();
+while (enumerator.MoveNext())
+{
+    uint placementId = enumerator.Current.Key;
+    var triggerScript = enumerator.Current.Value;
+
+    var npcData = HashIdSearchClass<ParameterPlacementNpc>.GetParam(placementData, placementId);
+    var facilityType = EventTriggerManager.GetFacilityType(npcData);
+
+    if (facilityType != MainGameManager.Facility.None)
+    {
+        // This is a facility - use triggerScript.gameObject for position
+    }
+}
+```
+
+**Strategy 2: NpcManager placement data (town areas like Town Square)**
+
+**Class:** `NpcManager`
+- `m_placementNpcList` (List<ParameterPlacementNpc>) - All NPC placements for current area
+- `_GetNpcCtrlFromPlacementId(uint placementId)` - Maps placement ID to NpcCtrl game object
+
+```csharp
+var npcMgr = FindObjectOfType<NpcManager>();
+foreach (var placement in npcMgr.m_placementNpcList)
+{
+    var facilityType = EventTriggerManager.GetFacilityType(placement);
+    if (facilityType == MainGameManager.Facility.None)
+        continue;
+
+    var npcCtrl = npcMgr._GetNpcCtrlFromPlacementId(placement.id);
+    if (npcCtrl != null && npcCtrl.gameObject.activeInHierarchy)
+    {
+        // This is a facility NPC - track its gameObject to exclude from NPC list
+    }
+}
+```
+
+**MainGameManager.Facility Enum:**
+- Construction = 0, ItemStorage = 1, Training = 2, Farm = 3, Shop = 4
+- Trade = 5, Colosseum = 6, CommonSelect = 7, EvolutionDojo = 8
+- Restaurant = 9, AnotherDimensionBox = 10, Museum = 11, Max = 12, None = -1
+
+**ParameterPlacementNpc Key Fields:**
+- `id` (uint) - Placement ID (used as dictionary key and for _GetNpcCtrlFromPlacementId)
+- `m_Facility` (int) - Maps to MainGameManager.Facility enum
+- `m_Name` (uint) - Name hash (NOT reliably a Language hash for all entries)
+- `m_Message` (uint) - Message hash (resolves to action prompts like "Talk"/"Operate", NOT names)
+- `m_MdlName` (string) - Model name (e.g., "b005" for Motimon)
+- `m_CmdBlock` (string) - Script block reference (e.g., "B005_TALK00", "VENDOR_TALK00")
+- `m_NpcEnemyParamId` (uint) - Links to ParameterNpcEnemyData (0 or uint.MaxValue if none)
+- `m_UintId` (int) - Unit ID (-1 if not applicable)
+
+### CommonSelect Facility Name Resolution
+
+CommonSelect (Facility type 7) is a generic selection/dialogue system. The facility's actual purpose depends on the script it runs. Multiple resolution paths needed:
+
+**Path 1: NpcEnemyParamId → Digimon name**
+```csharp
+uint npcEnemyId = placementData.m_NpcEnemyParamId;
+var npcEnemyData = HashIdSearchClass<ParameterNpcEnemyData>.GetParam(npcEnemyCsvb, npcEnemyId);
+var digiData = ParameterDigimonData.GetParam(npcEnemyData.m_DigiParamId);
+string name = digiData.GetDefaultName(); // e.g., "Motimon"
+```
+
+**Path 2: Model name → Digimon name**
+```csharp
+string mdlName = placementData.m_MdlName; // e.g., "b005"
+uint digimonId = ParameterDigimonData.FindBaseIdToModelName(mdlName);
+var paramData = ParameterDigimonData.GetParam(digimonId);
+string name = paramData.GetDefaultName(); // e.g., "Motimon"
+```
+Also try iterating `AppMainScript.parameterManager.digimonData` matching `m_mdlName` as fallback.
+
+**Path 3: CmdBlock prefix parsing (last resort)**
+```csharp
+// "VENDOR_TALK00" → "Vendor", "B005_TALK00" → "B005" (only if paths 1-2 fail)
+int talkIdx = cmdBlock.IndexOf("_TALK");
+string prefix = cmdBlock.Substring(0, talkIdx);
+string formatted = char.ToUpper(prefix[0]) + prefix.Substring(1).ToLower();
+```
+
+**Important Notes:**
+- `m_Name` hash does NOT reliably resolve via `Language.GetString()` - returns "ランゲージが見つかりません！！" (Language not found) for many entries
+- `m_Message` hash resolves to action prompts ("Talk", "Operate"), NOT facility names
+- Facility NPCs must be tracked and excluded from the NPC navigation category to avoid duplicates
+- Scan facilities BEFORE NPCs, store facility GameObjects in a HashSet for exclusion
+
 ## Common Patterns for NPC Menus
 
 ### uItemBase Pattern

@@ -34,7 +34,7 @@
 ```
 
 ## Current Phase
-New game flow complete through Digi-Egg selection with confirmation dialogs. Dialog choices now track properly using TalkMain.m_cursor. Voice detection filters voiced dialog from TTS. **3D positional audio navigation fully working** using NAudio (bypasses game's CRI audio system). **Always-on audio system** - no toggle keys required, all navigation sounds are automatic when player is in control. **Full PlayStation controller support** via SDL3 with proper Western button convention and hotkey configuration. **Digivolution announcements** now properly identify which partner is digivolving and what they digivolve into.
+New game flow complete through Digi-Egg selection with confirmation dialogs. Dialog choices now track properly using TalkMain.m_cursor. Voice detection filters voiced dialog from TTS. **3D positional audio navigation fully working** using NAudio (bypasses game's CRI audio system). **Always-on audio system** - no toggle keys required, all navigation sounds are automatic when player is in control. **Full PlayStation controller support** via SDL3 with proper Western button convention and hotkey configuration. **Digivolution announcements** now properly identify which partner is digivolving and what they digivolve into. **Navigation list facilities** now properly detected in both field areas (EventTriggerManager) and town areas (NpcManager placement data), with CommonSelect facilities resolved to meaningful names (Digimon names or cmdBlock prefixes). **Evolution-aware rescanning** prevents stale navigation data after digivolution sequences.
 
 ### Battle System Accessibility (COMPLETE)
 All battle handlers implemented and working:
@@ -375,6 +375,8 @@ Two approaches found in game:
 - `SDL2Controller.cs` - SDL3 wrapper for DualSense/DualShock/Xbox controller support
 - `GamepadInputPatch.cs` - Harmony patches to inject SDL3 controller input into game (button/stick/D-pad)
 - `hotkeys.ini` - User-editable hotkey configuration with [Keyboard] and [Controller] sections
+- `NavigationListHandler.cs` - Categorized point-of-interest navigation (NPCs, items, transitions, enemies, facilities) with name resolution, NavMesh pathfinding, dual facility detection (EventTriggerManager + NpcManager), and evolution-aware rescanning
+- `docs/pathfinding-navigation-research.md` - Research document for the navigation/pathfinding system
 - `docs/game-api.md` - Documented game API reference
 - `battle-system-checklist.md` - Battle system implementation checklist
 
@@ -484,11 +486,29 @@ BattlePartner2Order = RStickRight
 - **F8** - Reload hotkey configuration
 - **F9** - Toggle input debug mode (logs all button presses)
 
+### Navigation List System (COMPLETE)
+- **NavigationListHandler** - Categorized point-of-interest navigation for current area
+  - Scans area for NPCs, items, transitions, enemies, facilities with proper name resolution
+  - Categories cycle with O/I keys, events cycle with J/K/L keys
+  - P key announces walkable path direction and distance via NavMesh.CalculatePath
+  - Auto-refreshes on map change (monitors MainGameManager.mapNo/areaNo)
+  - Auto-removes picked-up items (checks enableItemPickPoint)
+  - Name resolution chains: NPC -> unitParamId -> NpcEnemyData -> DigimonData.GetDefaultName()
+  - Items -> itemId -> ParameterItemData.GetName()
+  - Enemies -> m_placementData.m_paramId -> NpcEnemyData -> DigimonData.GetDefaultName() + level
+  - Transitions -> AreaChangeInfo.m_Destination -> ParameterAreaName.GetAreaName() / ParameterMapName.GetMapName()
+  - Facilities detected via two strategies: EventTriggerManager dictionary (field areas) and NpcManager placement data (town areas)
+  - CommonSelect facility name resolution: NpcEnemyParamId → Digimon name, mdlName → Digimon name, cmdBlock prefix parsing (e.g., "VENDOR_TALK00" → "Vendor")
+  - Facility NPCs excluded from NPC category via _facilityNpcObjects HashSet
+  - Evolution-aware: treats digivolution as "not in field" so navigation rescans properly after evolution ends
+  - Only active when player is in field (same conditions as AudioNavigationHandler)
+  - **Phase 2 TODO:** Audio-guided pathfinding (continuous sound panning toward next NavMesh waypoint)
+
 ## Next Steps
-1. **Training Panel Tab Content** - When switching tabs (RB) in training panel, also read the tab content (Stats: current stat values, Bonus: active bonuses like "Friend Bonus")
-2. **Cutscene Subtitles** - MovieSubtitle class for cutscene accessibility
-3. **Partner Interaction** - Handle talking to partner Digimon outside battle (uPartnerTacticsPanel?)
-4. **Enemy Detection Improvements** - Announce enemy types/levels when tracking
+1. **Navigation List Audio Guidance** - Replace P key speech with continuous audio pathfinding sound that pans left/right based on walkable path direction
+2. **Training Panel Tab Content** - When switching tabs (RB) in training panel, also read the tab content (Stats: current stat values, Bonus: active bonuses like "Friend Bonus")
+3. **Cutscene Subtitles** - MovieSubtitle class for cutscene accessibility
+4. **Partner Interaction** - Handle talking to partner Digimon outside battle (uPartnerTacticsPanel?)
 5. **Item Description Readout** - Add key to read item description in field menus
 
 ## Known Issues (Documented)

@@ -52,6 +52,8 @@ namespace DigimonNOAccess
         private BattleResultHandler _battleResultHandler;
         private CommonMessageMonitor _commonMessageMonitor;
         private EvolutionHandler _evolutionHandler;
+        private ModSettingsHandler _modSettingsHandler;
+        private NavigationListHandler _navigationListHandler;
         private HarmonyLib.Harmony _harmony;
         private bool _initialized = false;
 
@@ -138,6 +140,8 @@ namespace DigimonNOAccess
             _battleResultHandler = new BattleResultHandler();
             _commonMessageMonitor = new CommonMessageMonitor();
             _evolutionHandler = new EvolutionHandler();
+            _modSettingsHandler = new ModSettingsHandler();
+            _navigationListHandler = new NavigationListHandler();
 
             _initialized = true;
             LoggerInstance.Msg("DigimonNOAccess initialized");
@@ -193,6 +197,9 @@ namespace DigimonNOAccess
             _battleResultHandler.Update();
             _commonMessageMonitor.Update();
             _evolutionHandler.Update();
+            _modSettingsHandler.Update();
+            _navigationListHandler.SetEvolutionActive(_evolutionHandler.IsActive());
+            _navigationListHandler.Update();
 
             // Global hotkeys
             HandleGlobalKeys();
@@ -236,7 +243,11 @@ namespace DigimonNOAccess
         private void AnnounceCurrentStatus()
         {
             // Check handlers in priority order (most specific first)
-            if (_commonYesNoHandler.IsOpen())
+            if (_modSettingsHandler.IsOpen())
+            {
+                _modSettingsHandler.AnnounceStatus();
+            }
+            else if (_commonYesNoHandler.IsOpen())
             {
                 _commonYesNoHandler.AnnounceStatus();
             }

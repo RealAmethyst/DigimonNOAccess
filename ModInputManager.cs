@@ -209,6 +209,31 @@ namespace DigimonNOAccess
             RegisterAction("BattlePartner2Order",
                 keyboard: null,
                 controller: new InputBinding(ControllerButton.RStickRight));
+
+            // === Navigation List ===
+            RegisterAction("NavNextCategory",
+                keyboard: new InputBinding(KeyCode.O),
+                controller: null);
+
+            RegisterAction("NavPrevCategory",
+                keyboard: new InputBinding(KeyCode.I),
+                controller: null);
+
+            RegisterAction("NavPrevEvent",
+                keyboard: new InputBinding(KeyCode.J),
+                controller: null);
+
+            RegisterAction("NavCurrentEvent",
+                keyboard: new InputBinding(KeyCode.K),
+                controller: null);
+
+            RegisterAction("NavNextEvent",
+                keyboard: new InputBinding(KeyCode.L),
+                controller: null);
+
+            RegisterAction("NavToEvent",
+                keyboard: new InputBinding(KeyCode.P),
+                controller: null);
         }
 
         private static void RegisterAction(string actionName, InputBinding keyboard, InputBinding controller)
@@ -671,6 +696,17 @@ BattlePartner2HP = F7
 BattlePartner1Order = None
 BattlePartner2Order = None
 
+; === Navigation List ===
+; Cycle through categories (NPCs, Items, Transitions, Enemies)
+NavNextCategory = O
+NavPrevCategory = I
+; Cycle through events within the selected category
+NavPrevEvent = J
+NavCurrentEvent = K
+NavNextEvent = L
+; Announce path to the selected event
+NavToEvent = P
+
 [Controller]
 ; === Global ===
 RepeatLast = None
@@ -695,6 +731,17 @@ BattlePartner1HP = LT+DPadUp
 BattlePartner2HP = LT+DPadDown
 BattlePartner1Order = LT+DPadLeft
 BattlePartner2Order = LT+DPadRight
+
+; === Navigation List ===
+; Cycle through categories (NPCs, Items, Transitions, Enemies)
+NavNextCategory = None
+NavPrevCategory = None
+; Cycle through events within the selected category
+NavPrevEvent = None
+NavCurrentEvent = None
+NavNextEvent = None
+; Announce path to the selected event
+NavToEvent = None
 ";
 
             try
