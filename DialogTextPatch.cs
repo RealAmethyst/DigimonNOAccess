@@ -2,7 +2,6 @@ using HarmonyLib;
 using Il2Cpp;
 using System;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
 using UnityEngine;
 
 namespace DigimonNOAccess
@@ -121,16 +120,7 @@ namespace DigimonNOAccess
         /// </summary>
         private static bool IsGameLoading()
         {
-            try
-            {
-                var mgr = MainGameManager.m_instance;
-                if (mgr != null)
-                {
-                    return mgr._IsLoad();
-                }
-            }
-            catch { }
-            return false;
+            return TextUtilities.IsGameLoading();
         }
 
         /// <summary>
@@ -322,37 +312,12 @@ namespace DigimonNOAccess
         /// </summary>
         public static string StripRichTextTags(string text)
         {
-            if (string.IsNullOrEmpty(text))
-                return text;
-            return Regex.Replace(text, @"<[^>]+>", "");
+            return TextUtilities.StripRichTextTags(text);
         }
 
         private static bool IsPlaceholderText(string text)
         {
-            if (string.IsNullOrEmpty(text))
-                return true;
-
-            if (text.Contains("■") || text.Contains("□"))
-                return true;
-
-            if (text.StartsWith("EV_") || text.StartsWith("SYS_") || text.StartsWith("MSG_"))
-                return true;
-
-            // Skip punctuation-only text
-            string trimmed = text.Trim();
-            bool onlyPunctuation = true;
-            foreach (char c in trimmed)
-            {
-                if (!char.IsPunctuation(c) && !char.IsWhiteSpace(c))
-                {
-                    onlyPunctuation = false;
-                    break;
-                }
-            }
-            if (onlyPunctuation && trimmed.Length > 0)
-                return true;
-
-            return false;
+            return TextUtilities.IsPlaceholderText(text);
         }
     }
 }

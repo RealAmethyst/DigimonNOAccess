@@ -101,16 +101,7 @@ namespace DigimonNOAccess
 
         private string CleanText(string text)
         {
-            if (string.IsNullOrEmpty(text))
-                return text;
-
-            // Remove common rich text tags
-            text = System.Text.RegularExpressions.Regex.Replace(text, "<[^>]+>", "");
-
-            // Trim whitespace
-            text = text.Trim();
-
-            return text;
+            return TextUtilities.CleanText(text);
         }
 
         public bool IsActive()

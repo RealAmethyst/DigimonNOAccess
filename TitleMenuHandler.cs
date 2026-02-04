@@ -101,14 +101,7 @@ namespace DigimonNOAccess
         /// </summary>
         private bool IsLocalizationReady()
         {
-            try
-            {
-                return Localization.isActive;
-            }
-            catch
-            {
-                return false;
-            }
+            return TextUtilities.IsLocalizationReady();
         }
 
         /// <summary>
@@ -155,7 +148,7 @@ namespace DigimonNOAccess
             string itemText = GetMenuItemText(cursor);
             int total = GetMenuItemCount();
 
-            string announcement = $"Title Menu. {itemText}, {cursor + 1} of {total}";
+            string announcement = AnnouncementBuilder.MenuOpen("Title Menu", itemText, cursor, total);
             ScreenReader.Say(announcement);
 
             DebugLogger.Log($"[TitleMenu] Menu now usable (Idle state), cursor={cursor}, text={itemText}");
@@ -189,7 +182,7 @@ namespace DigimonNOAccess
                 string itemText = GetMenuItemText(cursor);
                 int total = GetMenuItemCount();
 
-                string announcement = $"{itemText}, {cursor + 1} of {total}";
+                string announcement = AnnouncementBuilder.CursorPosition(itemText, cursor, total);
                 ScreenReader.Say(announcement);
 
                 DebugLogger.Log($"[TitleMenu] Cursor changed: {itemText}");
@@ -235,7 +228,7 @@ namespace DigimonNOAccess
                 1 => "Load Game",
                 2 => "System Settings",
                 3 => "Quit Game",
-                _ => $"Item {index + 1}"
+                _ => AnnouncementBuilder.FallbackItem("Item", index)
             };
         }
 
@@ -260,7 +253,7 @@ namespace DigimonNOAccess
             string itemText = GetMenuItemText(cursor);
             int total = GetMenuItemCount();
 
-            string announcement = $"Title Menu. {itemText}, {cursor + 1} of {total}";
+            string announcement = AnnouncementBuilder.MenuOpen("Title Menu", itemText, cursor, total);
             ScreenReader.Say(announcement);
         }
 

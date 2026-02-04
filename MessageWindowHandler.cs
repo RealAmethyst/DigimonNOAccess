@@ -746,15 +746,7 @@ namespace DigimonNOAccess
 
         private string CleanText(string text)
         {
-            if (string.IsNullOrEmpty(text))
-                return "";
-
-            // Remove Unity rich text tags
-            string cleaned = System.Text.RegularExpressions.Regex.Replace(text, @"<[^>]+>", "");
-            // Normalize whitespace
-            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"\s+", " ");
-
-            return cleaned.Trim();
+            return TextUtilities.CleanText(text);
         }
 
         public void AnnounceStatus()

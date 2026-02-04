@@ -97,56 +97,17 @@ namespace DigimonNOAccess
 
         private bool IsLocalizationReady()
         {
-            try
-            {
-                return Localization.isActive;
-            }
-            catch { }
-            return false;
+            return TextUtilities.IsLocalizationReady();
         }
 
         private bool IsGameLoading()
         {
-            try
-            {
-                var mgr = MainGameManager.m_instance;
-                // If MainGameManager doesn't exist yet, we're probably at title screen
-                // Skip monitoring during this phase
-                if (mgr == null)
-                    return true;
-                return mgr._IsLoad();
-            }
-            catch { }
-            // On exception, assume loading to be safe
-            return true;
+            return TextUtilities.IsGameLoading();
         }
 
         private bool ShouldSkipText(string text)
         {
-            if (string.IsNullOrEmpty(text))
-                return true;
-
-            // Skip Japanese placeholder characters
-            if (text.Contains("■") || text.Contains("□"))
-                return true;
-
-            // Skip "Language not found" error messages (Japanese)
-            if (text.Contains("ランゲージ"))
-                return true;
-
-            // Skip Japanese placeholder text "メッセージ入力欄" (Message input field)
-            if (text.Contains("メッセージ入力欄"))
-                return true;
-
-            // Skip color-tagged warning messages (already announced via SetMessage)
-            if (text.StartsWith("<color=#ff0000ff>Warning"))
-                return true;
-
-            // Skip if it looks like an unresolved localization key
-            if (text.StartsWith("EV_") || text.StartsWith("SYS_") || text.StartsWith("MSG_"))
-                return true;
-
-            return false;
+            return TextUtilities.IsPlaceholderText(text);
         }
     }
 }
