@@ -6,48 +6,15 @@ namespace DigimonNOAccess
     /// <summary>
     /// Handles accessibility for the field item panel (inventory during gameplay)
     /// </summary>
-    public class FieldItemPanelHandler
+    public class FieldItemPanelHandler : HandlerBase<uFieldItemPanel>
     {
-        private uFieldItemPanel _panel;
-        private bool _wasActive = false;
-        private int _lastCursor = -1;
+        protected override string LogTag => "[FieldItemPanel]";
+        public override int Priority => 55;
+
         private uFieldItemPanel.Type _lastType = (uFieldItemPanel.Type)(-1);
         private int _lastInternalTab = -1;
 
-        public bool IsOpen()
-        {
-            if (_panel == null)
-            {
-                _panel = Object.FindObjectOfType<uFieldItemPanel>();
-            }
-
-            return _panel != null &&
-                   _panel.gameObject != null &&
-                   _panel.gameObject.activeInHierarchy;
-        }
-
-        public void Update()
-        {
-            bool isActive = IsOpen();
-
-            if (isActive && !_wasActive)
-            {
-                OnOpen();
-            }
-            else if (!isActive && _wasActive)
-            {
-                OnClose();
-            }
-            else if (isActive)
-            {
-                CheckCursorChange();
-                CheckTabChange();
-            }
-
-            _wasActive = isActive;
-        }
-
-        private void OnOpen()
+        protected override void OnOpen()
         {
             _lastCursor = -1;
             _lastType = (uFieldItemPanel.Type)(-1);
@@ -76,17 +43,21 @@ namespace DigimonNOAccess
             }
 
             ScreenReader.Say(announcement);
-            DebugLogger.Log($"[FieldItemPanel] Opened, type={tabName}, tab={internalTabName}, cursor={cursor}, total={total}");
+            DebugLogger.Log($"{LogTag} Opened, type={tabName}, tab={internalTabName}, cursor={cursor}, total={total}");
             _lastCursor = cursor;
         }
 
-        private void OnClose()
+        protected override void OnClose()
         {
-            _panel = null;
-            _lastCursor = -1;
             _lastType = (uFieldItemPanel.Type)(-1);
             _lastInternalTab = -1;
-            DebugLogger.Log("[FieldItemPanel] Closed");
+            base.OnClose();
+        }
+
+        protected override void OnUpdate()
+        {
+            CheckCursorChange();
+            CheckTabChange();
         }
 
         private void CheckCursorChange()
@@ -112,7 +83,7 @@ namespace DigimonNOAccess
                 }
 
                 ScreenReader.Say(announcement);
-                DebugLogger.Log($"[FieldItemPanel] Cursor changed: {itemInfo}");
+                DebugLogger.Log($"{LogTag} Cursor changed: {itemInfo}");
                 _lastCursor = cursor;
             }
         }
@@ -148,7 +119,7 @@ namespace DigimonNOAccess
                 }
 
                 ScreenReader.Say(announcement);
-                DebugLogger.Log($"[FieldItemPanel] Type changed to {tabName}, tab={internalTabName}");
+                DebugLogger.Log($"{LogTag} Type changed to {tabName}, tab={internalTabName}");
                 _lastType = currentType;
                 _lastCursor = cursor;
             }
@@ -173,7 +144,7 @@ namespace DigimonNOAccess
                 }
 
                 ScreenReader.Say(announcement);
-                DebugLogger.Log($"[FieldItemPanel] Internal tab changed to {internalTabName}");
+                DebugLogger.Log($"{LogTag} Internal tab changed to {internalTabName}");
                 _lastInternalTab = currentInternalTab;
                 _lastCursor = cursor;
             }
@@ -204,7 +175,7 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[FieldItemPanel] Error getting internal tab: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error getting internal tab: {ex.Message}");
             }
             return -1;
         }
@@ -235,7 +206,7 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[FieldItemPanel] Error getting cursor: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error getting cursor: {ex.Message}");
             }
             return 0;
         }
@@ -252,7 +223,7 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[FieldItemPanel] Error getting item count: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error getting item count: {ex.Message}");
             }
             return 0;
         }
@@ -273,13 +244,13 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[FieldItemPanel] Error getting item info: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error getting item info: {ex.Message}");
             }
 
             return "Unknown Item";
         }
 
-        public void AnnounceStatus()
+        public override void AnnounceStatus()
         {
             if (!IsOpen())
                 return;

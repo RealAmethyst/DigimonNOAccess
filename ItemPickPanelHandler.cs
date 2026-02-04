@@ -6,13 +6,14 @@ namespace DigimonNOAccess
     /// <summary>
     /// Handles accessibility for item pickup panel (collecting items/materials in the field)
     /// </summary>
-    public class ItemPickPanelHandler
+    public class ItemPickPanelHandler : HandlerBase<uItemPickPanel>
     {
-        private uItemPickPanel _panel;
-        private bool _wasActive = false;
+        protected override string LogTag => "[ItemPickPanel]";
+        public override int Priority => 90;
+
         private uItemPickPanel.State _lastState = uItemPickPanel.State.None;
 
-        public bool IsOpen()
+        public override bool IsOpen()
         {
             if (_panel == null)
             {
@@ -32,27 +33,7 @@ namespace DigimonNOAccess
             }
         }
 
-        public void Update()
-        {
-            bool isActive = IsOpen();
-
-            if (isActive && !_wasActive)
-            {
-                OnOpen();
-            }
-            else if (!isActive && _wasActive)
-            {
-                OnClose();
-            }
-            else if (isActive)
-            {
-                CheckStateChange();
-            }
-
-            _wasActive = isActive;
-        }
-
-        private void OnOpen()
+        protected override void OnOpen()
         {
             _lastState = uItemPickPanel.State.None;
 
@@ -64,14 +45,18 @@ namespace DigimonNOAccess
 
             string stateName = GetStateName(state);
             ScreenReader.Say($"Item pickup, {stateName}");
-            DebugLogger.Log($"[ItemPickPanel] Opened, state={state}");
+            DebugLogger.Log($"{LogTag} Opened, state={state}");
         }
 
-        private void OnClose()
+        protected override void OnClose()
         {
-            _panel = null;
             _lastState = uItemPickPanel.State.None;
-            DebugLogger.Log("[ItemPickPanel] Closed");
+            base.OnClose();
+        }
+
+        protected override void OnUpdate()
+        {
+            CheckStateChange();
         }
 
         private void CheckStateChange()
@@ -87,7 +72,7 @@ namespace DigimonNOAccess
                 if (!string.IsNullOrEmpty(announcement))
                 {
                     ScreenReader.Say(announcement);
-                    DebugLogger.Log($"[ItemPickPanel] State changed to {currentState}");
+                    DebugLogger.Log($"{LogTag} State changed to {currentState}");
                 }
                 _lastState = currentState;
             }
@@ -153,13 +138,13 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[ItemPickPanel] Error getting result: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error getting result: {ex.Message}");
             }
 
             return "Item obtained";
         }
 
-        public void AnnounceStatus()
+        public override void AnnounceStatus()
         {
             if (!IsOpen())
                 return;

@@ -7,60 +7,32 @@ namespace DigimonNOAccess
     /// <summary>
     /// Handles accessibility for yes/no dialogs.
     /// </summary>
-    public class DialogHandler
+    public class DialogHandler : HandlerBase<uDialogBase>
     {
-        private uDialogBase _dialog;
-        private bool _wasActive = false;
-        private uDialogBase.CursorIndex _lastCursor = uDialogBase.CursorIndex.Yes;
+        protected override string LogTag => "[Dialog]";
+        public override int Priority => 30;
 
-        /// <summary>
-        /// Check if a dialog is currently open.
-        /// </summary>
-        public bool IsOpen()
+        private uDialogBase.CursorIndex _lastDialogCursor = uDialogBase.CursorIndex.Yes;
+
+        public override bool IsOpen()
         {
-            _dialog = Object.FindObjectOfType<uDialogBase>();
+            _panel = Object.FindObjectOfType<uDialogBase>();
 
-            return _dialog != null &&
-                   _dialog.gameObject != null &&
-                   _dialog.gameObject.activeInHierarchy;
+            return _panel != null &&
+                   _panel.gameObject != null &&
+                   _panel.gameObject.activeInHierarchy;
         }
 
-        /// <summary>
-        /// Called every frame to track state.
-        /// </summary>
-        public void Update()
+        protected override void OnOpen()
         {
-            bool isActive = IsOpen();
+            _lastDialogCursor = uDialogBase.CursorIndex.Yes;
 
-            // Dialog just opened
-            if (isActive && !_wasActive)
-            {
-                OnOpen();
-            }
-            // Dialog just closed
-            else if (!isActive && _wasActive)
-            {
-                OnClose();
-            }
-            // Dialog is active, check for cursor changes
-            else if (isActive)
-            {
-                CheckCursorChange();
-            }
-
-            _wasActive = isActive;
-        }
-
-        private void OnOpen()
-        {
-            _lastCursor = uDialogBase.CursorIndex.Yes;
-
-            if (_dialog == null)
+            if (_panel == null)
                 return;
 
             // Try to get dialog text from child Text components
             string dialogText = GetDialogText();
-            string currentChoice = GetCursorText(_dialog.m_cursorIndex);
+            string currentChoice = GetCursorText(_panel.m_cursorIndex);
 
             string announcement = "Dialog";
             if (!string.IsNullOrEmpty(dialogText))
@@ -68,42 +40,46 @@ namespace DigimonNOAccess
             announcement += $". {currentChoice} selected";
 
             ScreenReader.Say(announcement);
-            DebugLogger.Log($"[Dialog] Opened: {dialogText}, cursor={_dialog.m_cursorIndex}");
+            DebugLogger.Log($"{LogTag} Opened: {dialogText}, cursor={_panel.m_cursorIndex}");
 
-            _lastCursor = _dialog.m_cursorIndex;
+            _lastDialogCursor = _panel.m_cursorIndex;
         }
 
-        private void OnClose()
+        protected override void OnClose()
         {
-            _dialog = null;
-            _lastCursor = uDialogBase.CursorIndex.Yes;
-            DebugLogger.Log("[Dialog] Closed");
+            _lastDialogCursor = uDialogBase.CursorIndex.Yes;
+            base.OnClose();
+        }
+
+        protected override void OnUpdate()
+        {
+            CheckCursorChange();
         }
 
         private void CheckCursorChange()
         {
-            if (_dialog == null)
+            if (_panel == null)
                 return;
 
-            var cursor = _dialog.m_cursorIndex;
-            if (cursor != _lastCursor)
+            var cursor = _panel.m_cursorIndex;
+            if (cursor != _lastDialogCursor)
             {
                 string choice = GetCursorText(cursor);
                 ScreenReader.Say(choice);
-                DebugLogger.Log($"[Dialog] Cursor changed: {choice}");
-                _lastCursor = cursor;
+                DebugLogger.Log($"{LogTag} Cursor changed: {choice}");
+                _lastDialogCursor = cursor;
             }
         }
 
         private string GetDialogText()
         {
-            if (_dialog == null)
+            if (_panel == null)
                 return "";
 
             try
             {
                 // Try to find Text components in the dialog's children
-                var textComponents = _dialog.GetComponentsInChildren<Text>();
+                var textComponents = _panel.GetComponentsInChildren<Text>();
                 if (textComponents != null)
                 {
                     foreach (var text in textComponents)
@@ -122,7 +98,7 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[Dialog] Error getting text: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error getting text: {ex.Message}");
             }
 
             return "";
@@ -144,13 +120,13 @@ namespace DigimonNOAccess
         /// <summary>
         /// Announce current status.
         /// </summary>
-        public void AnnounceStatus()
+        public override void AnnounceStatus()
         {
             if (!IsOpen())
                 return;
 
             string dialogText = GetDialogText();
-            string currentChoice = GetCursorText(_dialog.m_cursorIndex);
+            string currentChoice = GetCursorText(_panel.m_cursorIndex);
 
             string announcement = "Dialog";
             if (!string.IsNullOrEmpty(dialogText))

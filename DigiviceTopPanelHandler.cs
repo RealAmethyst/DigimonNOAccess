@@ -7,13 +7,14 @@ namespace DigimonNOAccess
     /// Handles accessibility for the main Digivice menu hub
     /// This is the central menu that connects to Partner, Tamer, Item, Map, Mail, Library, System, and Save
     /// </summary>
-    public class DigiviceTopPanelHandler
+    public class DigiviceTopPanelHandler : HandlerBase<uDigiviceTopPanel>
     {
-        private uDigiviceTopPanel _panel;
-        private bool _wasActive = false;
+        protected override string LogTag => "[DigiviceTopPanel]";
+        public override int Priority => 50;
+
         private int _lastCommandIndex = -1;
 
-        public bool IsOpen()
+        public override bool IsOpen()
         {
             if (_panel == null)
             {
@@ -34,27 +35,7 @@ namespace DigimonNOAccess
             }
         }
 
-        public void Update()
-        {
-            bool isActive = IsOpen();
-
-            if (isActive && !_wasActive)
-            {
-                OnOpen();
-            }
-            else if (!isActive && _wasActive)
-            {
-                OnClose();
-            }
-            else if (isActive)
-            {
-                CheckCommandChange();
-            }
-
-            _wasActive = isActive;
-        }
-
-        private void OnOpen()
+        protected override void OnOpen()
         {
             _lastCommandIndex = -1;
 
@@ -67,14 +48,18 @@ namespace DigimonNOAccess
             string commandName = GetCommandName(commandIndex);
             int total = 8; // Partner, Tamer, Item, Map, DigiMessenger, Library, System, Save
             ScreenReader.Say($"Digivice menu, {AnnouncementBuilder.CursorPosition(commandName, commandIndex, total)}");
-            DebugLogger.Log($"[DigiviceTopPanel] Opened, command={commandIndex} ({commandName})");
+            DebugLogger.Log($"{LogTag} Opened, command={commandIndex} ({commandName})");
         }
 
-        private void OnClose()
+        protected override void OnClose()
         {
-            _panel = null;
             _lastCommandIndex = -1;
-            DebugLogger.Log("[DigiviceTopPanel] Closed");
+            base.OnClose();
+        }
+
+        protected override void OnUpdate()
+        {
+            CheckCommandChange();
         }
 
         private void CheckCommandChange()
@@ -89,7 +74,7 @@ namespace DigimonNOAccess
                 string commandName = GetCommandName(currentCommand);
                 int total = 8;
                 ScreenReader.Say(AnnouncementBuilder.CursorPosition(commandName, currentCommand, total));
-                DebugLogger.Log($"[DigiviceTopPanel] Command changed to {commandName}");
+                DebugLogger.Log($"{LogTag} Command changed to {commandName}");
             }
             _lastCommandIndex = currentCommand;
         }
@@ -106,7 +91,7 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[DigiviceTopPanel] Error getting command index: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error getting command index: {ex.Message}");
             }
             return 0;
         }
@@ -127,7 +112,7 @@ namespace DigimonNOAccess
             };
         }
 
-        public void AnnounceStatus()
+        public override void AnnounceStatus()
         {
             if (!IsOpen())
                 return;

@@ -6,14 +6,14 @@ namespace DigimonNOAccess
     /// <summary>
     /// Handles accessibility for the trade/shop panel (buy and sell items).
     /// </summary>
-    public class TradePanelHandler
+    public class TradePanelHandler : HandlerBase<uTradePanelCommand>
     {
-        private uTradePanelCommand _panel;
-        private bool _wasActive = false;
-        private int _lastCursor = -1;
+        protected override string LogTag => "[TradePanel]";
+        public override int Priority => 60;
+
         private uTradePanelCommand.State _lastState = uTradePanelCommand.State.None;
 
-        public bool IsOpen()
+        public override bool IsOpen()
         {
             if (_panel == null)
             {
@@ -27,28 +27,7 @@ namespace DigimonNOAccess
                    _panel.m_state != uTradePanelCommand.State.Close;
         }
 
-        public void Update()
-        {
-            bool isActive = IsOpen();
-
-            if (isActive && !_wasActive)
-            {
-                OnOpen();
-            }
-            else if (!isActive && _wasActive)
-            {
-                OnClose();
-            }
-            else if (isActive)
-            {
-                CheckStateChange();
-                CheckCursorChange();
-            }
-
-            _wasActive = isActive;
-        }
-
-        private void OnOpen()
+        protected override void OnOpen()
         {
             _lastCursor = -1;
             _lastState = uTradePanelCommand.State.None;
@@ -65,17 +44,21 @@ namespace DigimonNOAccess
             string announcement = AnnouncementBuilder.MenuOpenWithState("Shop", stateText, itemText, cursor, total);
             ScreenReader.Say(announcement);
 
-            DebugLogger.Log($"[TradePanel] Panel opened, state={state}, cursor={cursor}");
+            DebugLogger.Log($"{LogTag} Panel opened, state={state}, cursor={cursor}");
             _lastState = state;
             _lastCursor = cursor;
         }
 
-        private void OnClose()
+        protected override void OnClose()
         {
-            _panel = null;
-            _lastCursor = -1;
             _lastState = uTradePanelCommand.State.None;
-            DebugLogger.Log("[TradePanel] Panel closed");
+            base.OnClose();
+        }
+
+        protected override void OnUpdate()
+        {
+            CheckStateChange();
+            CheckCursorChange();
         }
 
         private void CheckStateChange()
@@ -88,7 +71,7 @@ namespace DigimonNOAccess
             {
                 string stateText = GetStateText(state);
                 ScreenReader.Say(stateText);
-                DebugLogger.Log($"[TradePanel] State changed to {state}");
+                DebugLogger.Log($"{LogTag} State changed to {state}");
                 _lastState = state;
                 _lastCursor = -1; // Reset cursor on state change
             }
@@ -109,7 +92,7 @@ namespace DigimonNOAccess
                 string announcement = AnnouncementBuilder.CursorPosition(itemText, cursor, total);
                 ScreenReader.Say(announcement);
 
-                DebugLogger.Log($"[TradePanel] Cursor changed: {itemText}");
+                DebugLogger.Log($"{LogTag} Cursor changed: {itemText}");
                 _lastCursor = cursor;
             }
         }
@@ -126,7 +109,7 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[TradePanel] Error getting cursor: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error getting cursor: {ex.Message}");
             }
             return 0;
         }
@@ -170,7 +153,7 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[TradePanel] Error reading text: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error reading text: {ex.Message}");
             }
 
             return AnnouncementBuilder.FallbackItem("Item", index);
@@ -213,7 +196,7 @@ namespace DigimonNOAccess
             }
         }
 
-        public void AnnounceStatus()
+        public override void AnnounceStatus()
         {
             if (!IsOpen())
                 return;

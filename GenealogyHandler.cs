@@ -8,19 +8,17 @@ namespace DigimonNOAccess
     /// This panel shows detailed evolution tree information when opened from
     /// the egg selection screen or other contexts.
     /// </summary>
-    public class GenealogyHandler
+    public class GenealogyHandler : HandlerBase<uGenealogy>
     {
-        private uGenealogy _panel;
-        private bool _wasActive = false;
-        private uGenealogy.State _lastState = uGenealogy.State.Main;
+        protected override string LogTag => "[Genealogy]";
+        public override int Priority => 40;
+
+        private uGenealogy.State _lastGenealogyState = uGenealogy.State.Main;
         private string _lastName = "";
         private string _lastNature = "";
         private string _lastAttr = "";
 
-        /// <summary>
-        /// Check if the genealogy panel is currently open and active.
-        /// </summary>
-        public bool IsOpen()
+        public override bool IsOpen()
         {
             _panel = Object.FindObjectOfType<uGenealogy>();
 
@@ -37,36 +35,9 @@ namespace DigimonNOAccess
             }
         }
 
-        /// <summary>
-        /// Called every frame to track state.
-        /// </summary>
-        public void Update()
+        protected override void OnOpen()
         {
-            bool isActive = IsOpen();
-
-            // Panel just opened
-            if (isActive && !_wasActive)
-            {
-                OnOpen();
-            }
-            // Panel just closed
-            else if (!isActive && _wasActive)
-            {
-                OnClose();
-            }
-            // Panel is active, check for changes
-            else if (isActive)
-            {
-                CheckStateChange();
-                CheckSelectionChange();
-            }
-
-            _wasActive = isActive;
-        }
-
-        private void OnOpen()
-        {
-            _lastState = uGenealogy.State.Main;
+            _lastGenealogyState = uGenealogy.State.Main;
             _lastName = "";
             _lastNature = "";
             _lastAttr = "";
@@ -74,7 +45,7 @@ namespace DigimonNOAccess
             if (_panel == null)
                 return;
 
-            DebugLogger.Log("[Genealogy] === Panel Opened ===");
+            DebugLogger.Log($"{LogTag} === Panel Opened ===");
             LogPanelDebug();
 
             // Get current selection info
@@ -88,19 +59,24 @@ namespace DigimonNOAccess
             announcement += ". Navigate with arrow keys.";
 
             ScreenReader.Say(announcement);
-            DebugLogger.Log($"[Genealogy] Announced: {announcement}");
+            DebugLogger.Log($"{LogTag} Announced: {announcement}");
 
             // Track last values
             UpdateLastValues();
         }
 
-        private void OnClose()
+        protected override void OnClose()
         {
-            _panel = null;
             _lastName = "";
             _lastNature = "";
             _lastAttr = "";
-            DebugLogger.Log("[Genealogy] Closed");
+            base.OnClose();
+        }
+
+        protected override void OnUpdate()
+        {
+            CheckStateChange();
+            CheckSelectionChange();
         }
 
         private void CheckStateChange()
@@ -111,10 +87,10 @@ namespace DigimonNOAccess
             try
             {
                 uGenealogy.State state = _panel.m_state;
-                if (state != _lastState)
+                if (state != _lastGenealogyState)
                 {
-                    DebugLogger.Log($"[Genealogy] State changed: {_lastState} -> {state}");
-                    _lastState = state;
+                    DebugLogger.Log($"{LogTag} State changed: {_lastGenealogyState} -> {state}");
+                    _lastGenealogyState = state;
 
                     // If scrolled to new position, announce new selection
                     if (state == uGenealogy.State.Main)
@@ -123,14 +99,14 @@ namespace DigimonNOAccess
                         if (!string.IsNullOrEmpty(info))
                         {
                             ScreenReader.Say(info);
-                            DebugLogger.Log($"[Genealogy] After scroll, announced: {info}");
+                            DebugLogger.Log($"{LogTag} After scroll, announced: {info}");
                         }
                     }
                 }
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[Genealogy] Error checking state: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error checking state: {ex.Message}");
             }
         }
 
@@ -152,13 +128,13 @@ namespace DigimonNOAccess
                 // Check if selection changed (name changed)
                 if (currentName != _lastName && !string.IsNullOrEmpty(currentName))
                 {
-                    DebugLogger.Log($"[Genealogy] Selection changed: '{_lastName}' -> '{currentName}'");
+                    DebugLogger.Log($"{LogTag} Selection changed: '{_lastName}' -> '{currentName}'");
 
                     string info = GetCurrentDigimonInfo();
                     if (!string.IsNullOrEmpty(info))
                     {
                         ScreenReader.Say(info);
-                        DebugLogger.Log($"[Genealogy] Announced: {info}");
+                        DebugLogger.Log($"{LogTag} Announced: {info}");
                     }
 
                     UpdateLastValues();
@@ -166,7 +142,7 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[Genealogy] Error checking selection: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error checking selection: {ex.Message}");
             }
         }
 
@@ -215,34 +191,34 @@ namespace DigimonNOAccess
 
             try
             {
-                DebugLogger.Log($"[Genealogy] m_state: {_panel.m_state}");
+                DebugLogger.Log($"{LogTag} m_state: {_panel.m_state}");
 
                 if (_panel.m_name_text == null)
-                    DebugLogger.Log("[Genealogy] m_name_text: NULL");
+                    DebugLogger.Log($"{LogTag} m_name_text: NULL");
                 else
-                    DebugLogger.Log($"[Genealogy] m_name_text: '{_panel.m_name_text.text ?? "(null)"}'");
+                    DebugLogger.Log($"{LogTag} m_name_text: '{_panel.m_name_text.text ?? "(null)"}'");
 
                 if (_panel.m_nature_text == null)
-                    DebugLogger.Log("[Genealogy] m_nature_text: NULL");
+                    DebugLogger.Log($"{LogTag} m_nature_text: NULL");
                 else
-                    DebugLogger.Log($"[Genealogy] m_nature_text: '{_panel.m_nature_text.text ?? "(null)"}'");
+                    DebugLogger.Log($"{LogTag} m_nature_text: '{_panel.m_nature_text.text ?? "(null)"}'");
 
                 if (_panel.m_attr_text == null)
-                    DebugLogger.Log("[Genealogy] m_attr_text: NULL");
+                    DebugLogger.Log($"{LogTag} m_attr_text: NULL");
                 else
-                    DebugLogger.Log($"[Genealogy] m_attr_text: '{_panel.m_attr_text.text ?? "(null)"}'");
+                    DebugLogger.Log($"{LogTag} m_attr_text: '{_panel.m_attr_text.text ?? "(null)"}'");
 
                 if (_panel.m_detail_text == null)
-                    DebugLogger.Log("[Genealogy] m_detail_text: NULL");
+                    DebugLogger.Log($"{LogTag} m_detail_text: NULL");
                 else
-                    DebugLogger.Log($"[Genealogy] m_detail_text: '{_panel.m_detail_text.text ?? "(null)"}'");
+                    DebugLogger.Log($"{LogTag} m_detail_text: '{_panel.m_detail_text.text ?? "(null)"}'");
 
                 // Log selection info
-                DebugLogger.Log($"[Genealogy] m_selectGlowth: {_panel.m_selectGlowth}");
+                DebugLogger.Log($"{LogTag} m_selectGlowth: {_panel.m_selectGlowth}");
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[Genealogy] Error in LogPanelDebug: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error in LogPanelDebug: {ex.Message}");
             }
         }
 
@@ -280,7 +256,7 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[Genealogy] Error reading digimon info: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error reading digimon info: {ex.Message}");
             }
 
             return info;
@@ -289,12 +265,12 @@ namespace DigimonNOAccess
         /// <summary>
         /// Announce current status with full details.
         /// </summary>
-        public void AnnounceStatus()
+        public override void AnnounceStatus()
         {
             if (!IsOpen())
                 return;
 
-            DebugLogger.Log("[Genealogy] === Status Request ===");
+            DebugLogger.Log($"{LogTag} === Status Request ===");
             LogPanelDebug();
 
             string info = GetCurrentDigimonInfo();

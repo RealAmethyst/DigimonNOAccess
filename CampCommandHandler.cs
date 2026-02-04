@@ -6,45 +6,12 @@ namespace DigimonNOAccess
     /// <summary>
     /// Handles accessibility for the camp command menu (rest, feed, etc.)
     /// </summary>
-    public class CampCommandHandler
+    public class CampCommandHandler : HandlerBase<CampCommandPanel>
     {
-        private CampCommandPanel _panel;
-        private bool _wasActive = false;
-        private int _lastCursor = -1;
+        protected override string LogTag => "[CampCommand]";
+        public override int Priority => 55;
 
-        public bool IsOpen()
-        {
-            if (_panel == null)
-            {
-                _panel = Object.FindObjectOfType<CampCommandPanel>();
-            }
-
-            return _panel != null &&
-                   _panel.gameObject != null &&
-                   _panel.gameObject.activeInHierarchy;
-        }
-
-        public void Update()
-        {
-            bool isActive = IsOpen();
-
-            if (isActive && !_wasActive)
-            {
-                OnOpen();
-            }
-            else if (!isActive && _wasActive)
-            {
-                OnClose();
-            }
-            else if (isActive)
-            {
-                CheckCursorChange();
-            }
-
-            _wasActive = isActive;
-        }
-
-        private void OnOpen()
+        protected override void OnOpen()
         {
             _lastCursor = -1;
 
@@ -58,15 +25,18 @@ namespace DigimonNOAccess
             string announcement = AnnouncementBuilder.MenuOpen("Camp Menu", itemText, cursor, total);
             ScreenReader.Say(announcement);
 
-            DebugLogger.Log($"[CampCommand] Menu opened, cursor={cursor}");
+            DebugLogger.Log($"{LogTag} Menu opened, cursor={cursor}");
             _lastCursor = cursor;
         }
 
-        private void OnClose()
+        protected override void OnClose()
         {
-            _panel = null;
-            _lastCursor = -1;
-            DebugLogger.Log("[CampCommand] Menu closed");
+            base.OnClose();
+        }
+
+        protected override void OnUpdate()
+        {
+            CheckCursorChange();
         }
 
         private void CheckCursorChange()
@@ -84,7 +54,7 @@ namespace DigimonNOAccess
                 string announcement = AnnouncementBuilder.CursorPosition(itemText, cursor, total);
                 ScreenReader.Say(announcement);
 
-                DebugLogger.Log($"[CampCommand] Cursor changed: {itemText}");
+                DebugLogger.Log($"{LogTag} Cursor changed: {itemText}");
                 _lastCursor = cursor;
             }
         }
@@ -104,7 +74,7 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[CampCommand] Error getting cursor: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error getting cursor: {ex.Message}");
             }
             return 0;
         }
@@ -125,7 +95,7 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[CampCommand] Error reading text: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error reading text: {ex.Message}");
             }
 
             return AnnouncementBuilder.FallbackItem("Option", index);
@@ -145,7 +115,7 @@ namespace DigimonNOAccess
             return 4;
         }
 
-        public void AnnounceStatus()
+        public override void AnnounceStatus()
         {
             if (!IsOpen())
                 return;

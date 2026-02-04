@@ -6,16 +6,14 @@ namespace DigimonNOAccess
     /// <summary>
     /// Handles accessibility for the character/gender selection screen in New Game.
     /// </summary>
-    public class CharaSelectHandler
+    public class CharaSelectHandler : HandlerBase<uCharaSelectPanel>
     {
-        private uCharaSelectPanel _panel;
-        private bool _wasActive = false;
+        protected override string LogTag => "[CharaSelect]";
+        public override int Priority => 40;
+
         private int _lastGender = -1;
 
-        /// <summary>
-        /// Check if the character select panel is currently open.
-        /// </summary>
-        public bool IsOpen()
+        public override bool IsOpen()
         {
             _panel = Object.FindObjectOfType<uCharaSelectPanel>();
 
@@ -24,33 +22,7 @@ namespace DigimonNOAccess
                    _panel.gameObject.activeInHierarchy;
         }
 
-        /// <summary>
-        /// Called every frame to track state.
-        /// </summary>
-        public void Update()
-        {
-            bool isActive = IsOpen();
-
-            // Panel just opened
-            if (isActive && !_wasActive)
-            {
-                OnOpen();
-            }
-            // Panel just closed
-            else if (!isActive && _wasActive)
-            {
-                OnClose();
-            }
-            // Panel is active, check for selection changes
-            else if (isActive)
-            {
-                CheckSelectionChange();
-            }
-
-            _wasActive = isActive;
-        }
-
-        private void OnOpen()
+        protected override void OnOpen()
         {
             _lastGender = -1;
 
@@ -64,16 +36,20 @@ namespace DigimonNOAccess
             string announcement = $"Choose your character. Left and right to change gender. {genderName} selected";
 
             ScreenReader.Say(announcement);
-            DebugLogger.Log($"[CharaSelect] Opened: gender={gender}");
+            DebugLogger.Log($"{LogTag} Opened: gender={gender}");
 
             _lastGender = gender;
         }
 
-        private void OnClose()
+        protected override void OnClose()
         {
-            _panel = null;
             _lastGender = -1;
-            DebugLogger.Log("[CharaSelect] Closed");
+            base.OnClose();
+        }
+
+        protected override void OnUpdate()
+        {
+            CheckSelectionChange();
         }
 
         private void CheckSelectionChange()
@@ -86,7 +62,7 @@ namespace DigimonNOAccess
             {
                 string genderName = GetGenderName(gender);
                 ScreenReader.Say(genderName);
-                DebugLogger.Log($"[CharaSelect] Selection changed: {gender} = {genderName}");
+                DebugLogger.Log($"{LogTag} Selection changed: {gender} = {genderName}");
                 _lastGender = gender;
             }
         }
@@ -104,7 +80,7 @@ namespace DigimonNOAccess
         /// <summary>
         /// Announce current status.
         /// </summary>
-        public void AnnounceStatus()
+        public override void AnnounceStatus()
         {
             if (!IsOpen())
                 return;
