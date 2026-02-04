@@ -1,5 +1,4 @@
 using Il2Cpp;
-using MelonLoader;
 using UnityEngine;
 
 namespace DigimonNOAccess
@@ -7,8 +6,10 @@ namespace DigimonNOAccess
     /// <summary>
     /// Handles accessibility for the save/load menu
     /// </summary>
-    public class SavePanelHandler
+    public class SavePanelHandler : IAccessibilityHandler
     {
+        public int Priority => 58;
+
         private uSavePanelCommand _panel;
         private bool _wasActive = false;
         private int _lastCursor = -1;
@@ -185,7 +186,10 @@ namespace DigimonNOAccess
                     return _panel.m_KeyCursorController.m_DataMax;
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[SavePanel] Error in GetSlotCount: {ex.Message}");
+            }
             return 3;
         }
 
@@ -243,7 +247,7 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[SavePanel] Error getting slot info: {ex.Message}");
             }
 
-            return $"Slot {slotIndex + 1}";
+            return AnnouncementBuilder.FallbackItem("Slot", slotIndex);
         }
 
         private string GetSaveItemDetails(uSavePanelItemSaveItem item)

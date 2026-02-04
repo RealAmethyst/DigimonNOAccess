@@ -7,19 +7,17 @@ namespace DigimonNOAccess
     /// Handles accessibility for the Digi-Egg selection screen (rebirth/new game).
     /// Uses uRebirthPanel which displays egg selection UI.
     /// </summary>
-    public class DigiEggHandler
+    public class DigiEggHandler : HandlerBase<uRebirthPanel>
     {
-        private uRebirthPanel _panel;
-        private bool _wasActive = false;
+        protected override string LogTag => "[DigiEgg]";
+        public override int Priority => 40;
+
         private int _lastEggIndex = -1;
         private int _lastState = -1;
         private string _lastCaption1 = "";
         private string _lastCaption2 = "";
 
-        /// <summary>
-        /// Check if the egg selection panel is currently open.
-        /// </summary>
-        public bool IsOpen()
+        public override bool IsOpen()
         {
             _panel = Object.FindObjectOfType<uRebirthPanel>();
 
@@ -36,35 +34,7 @@ namespace DigimonNOAccess
             }
         }
 
-        /// <summary>
-        /// Called every frame to track state.
-        /// </summary>
-        public void Update()
-        {
-            bool isActive = IsOpen();
-
-            // Panel just opened
-            if (isActive && !_wasActive)
-            {
-                OnOpen();
-            }
-            // Panel just closed
-            else if (!isActive && _wasActive)
-            {
-                OnClose();
-            }
-            // Panel is active, check for selection changes
-            else if (isActive)
-            {
-                CheckSelectionChange();
-                CheckStateChange();
-                CheckCaptionChange();
-            }
-
-            _wasActive = isActive;
-        }
-
-        private void OnOpen()
+        protected override void OnOpen()
         {
             _lastEggIndex = -1;
             _lastState = -1;
@@ -78,9 +48,9 @@ namespace DigimonNOAccess
             int eggMax = _panel.eggMax;
 
             // Debug: Log all panel state
-            DebugLogger.Log($"[DigiEgg] === Panel Opened ===");
-            DebugLogger.Log($"[DigiEgg] selectEgg={eggIndex}, eggMax={eggMax}");
-            DebugLogger.Log($"[DigiEgg] m_state={_panel.m_state}");
+            DebugLogger.Log($"{LogTag} === Panel Opened ===");
+            DebugLogger.Log($"{LogTag} selectEgg={eggIndex}, eggMax={eggMax}");
+            DebugLogger.Log($"{LogTag} m_state={_panel.m_state}");
 
             // Debug: Log text field availability and values
             LogTextFieldDebug();
@@ -95,20 +65,26 @@ namespace DigimonNOAccess
             }
 
             ScreenReader.Say(announcement);
-            DebugLogger.Log($"[DigiEgg] Announced: {announcement}");
+            DebugLogger.Log($"{LogTag} Announced: {announcement}");
 
             _lastEggIndex = eggIndex;
             _lastState = _panel.m_state;
         }
 
-        private void OnClose()
+        protected override void OnClose()
         {
-            _panel = null;
             _lastEggIndex = -1;
             _lastState = -1;
             _lastCaption1 = "";
             _lastCaption2 = "";
-            DebugLogger.Log("[DigiEgg] Closed");
+            base.OnClose();
+        }
+
+        protected override void OnUpdate()
+        {
+            CheckSelectionChange();
+            CheckStateChange();
+            CheckCaptionChange();
         }
 
         private void CheckSelectionChange()
@@ -122,7 +98,7 @@ namespace DigimonNOAccess
                 int eggMax = _panel.eggMax;
 
                 // Debug: Log text field values on each change
-                DebugLogger.Log($"[DigiEgg] === Selection Changed ===");
+                DebugLogger.Log($"{LogTag} === Selection Changed ===");
                 LogTextFieldDebug();
 
                 string eggInfo = GetCurrentEggInfo();
@@ -134,7 +110,7 @@ namespace DigimonNOAccess
                 }
 
                 ScreenReader.Say(announcement);
-                DebugLogger.Log($"[DigiEgg] Announced: {announcement}");
+                DebugLogger.Log($"{LogTag} Announced: {announcement}");
 
                 _lastEggIndex = eggIndex;
             }
@@ -148,7 +124,7 @@ namespace DigimonNOAccess
             int state = _panel.m_state;
             if (state != _lastState)
             {
-                DebugLogger.Log($"[DigiEgg] State changed: {_lastState} -> {state}");
+                DebugLogger.Log($"{LogTag} State changed: {_lastState} -> {state}");
                 _lastState = state;
             }
         }
@@ -166,7 +142,7 @@ namespace DigimonNOAccess
                     string caption1 = _panel.m_caption1.m_text.text ?? "";
                     if (caption1 != _lastCaption1 && !string.IsNullOrEmpty(caption1))
                     {
-                        DebugLogger.Log($"[DigiEgg] Caption1 changed: '{caption1}'");
+                        DebugLogger.Log($"{LogTag} Caption1 changed: '{caption1}'");
                         _lastCaption1 = caption1;
                     }
                 }
@@ -177,14 +153,14 @@ namespace DigimonNOAccess
                     string caption2 = _panel.m_caption2.m_text.text ?? "";
                     if (caption2 != _lastCaption2 && !string.IsNullOrEmpty(caption2))
                     {
-                        DebugLogger.Log($"[DigiEgg] Caption2 changed: '{caption2}'");
+                        DebugLogger.Log($"{LogTag} Caption2 changed: '{caption2}'");
                         _lastCaption2 = caption2;
                     }
                 }
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[DigiEgg] Error checking captions: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error checking captions: {ex.Message}");
             }
         }
 
@@ -197,64 +173,64 @@ namespace DigimonNOAccess
             {
                 // Headline text
                 if (_panel.m_headLineText == null)
-                    DebugLogger.Log("[DigiEgg] m_headLineText: NULL");
+                    DebugLogger.Log($"{LogTag} m_headLineText: NULL");
                 else
-                    DebugLogger.Log($"[DigiEgg] m_headLineText: '{_panel.m_headLineText.text ?? "(null text)"}'");
+                    DebugLogger.Log($"{LogTag} m_headLineText: '{_panel.m_headLineText.text ?? "(null text)"}'");
 
                 // Nature text
                 if (_panel.m_natureText == null)
-                    DebugLogger.Log("[DigiEgg] m_natureText: NULL");
+                    DebugLogger.Log($"{LogTag} m_natureText: NULL");
                 else
-                    DebugLogger.Log($"[DigiEgg] m_natureText: '{_panel.m_natureText.text ?? "(null text)"}'");
+                    DebugLogger.Log($"{LogTag} m_natureText: '{_panel.m_natureText.text ?? "(null text)"}'");
 
                 // Attribute text
                 if (_panel.m_attrText == null)
-                    DebugLogger.Log("[DigiEgg] m_attrText: NULL");
+                    DebugLogger.Log($"{LogTag} m_attrText: NULL");
                 else
-                    DebugLogger.Log($"[DigiEgg] m_attrText: '{_panel.m_attrText.text ?? "(null text)"}'");
+                    DebugLogger.Log($"{LogTag} m_attrText: '{_panel.m_attrText.text ?? "(null text)"}'");
 
                 // Jijimon text
                 if (_panel.m_jijimonText == null)
-                    DebugLogger.Log("[DigiEgg] m_jijimonText: NULL");
+                    DebugLogger.Log($"{LogTag} m_jijimonText: NULL");
                 else
-                    DebugLogger.Log($"[DigiEgg] m_jijimonText: '{_panel.m_jijimonText.text ?? "(null text)"}'");
+                    DebugLogger.Log($"{LogTag} m_jijimonText: '{_panel.m_jijimonText.text ?? "(null text)"}'");
 
                 // Also check m_text field
                 if (_panel.m_text == null)
-                    DebugLogger.Log("[DigiEgg] m_text: NULL");
+                    DebugLogger.Log($"{LogTag} m_text: NULL");
                 else
-                    DebugLogger.Log($"[DigiEgg] m_text: '{_panel.m_text.text ?? "(null text)"}'");
+                    DebugLogger.Log($"{LogTag} m_text: '{_panel.m_text.text ?? "(null text)"}'");
 
                 // Check simple genealogy
                 if (_panel.m_simple_genealogy == null)
-                    DebugLogger.Log("[DigiEgg] m_simple_genealogy: NULL");
+                    DebugLogger.Log($"{LogTag} m_simple_genealogy: NULL");
                 else
-                    DebugLogger.Log($"[DigiEgg] m_simple_genealogy: exists, active={_panel.m_simple_genealogy.gameObject.activeInHierarchy}");
+                    DebugLogger.Log($"{LogTag} m_simple_genealogy: exists, active={_panel.m_simple_genealogy.gameObject.activeInHierarchy}");
 
                 // Check full genealogy
                 if (_panel.m_genealogy == null)
-                    DebugLogger.Log("[DigiEgg] m_genealogy: NULL");
+                    DebugLogger.Log($"{LogTag} m_genealogy: NULL");
                 else
                 {
-                    DebugLogger.Log($"[DigiEgg] m_genealogy: exists, active={_panel.m_genealogy.gameObject.activeInHierarchy}");
+                    DebugLogger.Log($"{LogTag} m_genealogy: exists, active={_panel.m_genealogy.gameObject.activeInHierarchy}");
                     // If genealogy has text fields, log them
                     if (_panel.m_genealogy.m_name_text != null)
-                        DebugLogger.Log($"[DigiEgg] m_genealogy.m_name_text: '{_panel.m_genealogy.m_name_text.text ?? "(null)"}'");
+                        DebugLogger.Log($"{LogTag} m_genealogy.m_name_text: '{_panel.m_genealogy.m_name_text.text ?? "(null)"}'");
                     if (_panel.m_genealogy.m_nature_text != null)
-                        DebugLogger.Log($"[DigiEgg] m_genealogy.m_nature_text: '{_panel.m_genealogy.m_nature_text.text ?? "(null)"}'");
+                        DebugLogger.Log($"{LogTag} m_genealogy.m_nature_text: '{_panel.m_genealogy.m_nature_text.text ?? "(null)"}'");
                     if (_panel.m_genealogy.m_attr_text != null)
-                        DebugLogger.Log($"[DigiEgg] m_genealogy.m_attr_text: '{_panel.m_genealogy.m_attr_text.text ?? "(null)"}'");
+                        DebugLogger.Log($"{LogTag} m_genealogy.m_attr_text: '{_panel.m_genealogy.m_attr_text.text ?? "(null)"}'");
                 }
 
                 // Check rebirth message
                 if (_panel.m_rebirth_message == null)
-                    DebugLogger.Log("[DigiEgg] m_rebirth_message: NULL");
+                    DebugLogger.Log($"{LogTag} m_rebirth_message: NULL");
                 else
-                    DebugLogger.Log($"[DigiEgg] m_rebirth_message: exists, active={_panel.m_rebirth_message.gameObject.activeInHierarchy}");
+                    DebugLogger.Log($"{LogTag} m_rebirth_message: exists, active={_panel.m_rebirth_message.gameObject.activeInHierarchy}");
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[DigiEgg] Error in LogTextFieldDebug: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error in LogTextFieldDebug: {ex.Message}");
             }
         }
 
@@ -306,7 +282,7 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[DigiEgg] Error reading egg info: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error reading egg info: {ex.Message}");
             }
 
             return info;
@@ -315,13 +291,13 @@ namespace DigimonNOAccess
         /// <summary>
         /// Announce current status.
         /// </summary>
-        public void AnnounceStatus()
+        public override void AnnounceStatus()
         {
             if (!IsOpen())
                 return;
 
             // Force debug logging
-            DebugLogger.Log("[DigiEgg] === Status Request ===");
+            DebugLogger.Log($"{LogTag} === Status Request ===");
             LogTextFieldDebug();
 
             int eggIndex = _panel.selectEgg;

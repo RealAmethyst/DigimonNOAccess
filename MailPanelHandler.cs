@@ -1,5 +1,4 @@
 using Il2Cpp;
-using MelonLoader;
 using UnityEngine;
 
 namespace DigimonNOAccess
@@ -7,48 +6,14 @@ namespace DigimonNOAccess
     /// <summary>
     /// Handles accessibility for the mail/digital messenger panel
     /// </summary>
-    public class MailPanelHandler
+    public class MailPanelHandler : HandlerBase<uMailPanel>
     {
-        private uMailPanel _panel;
-        private bool _wasActive = false;
-        private int _lastCursor = -1;
+        protected override string LogTag => "[MailPanel]";
+        public override int Priority => 65;
+
         private int _lastTab = -1;
 
-        public bool IsOpen()
-        {
-            if (_panel == null)
-            {
-                _panel = Object.FindObjectOfType<uMailPanel>();
-            }
-
-            if (_panel == null)
-                return false;
-
-            return _panel.gameObject != null && _panel.gameObject.activeInHierarchy;
-        }
-
-        public void Update()
-        {
-            bool isActive = IsOpen();
-
-            if (isActive && !_wasActive)
-            {
-                OnOpen();
-            }
-            else if (!isActive && _wasActive)
-            {
-                OnClose();
-            }
-            else if (isActive)
-            {
-                CheckTabChange();
-                CheckCursorChange();
-            }
-
-            _wasActive = isActive;
-        }
-
-        private void OnOpen()
+        protected override void OnOpen()
         {
             _lastCursor = -1;
             _lastTab = -1;
@@ -75,15 +40,19 @@ namespace DigimonNOAccess
             }
 
             ScreenReader.Say(announcement);
-            DebugLogger.Log($"[MailPanel] Opened, tab={tab}, cursor={cursor}");
+            DebugLogger.Log($"{LogTag} Opened, tab={tab}, cursor={cursor}");
         }
 
-        private void OnClose()
+        protected override void OnClose()
         {
-            _panel = null;
-            _lastCursor = -1;
             _lastTab = -1;
-            DebugLogger.Log("[MailPanel] Closed");
+            base.OnClose();
+        }
+
+        protected override void OnUpdate()
+        {
+            CheckTabChange();
+            CheckCursorChange();
         }
 
         private void CheckTabChange()
@@ -112,7 +81,7 @@ namespace DigimonNOAccess
                 }
 
                 ScreenReader.Say(announcement);
-                DebugLogger.Log($"[MailPanel] Tab changed to {tabName}");
+                DebugLogger.Log($"{LogTag} Tab changed to {tabName}");
                 _lastTab = currentTab;
             }
             else if (_lastTab < 0)
@@ -141,7 +110,7 @@ namespace DigimonNOAccess
                     ScreenReader.Say($"{currentCursor + 1} of {total}");
                 }
 
-                DebugLogger.Log($"[MailPanel] Cursor changed to {currentCursor}");
+                DebugLogger.Log($"{LogTag} Cursor changed to {currentCursor}");
                 _lastCursor = currentCursor;
             }
         }
@@ -170,7 +139,7 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[MailPanel] Error getting tab name: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error getting tab name: {ex.Message}");
             }
 
             // Fallback tab names
@@ -180,7 +149,7 @@ namespace DigimonNOAccess
                 1 => "Main Quest",
                 2 => "Sub Quest",
                 3 => "Information",
-                _ => $"Folder {tabIndex + 1}"
+                _ => AnnouncementBuilder.FallbackItem("Folder", tabIndex)
             };
         }
 
@@ -196,12 +165,12 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[MailPanel] Error getting mail count: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error getting mail count: {ex.Message}");
             }
             return 0;
         }
 
-        public void AnnounceStatus()
+        public override void AnnounceStatus()
         {
             if (!IsOpen())
                 return;

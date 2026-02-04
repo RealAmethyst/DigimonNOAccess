@@ -10,18 +10,25 @@ namespace DigimonNOAccess
     /// detects them and announces the current selection.
     /// Uses TalkMain.m_cursor for accurate cursor tracking.
     /// </summary>
-    public class DialogChoiceHandler
+    public class DialogChoiceHandler : IAccessibilityHandler
     {
+        public int Priority => 15;
+
         private EventWindowPanel _panel;
         private TalkMain _talkMain;
-        private bool _wasChoicesActive = false;
+        private bool _wasActive = false;
         private int _lastChoiceCount = 0;
         private string _lastChoice0 = "";
         private string _lastChoice1 = "";
         private string _lastChoice2 = "";
-        private int _lastCursorPosition = -1;
+        private int _lastCursor = -1;
         private int _pollCounter = 0;
         private const int POLL_INTERVAL = 3; // Check every N frames when choices active
+
+        /// <summary>
+        /// IAccessibilityHandler.IsOpen() - delegates to IsChoicesActive().
+        /// </summary>
+        public bool IsOpen() => IsChoicesActive();
 
         /// <summary>
         /// Check if dialog choices are currently displayed.
@@ -112,12 +119,12 @@ namespace DigimonNOAccess
             bool isActive = IsChoicesActive();
 
             // Choices just appeared
-            if (isActive && !_wasChoicesActive)
+            if (isActive && !_wasActive)
             {
                 OnChoicesOpened();
             }
             // Choices just closed
-            else if (!isActive && _wasChoicesActive)
+            else if (!isActive && _wasActive)
             {
                 OnChoicesClosed();
             }
@@ -133,12 +140,12 @@ namespace DigimonNOAccess
                 }
             }
 
-            _wasChoicesActive = isActive;
+            _wasActive = isActive;
         }
 
         private void OnChoicesOpened()
         {
-            _lastCursorPosition = -1;
+            _lastCursor = -1;
             _lastChoice0 = "";
             _lastChoice1 = "";
             _lastChoice2 = "";
@@ -169,7 +176,7 @@ namespace DigimonNOAccess
 
             // Get cursor position from TalkMain
             int cursorPos = GetCursorPosition();
-            _lastCursorPosition = cursorPos;
+            _lastCursor = cursorPos;
 
             // Build announcement
             string announcement = "Dialog choices. ";
@@ -191,7 +198,7 @@ namespace DigimonNOAccess
         {
             _panel = null;
             _talkMain = null;
-            _lastCursorPosition = -1;
+            _lastCursor = -1;
             _lastChoiceCount = 0;
             DebugLogger.Log("[DialogChoice] Choices closed");
         }
@@ -205,9 +212,9 @@ namespace DigimonNOAccess
             {
                 int cursorPos = GetCursorPosition();
 
-                if (cursorPos != _lastCursorPosition && cursorPos >= 0)
+                if (cursorPos != _lastCursor && cursorPos >= 0)
                 {
-                    DebugLogger.Log($"[DialogChoice] Cursor changed: {_lastCursorPosition} -> {cursorPos} (TalkMain.m_cursor)");
+                    DebugLogger.Log($"[DialogChoice] Cursor changed: {_lastCursor} -> {cursorPos} (TalkMain.m_cursor)");
 
                     var choices = GetChoiceTexts();
                     if (cursorPos < choices.Length)
@@ -221,7 +228,7 @@ namespace DigimonNOAccess
                         DebugLogger.Log($"[DialogChoice] Cursor {cursorPos} out of range for {choices.Length} choices");
                     }
 
-                    _lastCursorPosition = cursorPos;
+                    _lastCursor = cursorPos;
                 }
             }
             catch (System.Exception ex)

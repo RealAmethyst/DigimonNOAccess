@@ -1,5 +1,4 @@
 using Il2Cpp;
-using MelonLoader;
 using UnityEngine;
 
 namespace DigimonNOAccess
@@ -7,8 +6,10 @@ namespace DigimonNOAccess
     /// <summary>
     /// Handles accessibility for the storage panel (item storage management)
     /// </summary>
-    public class StoragePanelHandler
+    public class StoragePanelHandler : IAccessibilityHandler
     {
+        public int Priority => 65;
+
         private uStoragePanel _panel;
         private bool _wasActive = false;
         private int _lastCursorL = -1;
@@ -122,7 +123,7 @@ namespace DigimonNOAccess
                 }
                 else
                 {
-                    announcement = $"{itemInfo}, {cursor + 1} of {total}";
+                    announcement = AnnouncementBuilder.CursorPosition(itemInfo, cursor, total);
                 }
 
                 ScreenReader.Say(announcement);
@@ -162,7 +163,7 @@ namespace DigimonNOAccess
 
                 int cursor = panel.m_selectNo;
                 string itemInfo = GetItemInfo(panel);
-                return $"{side}: {storageType}, {itemInfo}, {cursor + 1} of {total}";
+                return $"{side}: {storageType}, {AnnouncementBuilder.CursorPosition(itemInfo, cursor, total)}";
             }
             catch (System.Exception ex)
             {
@@ -193,7 +194,10 @@ namespace DigimonNOAccess
                     return itemList.Count;
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[StoragePanel] Error in GetItemCount: {ex.Message}");
+            }
             return 0;
         }
 

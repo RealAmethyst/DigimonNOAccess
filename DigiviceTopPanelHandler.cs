@@ -1,5 +1,4 @@
 using Il2Cpp;
-using MelonLoader;
 using UnityEngine;
 
 namespace DigimonNOAccess
@@ -8,13 +7,13 @@ namespace DigimonNOAccess
     /// Handles accessibility for the main Digivice menu hub
     /// This is the central menu that connects to Partner, Tamer, Item, Map, Mail, Library, System, and Save
     /// </summary>
-    public class DigiviceTopPanelHandler
+    public class DigiviceTopPanelHandler : HandlerBase<uDigiviceTopPanel>
     {
-        private uDigiviceTopPanel _panel;
-        private bool _wasActive = false;
-        private int _lastCommandIndex = -1;
+        protected override string LogTag => "[DigiviceTopPanel]";
+        public override int Priority => 50;
 
-        public bool IsOpen()
+
+        public override bool IsOpen()
         {
             if (_panel == null)
             {
@@ -35,47 +34,31 @@ namespace DigimonNOAccess
             }
         }
 
-        public void Update()
+        protected override void OnOpen()
         {
-            bool isActive = IsOpen();
-
-            if (isActive && !_wasActive)
-            {
-                OnOpen();
-            }
-            else if (!isActive && _wasActive)
-            {
-                OnClose();
-            }
-            else if (isActive)
-            {
-                CheckCommandChange();
-            }
-
-            _wasActive = isActive;
-        }
-
-        private void OnOpen()
-        {
-            _lastCommandIndex = -1;
+            _lastCursor = -1;
 
             if (_panel == null)
                 return;
 
             int commandIndex = GetCurrentCommandIndex();
-            _lastCommandIndex = commandIndex;
+            _lastCursor = commandIndex;
 
             string commandName = GetCommandName(commandIndex);
             int total = 8; // Partner, Tamer, Item, Map, DigiMessenger, Library, System, Save
-            ScreenReader.Say($"Digivice menu, {commandName}, {commandIndex + 1} of {total}");
-            DebugLogger.Log($"[DigiviceTopPanel] Opened, command={commandIndex} ({commandName})");
+            ScreenReader.Say($"Digivice menu, {AnnouncementBuilder.CursorPosition(commandName, commandIndex, total)}");
+            DebugLogger.Log($"{LogTag} Opened, command={commandIndex} ({commandName})");
         }
 
-        private void OnClose()
+        protected override void OnClose()
         {
-            _panel = null;
-            _lastCommandIndex = -1;
-            DebugLogger.Log("[DigiviceTopPanel] Closed");
+            _lastCursor = -1;
+            base.OnClose();
+        }
+
+        protected override void OnUpdate()
+        {
+            CheckCommandChange();
         }
 
         private void CheckCommandChange()
@@ -85,14 +68,14 @@ namespace DigimonNOAccess
 
             int currentCommand = GetCurrentCommandIndex();
 
-            if (currentCommand != _lastCommandIndex && _lastCommandIndex >= 0)
+            if (currentCommand != _lastCursor && _lastCursor >= 0)
             {
                 string commandName = GetCommandName(currentCommand);
                 int total = 8;
-                ScreenReader.Say($"{commandName}, {currentCommand + 1} of {total}");
-                DebugLogger.Log($"[DigiviceTopPanel] Command changed to {commandName}");
+                ScreenReader.Say(AnnouncementBuilder.CursorPosition(commandName, currentCommand, total));
+                DebugLogger.Log($"{LogTag} Command changed to {commandName}");
             }
-            _lastCommandIndex = currentCommand;
+            _lastCursor = currentCommand;
         }
 
         private int GetCurrentCommandIndex()
@@ -107,7 +90,7 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[DigiviceTopPanel] Error getting command index: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error getting command index: {ex.Message}");
             }
             return 0;
         }
@@ -124,11 +107,11 @@ namespace DigimonNOAccess
                 5 => "Library",
                 6 => "System",
                 7 => "Save",
-                _ => $"Option {commandIndex + 1}"
+                _ => AnnouncementBuilder.FallbackItem("Option", commandIndex)
             };
         }
 
-        public void AnnounceStatus()
+        public override void AnnounceStatus()
         {
             if (!IsOpen())
                 return;
@@ -136,7 +119,7 @@ namespace DigimonNOAccess
             int commandIndex = GetCurrentCommandIndex();
             string commandName = GetCommandName(commandIndex);
             int total = 8;
-            ScreenReader.Say($"Digivice menu, {commandName}, {commandIndex + 1} of {total}");
+            ScreenReader.Say($"Digivice menu, {AnnouncementBuilder.CursorPosition(commandName, commandIndex, total)}");
         }
     }
 }

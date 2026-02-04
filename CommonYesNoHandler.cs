@@ -7,8 +7,10 @@ namespace DigimonNOAccess
     /// Handles accessibility for the common Yes/No confirmation dialog (uCommonYesNoWindow).
     /// This dialog appears when confirming actions like selecting an egg.
     /// </summary>
-    public class CommonYesNoHandler
+    public class CommonYesNoHandler : IAccessibilityHandler
     {
+        public int Priority => 10;
+
         private uCommonYesNoWindow _window;
         private bool _wasActive = false;
         private uCommonYesNoWindow.CursorIndex _lastCursorIndex = uCommonYesNoWindow.CursorIndex.Yes;

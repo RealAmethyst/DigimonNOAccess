@@ -23,7 +23,7 @@ namespace DigimonNOAccess
     public static class ModInputManager
     {
         // SDL3 availability
-        private static bool _useSDL2 = false;
+        private static bool _useSDL = false;
 
         // Registered actions with both keyboard and controller bindings
         private static Dictionary<string, ActionBindings> _actions = new Dictionary<string, ActionBindings>();
@@ -44,8 +44,8 @@ namespace DigimonNOAccess
             _configPath = System.IO.Path.Combine(modFolderPath, "hotkeys.ini");
 
             // Try to initialize SDL3 for PlayStation controller support
-            _useSDL2 = SDL2Controller.Initialize();
-            if (_useSDL2)
+            _useSDL = SDLController.Initialize();
+            if (_useSDL)
             {
                 DebugLogger.Log("[ModInputManager] SDL3 available - PlayStation controller support enabled");
             }
@@ -72,9 +72,9 @@ namespace DigimonNOAccess
             if (!_initialized) return;
 
             // Update SDL3 controller state if available
-            if (_useSDL2)
+            if (_useSDL)
             {
-                SDL2Controller.Update();
+                SDLController.Update();
             }
 
             // Swap frame buffers
@@ -94,15 +94,15 @@ namespace DigimonNOAccess
         /// <summary>
         /// Check if SDL3 is being used for controller input.
         /// </summary>
-        public static bool IsUsingSDL2 => _useSDL2;
+        public static bool IsUsingSDL => _useSDL;
 
         /// <summary>
         /// Get the name of the connected controller (SDL3 only).
         /// </summary>
         public static string GetControllerName()
         {
-            if (_useSDL2 && SDL2Controller.IsAvailable)
-                return SDL2Controller.ControllerName;
+            if (_useSDL && SDLController.IsAvailable)
+                return SDLController.ControllerName;
             return "Game Default (PadManager)";
         }
 
@@ -295,53 +295,53 @@ namespace DigimonNOAccess
         /// </summary>
         private static bool IsControllerButtonHeld(ControllerButton button)
         {
-            if (_useSDL2 && SDL2Controller.IsAvailable)
+            if (_useSDL && SDLController.IsAvailable)
             {
-                return IsControllerButtonHeldSDL2(button);
+                return IsControllerButtonHeldSDL(button);
             }
             return IsControllerButtonHeldPadManager(button);
         }
 
-        private static bool IsControllerButtonHeldSDL2(ControllerButton button)
+        private static bool IsControllerButtonHeldSDL(ControllerButton button)
         {
             switch (button)
             {
                 case ControllerButton.DPadUp:
-                    return SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.DPadUp);
+                    return SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.DPadUp);
                 case ControllerButton.DPadDown:
-                    return SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.DPadDown);
+                    return SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.DPadDown);
                 case ControllerButton.DPadLeft:
-                    return SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.DPadLeft);
+                    return SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.DPadLeft);
                 case ControllerButton.DPadRight:
-                    return SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.DPadRight);
+                    return SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.DPadRight);
                 case ControllerButton.A:
-                    return SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.A);
+                    return SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.A);
                 case ControllerButton.B:
-                    return SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.B);
+                    return SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.B);
                 case ControllerButton.X:
-                    return SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.X);
+                    return SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.X);
                 case ControllerButton.Y:
-                    return SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.Y);
+                    return SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.Y);
                 case ControllerButton.LB:
-                    return SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.LeftShoulder);
+                    return SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.LeftShoulder);
                 case ControllerButton.RB:
-                    return SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.RightShoulder);
+                    return SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.RightShoulder);
                 case ControllerButton.LT:
-                    return SDL2Controller.IsLeftTriggerHeld();
+                    return SDLController.IsLeftTriggerHeld();
                 case ControllerButton.RT:
-                    return SDL2Controller.IsRightTriggerHeld();
+                    return SDLController.IsRightTriggerHeld();
                 case ControllerButton.Start:
-                    return SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.Start);
+                    return SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.Start);
                 case ControllerButton.Select:
-                    return SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.Back);
+                    return SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.Back);
                 case ControllerButton.RStickUp:
-                    return SDL2Controller.IsRightStickUp();
+                    return SDLController.IsRightStickUp();
                 case ControllerButton.RStickDown:
-                    return SDL2Controller.IsRightStickDown();
+                    return SDLController.IsRightStickDown();
                 case ControllerButton.RStickLeft:
-                    return SDL2Controller.IsRightStickLeft();
+                    return SDLController.IsRightStickLeft();
                 case ControllerButton.RStickRight:
-                    return SDL2Controller.IsRightStickRight();
+                    return SDLController.IsRightStickRight();
                 case ControllerButton.LStickUp:
                 case ControllerButton.LStickDown:
                 case ControllerButton.LStickLeft:
@@ -410,53 +410,53 @@ namespace DigimonNOAccess
         /// </summary>
         private static bool IsControllerButtonTriggered(ControllerButton button)
         {
-            if (_useSDL2 && SDL2Controller.IsAvailable)
+            if (_useSDL && SDLController.IsAvailable)
             {
-                return IsControllerButtonTriggeredSDL2(button);
+                return IsControllerButtonTriggeredSDL(button);
             }
             return IsControllerButtonTriggeredPadManager(button);
         }
 
-        private static bool IsControllerButtonTriggeredSDL2(ControllerButton button)
+        private static bool IsControllerButtonTriggeredSDL(ControllerButton button)
         {
             switch (button)
             {
                 case ControllerButton.DPadUp:
-                    return SDL2Controller.IsButtonTriggered(SDL2Controller.SDL_GameControllerButton.DPadUp);
+                    return SDLController.IsButtonTriggered(SDLController.SDL_GameControllerButton.DPadUp);
                 case ControllerButton.DPadDown:
-                    return SDL2Controller.IsButtonTriggered(SDL2Controller.SDL_GameControllerButton.DPadDown);
+                    return SDLController.IsButtonTriggered(SDLController.SDL_GameControllerButton.DPadDown);
                 case ControllerButton.DPadLeft:
-                    return SDL2Controller.IsButtonTriggered(SDL2Controller.SDL_GameControllerButton.DPadLeft);
+                    return SDLController.IsButtonTriggered(SDLController.SDL_GameControllerButton.DPadLeft);
                 case ControllerButton.DPadRight:
-                    return SDL2Controller.IsButtonTriggered(SDL2Controller.SDL_GameControllerButton.DPadRight);
+                    return SDLController.IsButtonTriggered(SDLController.SDL_GameControllerButton.DPadRight);
                 case ControllerButton.A:
-                    return SDL2Controller.IsButtonTriggered(SDL2Controller.SDL_GameControllerButton.A);
+                    return SDLController.IsButtonTriggered(SDLController.SDL_GameControllerButton.A);
                 case ControllerButton.B:
-                    return SDL2Controller.IsButtonTriggered(SDL2Controller.SDL_GameControllerButton.B);
+                    return SDLController.IsButtonTriggered(SDLController.SDL_GameControllerButton.B);
                 case ControllerButton.X:
-                    return SDL2Controller.IsButtonTriggered(SDL2Controller.SDL_GameControllerButton.X);
+                    return SDLController.IsButtonTriggered(SDLController.SDL_GameControllerButton.X);
                 case ControllerButton.Y:
-                    return SDL2Controller.IsButtonTriggered(SDL2Controller.SDL_GameControllerButton.Y);
+                    return SDLController.IsButtonTriggered(SDLController.SDL_GameControllerButton.Y);
                 case ControllerButton.LB:
-                    return SDL2Controller.IsButtonTriggered(SDL2Controller.SDL_GameControllerButton.LeftShoulder);
+                    return SDLController.IsButtonTriggered(SDLController.SDL_GameControllerButton.LeftShoulder);
                 case ControllerButton.RB:
-                    return SDL2Controller.IsButtonTriggered(SDL2Controller.SDL_GameControllerButton.RightShoulder);
+                    return SDLController.IsButtonTriggered(SDLController.SDL_GameControllerButton.RightShoulder);
                 case ControllerButton.LT:
-                    return SDL2Controller.IsLeftTriggerTriggered();
+                    return SDLController.IsLeftTriggerTriggered();
                 case ControllerButton.RT:
-                    return SDL2Controller.IsRightTriggerTriggered();
+                    return SDLController.IsRightTriggerTriggered();
                 case ControllerButton.Start:
-                    return SDL2Controller.IsButtonTriggered(SDL2Controller.SDL_GameControllerButton.Start);
+                    return SDLController.IsButtonTriggered(SDLController.SDL_GameControllerButton.Start);
                 case ControllerButton.Select:
-                    return SDL2Controller.IsButtonTriggered(SDL2Controller.SDL_GameControllerButton.Back);
+                    return SDLController.IsButtonTriggered(SDLController.SDL_GameControllerButton.Back);
                 case ControllerButton.RStickUp:
-                    return SDL2Controller.IsRightStickUpTriggered();
+                    return SDLController.IsRightStickUpTriggered();
                 case ControllerButton.RStickDown:
-                    return SDL2Controller.IsRightStickDownTriggered();
+                    return SDLController.IsRightStickDownTriggered();
                 case ControllerButton.RStickLeft:
-                    return SDL2Controller.IsRightStickLeftTriggered();
+                    return SDLController.IsRightStickLeftTriggered();
                 case ControllerButton.RStickRight:
-                    return SDL2Controller.IsRightStickRightTriggered();
+                    return SDLController.IsRightStickRightTriggered();
                 case ControllerButton.LStickUp:
                 case ControllerButton.LStickDown:
                 case ControllerButton.LStickLeft:

@@ -21,8 +21,20 @@ namespace DigimonNOAccess
     /// F3 = Partner 1 full status
     /// F4 = Partner 2 full status
     /// </summary>
-    public class FieldHudHandler
+    public class FieldHudHandler : IAccessibilityHandler
     {
+        public int Priority => 997;
+
+        /// <summary>
+        /// Background handler - never owns the status announce.
+        /// </summary>
+        public bool IsOpen() => false;
+
+        /// <summary>
+        /// Background handler - never announces status.
+        /// </summary>
+        public void AnnounceStatus() { }
+
         // Fishing prompt tracking
         private bool _wasFishingPromptActive = false;
         private string _lastFishingText = "";
@@ -50,36 +62,7 @@ namespace DigimonNOAccess
 
         private bool IsPlayerInFieldControl()
         {
-            // Check if battle is active
-            try
-            {
-                var battlePanel = uBattlePanel.m_instance;
-                if (battlePanel != null && battlePanel.m_enabled)
-                    return false;
-            }
-            catch { }
-
-            // Check player action state - exclude states where we shouldn't respond
-            try
-            {
-                var player = Object.FindObjectOfType<PlayerCtrl>();
-                if (player != null)
-                {
-                    var state = player.actionState;
-                    // Exclude states where player is not in normal field control
-                    if (state == PlayerCtrl.ActionState.ActionState_Event ||
-                        state == PlayerCtrl.ActionState.ActionState_Battle ||
-                        state == PlayerCtrl.ActionState.ActionState_Dead ||
-                        state == PlayerCtrl.ActionState.ActionState_DeadGataway ||
-                        state == PlayerCtrl.ActionState.ActionState_LiquidCrystallization)
-                    {
-                        return false;
-                    }
-                }
-            }
-            catch { }
-
-            return true;
+            return GameStateService.IsPlayerInFieldControl();
         }
 
         private void HandleKeyboardInput(uFieldPanel fieldPanel)
@@ -134,12 +117,12 @@ namespace DigimonNOAccess
             var panel = GetDigimonPanel(fieldPanel, partnerIndex);
             if (panel == null)
             {
-                ScreenReader.Say($"Partner {partnerIndex + 1} not available");
+                ScreenReader.Say(PartnerUtilities.GetPartnerNotAvailableMessage(partnerIndex));
                 return;
             }
 
             string name = panel.m_digimon_name?.text ?? "Unknown";
-            string partnerLabel = partnerIndex == 0 ? "Partner 1" : "Partner 2";
+            string partnerLabel = PartnerUtilities.GetPartnerLabel(partnerIndex);
             ScreenReader.Say($"{partnerLabel}: {name}");
         }
 
@@ -148,7 +131,7 @@ namespace DigimonNOAccess
             var panel = GetDigimonPanel(fieldPanel, partnerIndex);
             if (panel == null)
             {
-                ScreenReader.Say($"Partner {partnerIndex + 1} not available");
+                ScreenReader.Say(PartnerUtilities.GetPartnerNotAvailableMessage(partnerIndex));
                 return;
             }
 
@@ -166,21 +149,14 @@ namespace DigimonNOAccess
             var panel = GetDigimonPanel(fieldPanel, partnerIndex);
             if (panel == null)
             {
-                ScreenReader.Say($"Partner {partnerIndex + 1} not available");
+                ScreenReader.Say(PartnerUtilities.GetPartnerNotAvailableMessage(partnerIndex));
                 return;
             }
 
             string name = panel.m_digimon_name?.text ?? "Partner";
             var statusEffect = panel.m_statusEffect;
 
-            string statusText = statusEffect switch
-            {
-                PartnerCtrl.FieldStatusEffect.None => "Healthy",
-                PartnerCtrl.FieldStatusEffect.Injury => "Injured",
-                PartnerCtrl.FieldStatusEffect.SeriousInjury => "Seriously Injured",
-                PartnerCtrl.FieldStatusEffect.Disease => "Sick",
-                _ => "Unknown status"
-            };
+            string statusText = PartnerUtilities.GetStatusEffectText(statusEffect);
 
             ScreenReader.Say($"{name}: {statusText}");
         }
@@ -190,7 +166,7 @@ namespace DigimonNOAccess
             var panel = GetDigimonPanel(fieldPanel, partnerIndex);
             if (panel == null)
             {
-                ScreenReader.Say($"Partner {partnerIndex + 1} not available");
+                ScreenReader.Say(PartnerUtilities.GetPartnerNotAvailableMessage(partnerIndex));
                 return;
             }
 
@@ -198,22 +174,7 @@ namespace DigimonNOAccess
 
             // Get status effect from the panel
             var statusEffect = panel.m_statusEffect;
-            string moodText;
-
-            if (statusEffect != PartnerCtrl.FieldStatusEffect.None)
-            {
-                moodText = statusEffect switch
-                {
-                    PartnerCtrl.FieldStatusEffect.Injury => "Injured",
-                    PartnerCtrl.FieldStatusEffect.SeriousInjury => "Seriously injured",
-                    PartnerCtrl.FieldStatusEffect.Disease => "Sick",
-                    _ => "Has condition"
-                };
-            }
-            else
-            {
-                moodText = "Feeling fine";
-            }
+            string moodText = PartnerUtilities.GetStatusEffectText(statusEffect, "Feeling fine", "Has condition");
 
             ScreenReader.Say($"{name}: {moodText}");
         }
@@ -223,7 +184,7 @@ namespace DigimonNOAccess
             var panel = GetDigimonPanel(fieldPanel, partnerIndex);
             if (panel == null)
             {
-                ScreenReader.Say($"Partner {partnerIndex + 1} not available");
+                ScreenReader.Say(PartnerUtilities.GetPartnerNotAvailableMessage(partnerIndex));
                 return;
             }
 
@@ -232,14 +193,7 @@ namespace DigimonNOAccess
             string mpText = panel.m_mpText?.text ?? panel.m_now_mp.ToString();
 
             var statusEffect = panel.m_statusEffect;
-            string statusText = statusEffect switch
-            {
-                PartnerCtrl.FieldStatusEffect.None => "Healthy",
-                PartnerCtrl.FieldStatusEffect.Injury => "Injured",
-                PartnerCtrl.FieldStatusEffect.SeriousInjury => "Seriously Injured",
-                PartnerCtrl.FieldStatusEffect.Disease => "Sick",
-                _ => ""
-            };
+            string statusText = PartnerUtilities.GetStatusEffectText(statusEffect, "Healthy", "");
 
             string announcement = $"{name}: HP {hpText}, MP {mpText}";
             if (!string.IsNullOrEmpty(statusText) && statusText != "Healthy")
@@ -260,7 +214,10 @@ namespace DigimonNOAccess
                     return panels[index];
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[FieldHudHandler] Error in GetDigimonPanel: {ex.Message}");
+            }
 
             return null;
         }
@@ -304,7 +261,10 @@ namespace DigimonNOAccess
 
                 _wasFishingPromptActive = isActive;
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[FieldHudHandler] Error in UpdateFishingPrompt: {ex.Message}");
+            }
         }
 
         private string GetFishingPromptText(uFieldPanel fieldPanel)
@@ -321,7 +281,10 @@ namespace DigimonNOAccess
                     }
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[FieldHudHandler] Error in GetFishingPromptText: {ex.Message}");
+            }
 
             return "";
         }

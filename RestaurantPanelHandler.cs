@@ -1,5 +1,4 @@
 using Il2Cpp;
-using MelonLoader;
 using UnityEngine;
 
 namespace DigimonNOAccess
@@ -7,14 +6,14 @@ namespace DigimonNOAccess
     /// <summary>
     /// Handles accessibility for the restaurant/cooking panel.
     /// </summary>
-    public class RestaurantPanelHandler
+    public class RestaurantPanelHandler : HandlerBase<uRestaurantPanel>
     {
-        private uRestaurantPanel _panel;
-        private bool _wasActive = false;
-        private int _lastCursor = -1;
+        protected override string LogTag => "[RestaurantPanel]";
+        public override int Priority => 60;
+
         private uRestaurantPanel.State _lastState = uRestaurantPanel.State.None;
 
-        public bool IsOpen()
+        public override bool IsOpen()
         {
             if (_panel == null)
             {
@@ -37,28 +36,7 @@ namespace DigimonNOAccess
             }
         }
 
-        public void Update()
-        {
-            bool isActive = IsOpen();
-
-            if (isActive && !_wasActive)
-            {
-                OnOpen();
-            }
-            else if (!isActive && _wasActive)
-            {
-                OnClose();
-            }
-            else if (isActive)
-            {
-                CheckStateChange();
-                CheckCursorChange();
-            }
-
-            _wasActive = isActive;
-        }
-
-        private void OnOpen()
+        protected override void OnOpen()
         {
             _lastCursor = -1;
             _lastState = uRestaurantPanel.State.None;
@@ -72,20 +50,24 @@ namespace DigimonNOAccess
             string itemText = GetMenuItemText(cursor);
             int total = GetMenuItemCount();
 
-            string announcement = $"Restaurant. {stateText}. {itemText}, {cursor + 1} of {total}";
+            string announcement = AnnouncementBuilder.MenuOpenWithState("Restaurant", stateText, itemText, cursor, total);
             ScreenReader.Say(announcement);
 
-            DebugLogger.Log($"[RestaurantPanel] Panel opened, state={state}, cursor={cursor}");
+            DebugLogger.Log($"{LogTag} Panel opened, state={state}, cursor={cursor}");
             _lastState = state;
             _lastCursor = cursor;
         }
 
-        private void OnClose()
+        protected override void OnClose()
         {
-            _panel = null;
-            _lastCursor = -1;
             _lastState = uRestaurantPanel.State.None;
-            DebugLogger.Log("[RestaurantPanel] Panel closed");
+            base.OnClose();
+        }
+
+        protected override void OnUpdate()
+        {
+            CheckStateChange();
+            CheckCursorChange();
         }
 
         private void CheckStateChange()
@@ -98,7 +80,7 @@ namespace DigimonNOAccess
             {
                 string stateText = GetStateText(state);
                 ScreenReader.Say(stateText);
-                DebugLogger.Log($"[RestaurantPanel] State changed to {state}");
+                DebugLogger.Log($"{LogTag} State changed to {state}");
                 _lastState = state;
                 _lastCursor = -1; // Reset cursor on state change
             }
@@ -116,10 +98,10 @@ namespace DigimonNOAccess
                 string itemText = GetMenuItemText(cursor);
                 int total = GetMenuItemCount();
 
-                string announcement = $"{itemText}, {cursor + 1} of {total}";
+                string announcement = AnnouncementBuilder.CursorPosition(itemText, cursor, total);
                 ScreenReader.Say(announcement);
 
-                DebugLogger.Log($"[RestaurantPanel] Cursor changed: {itemText}");
+                DebugLogger.Log($"{LogTag} Cursor changed: {itemText}");
                 _lastCursor = cursor;
             }
         }
@@ -137,7 +119,7 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[RestaurantPanel] Error getting cursor: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error getting cursor: {ex.Message}");
             }
             return 0;
         }
@@ -163,10 +145,10 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[RestaurantPanel] Error reading text: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error reading text: {ex.Message}");
             }
 
-            return $"Item {index + 1}";
+            return AnnouncementBuilder.FallbackItem("Item", index);
         }
 
         private int GetMenuItemCount()
@@ -179,7 +161,10 @@ namespace DigimonNOAccess
                     return itemPanel.m_maxListNum;
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Error in GetMenuItemCount: {ex.Message}");
+            }
             return 1;
         }
 
@@ -204,7 +189,7 @@ namespace DigimonNOAccess
             }
         }
 
-        public void AnnounceStatus()
+        public override void AnnounceStatus()
         {
             if (!IsOpen())
                 return;
@@ -215,7 +200,7 @@ namespace DigimonNOAccess
             string itemText = GetMenuItemText(cursor);
             int total = GetMenuItemCount();
 
-            string announcement = $"Restaurant. {stateText}. {itemText}, {cursor + 1} of {total}";
+            string announcement = AnnouncementBuilder.MenuOpenWithState("Restaurant", stateText, itemText, cursor, total);
             ScreenReader.Say(announcement);
         }
     }

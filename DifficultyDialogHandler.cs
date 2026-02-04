@@ -1,5 +1,4 @@
 using Il2Cpp;
-using MelonLoader;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -8,8 +7,10 @@ namespace DigimonNOAccess
     /// <summary>
     /// Handles accessibility for the difficulty selection dialog in New Game.
     /// </summary>
-    public class DifficultyDialogHandler
+    public class DifficultyDialogHandler : IAccessibilityHandler
     {
+        public int Priority => 20;
+
         private uDifficultyDialog _dialog;
         private bool _wasActive = false;
         private int _lastCursor = -1;
@@ -64,7 +65,7 @@ namespace DigimonNOAccess
             string difficultyName = GetDifficultyName(cursor);
             int total = GetTotalOptions();
 
-            string announcement = $"Select Difficulty. {difficultyName}, {cursor + 1} of {total}";
+            string announcement = AnnouncementBuilder.MenuOpen("Select Difficulty", difficultyName, cursor, total);
             ScreenReader.Say(announcement);
             DebugLogger.Log($"[DifficultyDialog] Opened: cursor={cursor}, total={total}");
 
@@ -88,7 +89,7 @@ namespace DigimonNOAccess
             {
                 string difficultyName = GetDifficultyName(cursor);
                 int total = GetTotalOptions();
-                string announcement = $"{difficultyName}, {cursor + 1} of {total}";
+                string announcement = AnnouncementBuilder.CursorPosition(difficultyName, cursor, total);
                 ScreenReader.Say(announcement);
                 DebugLogger.Log($"[DifficultyDialog] Cursor changed: {cursor} = {difficultyName}");
                 _lastCursor = cursor;
@@ -98,7 +99,7 @@ namespace DigimonNOAccess
         private string GetDifficultyName(int cursor)
         {
             if (_dialog == null)
-                return $"Option {cursor + 1}";
+                return AnnouncementBuilder.FallbackItem("Option", cursor);
 
             try
             {
@@ -129,7 +130,7 @@ namespace DigimonNOAccess
                 case 1: return "Normal";
                 case 2: return "Hard";
                 case 3: return "Very Hard";
-                default: return $"Option {cursor + 1}";
+                default: return AnnouncementBuilder.FallbackItem("Option", cursor);
             }
         }
 
@@ -180,7 +181,7 @@ namespace DigimonNOAccess
             string difficultyName = GetDifficultyName(cursor);
             int total = GetTotalOptions();
 
-            string announcement = $"Difficulty selection. {difficultyName}, {cursor + 1} of {total}";
+            string announcement = AnnouncementBuilder.MenuOpen("Difficulty selection", difficultyName, cursor, total);
             ScreenReader.Say(announcement);
         }
     }

@@ -1,5 +1,4 @@
 using Il2Cpp;
-using MelonLoader;
 using UnityEngine;
 
 namespace DigimonNOAccess
@@ -8,8 +7,10 @@ namespace DigimonNOAccess
     /// Handles accessibility for the training panel (gym training selection).
     /// Tracks two independent cursors (one per partner) and announces training details.
     /// </summary>
-    public class TrainingPanelHandler
+    public class TrainingPanelHandler : IAccessibilityHandler
     {
+        public int Priority => 55;
+
         private uTrainingPanelCommand _panel;
         private bool _wasActive = false;
         private int _lastCursorRight = -1; // Partner 1 (Right) cursor position
@@ -299,7 +300,7 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[TrainingPanel] Error getting partner name: {ex.Message}");
             }
 
-            return partnerIndex == 0 ? "Partner 1" : "Partner 2";
+            return PartnerUtilities.GetPartnerLabel(partnerIndex);
         }
 
         private string GetTrainingText(int index)
@@ -347,7 +348,7 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[TrainingPanel] Error reading training text: {ex.Message}");
             }
 
-            return $"Training {index + 1}";
+            return AnnouncementBuilder.FallbackItem("Training", index);
         }
 
         private string GetBonusTypes(TrainingContent content)
@@ -368,8 +369,9 @@ namespace DigimonNOAccess
 
                 return string.Join(", ", bonusNames);
             }
-            catch
+            catch (System.Exception ex)
             {
+                DebugLogger.Log($"[TrainingPanel] Error in GetBonusTypes: {ex.Message}");
                 return "";
             }
         }
@@ -418,7 +420,7 @@ namespace DigimonNOAccess
                 case ParameterTrainingData.TrainingKindIndex.Rest:
                     return "Rest";
                 default:
-                    return $"Training {(int)index + 1}";
+                    return AnnouncementBuilder.FallbackItem("Training", (int)index);
             }
         }
 
@@ -432,7 +434,10 @@ namespace DigimonNOAccess
                     return contents.Length;
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[TrainingPanel] Error in GetTrainingCount: {ex.Message}");
+            }
             return 7; // Default: HP, MP, STR, STA, WIS, SPD, Rest
         }
 

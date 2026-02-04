@@ -1,5 +1,4 @@
 using Il2Cpp;
-using MelonLoader;
 using UnityEngine;
 
 namespace DigimonNOAccess
@@ -8,13 +7,12 @@ namespace DigimonNOAccess
     /// Handles accessibility for the common selection window (generic NPC info menus).
     /// This is used by various NPCs to display selectable options.
     /// </summary>
-    public class CommonSelectWindowHandler
+    public class CommonSelectWindowHandler : HandlerBase<uCommonSelectWindowPanel>
     {
-        private uCommonSelectWindowPanel _panel;
-        private bool _wasActive = false;
-        private int _lastCursor = -1;
+        protected override string LogTag => "[CommonSelectWindow]";
+        public override int Priority => 35;
 
-        public bool IsOpen()
+        public override bool IsOpen()
         {
             if (_panel == null)
             {
@@ -34,27 +32,7 @@ namespace DigimonNOAccess
             }
         }
 
-        public void Update()
-        {
-            bool isActive = IsOpen();
-
-            if (isActive && !_wasActive)
-            {
-                OnOpen();
-            }
-            else if (!isActive && _wasActive)
-            {
-                OnClose();
-            }
-            else if (isActive)
-            {
-                CheckCursorChange();
-            }
-
-            _wasActive = isActive;
-        }
-
-        private void OnOpen()
+        protected override void OnOpen()
         {
             _lastCursor = -1;
 
@@ -65,18 +43,21 @@ namespace DigimonNOAccess
             string itemText = GetMenuItemText(cursor);
             int total = GetMenuItemCount();
 
-            string announcement = $"Selection Menu. {itemText}, {cursor + 1} of {total}";
+            string announcement = AnnouncementBuilder.MenuOpen("Selection Menu", itemText, cursor, total);
             ScreenReader.Say(announcement);
 
-            DebugLogger.Log($"[CommonSelectWindow] Menu opened, cursor={cursor}, total={total}");
+            DebugLogger.Log($"{LogTag} Menu opened, cursor={cursor}, total={total}");
             _lastCursor = cursor;
         }
 
-        private void OnClose()
+        protected override void OnClose()
         {
-            _panel = null;
-            _lastCursor = -1;
-            DebugLogger.Log("[CommonSelectWindow] Menu closed");
+            base.OnClose();
+        }
+
+        protected override void OnUpdate()
+        {
+            CheckCursorChange();
         }
 
         private void CheckCursorChange()
@@ -91,10 +72,10 @@ namespace DigimonNOAccess
                 string itemText = GetMenuItemText(cursor);
                 int total = GetMenuItemCount();
 
-                string announcement = $"{itemText}, {cursor + 1} of {total}";
+                string announcement = AnnouncementBuilder.CursorPosition(itemText, cursor, total);
                 ScreenReader.Say(announcement);
 
-                DebugLogger.Log($"[CommonSelectWindow] Cursor changed: {itemText}");
+                DebugLogger.Log($"{LogTag} Cursor changed: {itemText}");
                 _lastCursor = cursor;
             }
         }
@@ -111,7 +92,7 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[CommonSelectWindow] Error getting cursor: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error getting cursor: {ex.Message}");
             }
             return 0;
         }
@@ -136,10 +117,10 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[CommonSelectWindow] Error reading text: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error reading text: {ex.Message}");
             }
 
-            return $"Option {index + 1}";
+            return AnnouncementBuilder.FallbackItem("Option", index);
         }
 
         private int GetMenuItemCount()
@@ -156,7 +137,7 @@ namespace DigimonNOAccess
             return 1;
         }
 
-        public void AnnounceStatus()
+        public override void AnnounceStatus()
         {
             if (!IsOpen())
                 return;
@@ -165,7 +146,7 @@ namespace DigimonNOAccess
             string itemText = GetMenuItemText(cursor);
             int total = GetMenuItemCount();
 
-            string announcement = $"Selection Menu. {itemText}, {cursor + 1} of {total}";
+            string announcement = AnnouncementBuilder.MenuOpen("Selection Menu", itemText, cursor, total);
             ScreenReader.Say(announcement);
         }
     }

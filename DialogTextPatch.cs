@@ -2,7 +2,6 @@ using HarmonyLib;
 using Il2Cpp;
 using System;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
 using UnityEngine;
 
 namespace DigimonNOAccess
@@ -113,7 +112,10 @@ namespace DigimonNOAccess
                     harmony.Patch(fieldDigimonMsgMethod, prefix: new HarmonyMethod(AccessTools.Method(typeof(DialogTextPatch), nameof(FieldDigimonMessagePrefix))));
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[DialogTextPatch] Error in Apply: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -121,16 +123,7 @@ namespace DigimonNOAccess
         /// </summary>
         private static bool IsGameLoading()
         {
-            try
-            {
-                var mgr = MainGameManager.m_instance;
-                if (mgr != null)
-                {
-                    return mgr._IsLoad();
-                }
-            }
-            catch { }
-            return false;
+            return TextUtilities.IsGameLoading();
         }
 
         /// <summary>
@@ -160,7 +153,10 @@ namespace DigimonNOAccess
                         _voicedTextKeys.Clear();
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[DialogTextPatch] Error in PlayVoiceTextPrefix: {ex.Message}");
+            }
         }
 
         private static bool IsVoicedDialog()
@@ -196,7 +192,10 @@ namespace DigimonNOAccess
                 ScreenReader.Say(StripRichTextTags(str));
                 OnCommonMessageIntercepted?.Invoke(str);
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[DialogTextPatch] Error in SetMessagePrefix: {ex.Message}");
+            }
         }
 
         private static void SetItemMessagePostfix(uCommonMessageWindow __instance)
@@ -223,7 +222,10 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[SetItemMessage] {text}");
                 ScreenReader.Say(StripRichTextTags(text));
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[DialogTextPatch] Error in SetItemMessagePostfix: {ex.Message}");
+            }
         }
 
         private static void DigimonMessagePrefix(uDigimonMessagePanel __instance, string message, float time)
@@ -250,7 +252,10 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[DigimonMessage] {message}");
                 ScreenReader.SayQueued(StripRichTextTags(message));
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[DialogTextPatch] Error in DigimonMessagePrefix: {ex.Message}");
+            }
         }
 
         private static void FieldDigimonMessagePrefix(MainGameManager.UNITID id, string message, float time)
@@ -277,7 +282,10 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[FieldDigimonMessage] {message}");
                 ScreenReader.SayQueued(StripRichTextTags(message));
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[DialogTextPatch] Error in FieldDigimonMessagePrefix: {ex.Message}");
+            }
         }
 
         private static void TextShrinkPrefix(EventWindowPanel __instance, string text)
@@ -303,7 +311,10 @@ namespace DigimonNOAccess
                     if (__instance != null && __instance.m_nameText != null)
                         speakerName = __instance.m_nameText.text ?? "";
                 }
-                catch { }
+                catch (System.Exception ex)
+                {
+                    DebugLogger.Log($"[DialogTextPatch] Error getting speaker name: {ex.Message}");
+                }
 
                 if (IsPlaceholderText(text))
                     return;
@@ -314,7 +325,10 @@ namespace DigimonNOAccess
 
                 OnTextIntercepted?.Invoke(speakerName, text);
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[DialogTextPatch] Error in TextShrinkPrefix: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -322,37 +336,12 @@ namespace DigimonNOAccess
         /// </summary>
         public static string StripRichTextTags(string text)
         {
-            if (string.IsNullOrEmpty(text))
-                return text;
-            return Regex.Replace(text, @"<[^>]+>", "");
+            return TextUtilities.StripRichTextTags(text);
         }
 
         private static bool IsPlaceholderText(string text)
         {
-            if (string.IsNullOrEmpty(text))
-                return true;
-
-            if (text.Contains("■") || text.Contains("□"))
-                return true;
-
-            if (text.StartsWith("EV_") || text.StartsWith("SYS_") || text.StartsWith("MSG_"))
-                return true;
-
-            // Skip punctuation-only text
-            string trimmed = text.Trim();
-            bool onlyPunctuation = true;
-            foreach (char c in trimmed)
-            {
-                if (!char.IsPunctuation(c) && !char.IsWhiteSpace(c))
-                {
-                    onlyPunctuation = false;
-                    break;
-                }
-            }
-            if (onlyPunctuation && trimmed.Length > 0)
-                return true;
-
-            return false;
+            return TextUtilities.IsPlaceholderText(text);
         }
     }
 }

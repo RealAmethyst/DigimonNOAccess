@@ -1,5 +1,4 @@
 using Il2Cpp;
-using MelonLoader;
 using UnityEngine;
 
 namespace DigimonNOAccess
@@ -7,14 +6,15 @@ namespace DigimonNOAccess
     /// <summary>
     /// Handles accessibility for the map panel (world/area/minimap navigation)
     /// </summary>
-    public class MapPanelHandler
+    public class MapPanelHandler : HandlerBase<uDigiviceMapPanel>
     {
-        private uDigiviceMapPanel _panel;
-        private bool _wasActive = false;
+        protected override string LogTag => "[MapPanel]";
+        public override int Priority => 65;
+
         private uDigiviceMapPanel.State _lastState = uDigiviceMapPanel.State.NONE;
         private string _lastLocationName = "";
 
-        public bool IsOpen()
+        public override bool IsOpen()
         {
             if (_panel == null)
             {
@@ -28,28 +28,7 @@ namespace DigimonNOAccess
             return state != uDigiviceMapPanel.State.NONE && state != uDigiviceMapPanel.State.CLOSE;
         }
 
-        public void Update()
-        {
-            bool isActive = IsOpen();
-
-            if (isActive && !_wasActive)
-            {
-                OnOpen();
-            }
-            else if (!isActive && _wasActive)
-            {
-                OnClose();
-            }
-            else if (isActive)
-            {
-                CheckStateChange();
-                CheckLocationChange();
-            }
-
-            _wasActive = isActive;
-        }
-
-        private void OnOpen()
+        protected override void OnOpen()
         {
             _lastState = uDigiviceMapPanel.State.NONE;
             _lastLocationName = "";
@@ -75,15 +54,20 @@ namespace DigimonNOAccess
             }
 
             ScreenReader.Say(announcement);
-            DebugLogger.Log($"[MapPanel] Opened, state={state}, location={locationName}");
+            DebugLogger.Log($"{LogTag} Opened, state={state}, location={locationName}");
         }
 
-        private void OnClose()
+        protected override void OnClose()
         {
-            _panel = null;
             _lastState = uDigiviceMapPanel.State.NONE;
             _lastLocationName = "";
-            DebugLogger.Log("[MapPanel] Closed");
+            base.OnClose();
+        }
+
+        protected override void OnUpdate()
+        {
+            CheckStateChange();
+            CheckLocationChange();
         }
 
         private void CheckStateChange()
@@ -111,7 +95,7 @@ namespace DigimonNOAccess
                 }
 
                 ScreenReader.Say(announcement);
-                DebugLogger.Log($"[MapPanel] State changed to {mapLevel}");
+                DebugLogger.Log($"{LogTag} State changed to {mapLevel}");
                 _lastState = currentState;
             }
         }
@@ -126,7 +110,7 @@ namespace DigimonNOAccess
             if (!string.IsNullOrEmpty(currentLocation) && currentLocation != _lastLocationName)
             {
                 ScreenReader.Say(currentLocation);
-                DebugLogger.Log($"[MapPanel] Location changed: {currentLocation}");
+                DebugLogger.Log($"{LogTag} Location changed: {currentLocation}");
                 _lastLocationName = currentLocation;
             }
         }
@@ -174,13 +158,13 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[MapPanel] Error getting location name: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error getting location name: {ex.Message}");
             }
 
             return "";
         }
 
-        public void AnnounceStatus()
+        public override void AnnounceStatus()
         {
             if (!IsOpen())
                 return;

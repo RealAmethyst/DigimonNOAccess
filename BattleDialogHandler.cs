@@ -7,10 +7,22 @@ namespace DigimonNOAccess
     /// Handles battle dialog accessibility (escape confirmation, etc.).
     /// Announces dialog messages and Yes/No selection.
     /// </summary>
-    public class BattleDialogHandler
+    public class BattleDialogHandler : IAccessibilityHandler
     {
+        public int Priority => 80;
+
+        /// <summary>
+        /// IAccessibilityHandler.IsOpen() - delegates to IsActive().
+        /// </summary>
+        public bool IsOpen() => IsActive();
+
+        public void AnnounceStatus()
+        {
+            ScreenReader.Say("Battle dialog");
+        }
+
         private uBattlePanelDialog _cachedDialog;
-        private int _lastCursorIndex = -1;
+        private int _lastCursor = -1;
         private bool _wasActive = false;
         private string _lastMessage = "";
 
@@ -41,16 +53,16 @@ namespace DigimonNOAccess
             if (!_wasActive)
             {
                 _wasActive = true;
-                _lastCursorIndex = dialog.m_cursorIndex;
+                _lastCursor = dialog.m_cursorIndex;
                 _lastMessage = dialog.m_messageText?.text ?? "";
                 AnnounceDialog();
                 return;
             }
 
             // Check for cursor change
-            if (dialog.m_cursorIndex != _lastCursorIndex)
+            if (dialog.m_cursorIndex != _lastCursor)
             {
-                _lastCursorIndex = dialog.m_cursorIndex;
+                _lastCursor = dialog.m_cursorIndex;
                 AnnounceSelection();
             }
 
@@ -66,7 +78,7 @@ namespace DigimonNOAccess
         private void ResetState()
         {
             _cachedDialog = null;
-            _lastCursorIndex = -1;
+            _lastCursor = -1;
             _wasActive = false;
             _lastMessage = "";
         }
@@ -101,16 +113,7 @@ namespace DigimonNOAccess
 
         private string CleanText(string text)
         {
-            if (string.IsNullOrEmpty(text))
-                return text;
-
-            // Remove common rich text tags
-            text = System.Text.RegularExpressions.Regex.Replace(text, "<[^>]+>", "");
-
-            // Trim whitespace
-            text = text.Trim();
-
-            return text;
+            return TextUtilities.CleanText(text);
         }
 
         public bool IsActive()

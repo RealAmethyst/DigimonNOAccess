@@ -6,7 +6,7 @@ namespace DigimonNOAccess
     /// Handles the mod settings menu.
     /// Opens with F10, provides accessible settings configuration.
     /// </summary>
-    public class ModSettingsHandler
+    public class ModSettingsHandler : IAccessibilityHandler
     {
         private bool _isOpen = false;
         private int _currentIndex = 0;
@@ -14,6 +14,8 @@ namespace DigimonNOAccess
         private bool _wasDownPressed = false;
         private bool _wasConfirmPressed = false;
         private bool _wasCancelPressed = false;
+
+        public int Priority => 5;
 
         // Settings items
         private readonly SettingItem[] _settings;
@@ -87,12 +89,12 @@ namespace DigimonNOAccess
             bool cancelPressed = Input.GetKey(KeyCode.Escape) || Input.GetKey(KeyCode.Backspace);
 
             // Also check controller input via SDL3 if available
-            if (ModInputManager.IsUsingSDL2)
+            if (ModInputManager.IsUsingSDL)
             {
-                upPressed = upPressed || SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.DPadUp);
-                downPressed = downPressed || SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.DPadDown);
-                confirmPressed = confirmPressed || SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.A);
-                cancelPressed = cancelPressed || SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.B);
+                upPressed = upPressed || SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.DPadUp);
+                downPressed = downPressed || SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.DPadDown);
+                confirmPressed = confirmPressed || SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.A);
+                cancelPressed = cancelPressed || SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.B);
             }
 
             // Up - previous item (on key down)

@@ -10,8 +10,20 @@ namespace DigimonNOAccess
     /// This catches notifications like "Tentomon joined the city!" that don't go
     /// through the normal SetMessage path with proper localization.
     /// </summary>
-    public class CommonMessageMonitor
+    public class CommonMessageMonitor : IAccessibilityHandler
     {
+        public int Priority => 48;
+
+        /// <summary>
+        /// CommonMessageMonitor runs in the background and never "owns" status.
+        /// </summary>
+        public bool IsOpen() => false;
+
+        /// <summary>
+        /// No-op: this monitor doesn't announce status via the priority chain.
+        /// </summary>
+        public void AnnounceStatus() { }
+
         // Track last seen text per window instance to detect changes
         // When window closes, tracking is cleared, allowing re-announcement when reopened
         private Dictionary<int, string> _lastTextPerWindow = new Dictionary<int, string>();
@@ -44,7 +56,10 @@ namespace DigimonNOAccess
                     CheckWindowForNewText(window, windowId);
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[CommonMessageMonitor] Error in Update: {ex.Message}");
+            }
         }
 
         private void CheckWindowForNewText(uCommonMessageWindow window, int windowIndex)
@@ -92,61 +107,25 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[CommonMessageMonitor] {text}");
                 ScreenReader.Say(DialogTextPatch.StripRichTextTags(text));
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[CommonMessageMonitor] Error in CheckWindowForNewText: {ex.Message}");
+            }
         }
 
         private bool IsLocalizationReady()
         {
-            try
-            {
-                return Localization.isActive;
-            }
-            catch { }
-            return false;
+            return TextUtilities.IsLocalizationReady();
         }
 
         private bool IsGameLoading()
         {
-            try
-            {
-                var mgr = MainGameManager.m_instance;
-                // If MainGameManager doesn't exist yet, we're probably at title screen
-                // Skip monitoring during this phase
-                if (mgr == null)
-                    return true;
-                return mgr._IsLoad();
-            }
-            catch { }
-            // On exception, assume loading to be safe
-            return true;
+            return TextUtilities.IsGameLoading();
         }
 
         private bool ShouldSkipText(string text)
         {
-            if (string.IsNullOrEmpty(text))
-                return true;
-
-            // Skip Japanese placeholder characters
-            if (text.Contains("■") || text.Contains("□"))
-                return true;
-
-            // Skip "Language not found" error messages (Japanese)
-            if (text.Contains("ランゲージ"))
-                return true;
-
-            // Skip Japanese placeholder text "メッセージ入力欄" (Message input field)
-            if (text.Contains("メッセージ入力欄"))
-                return true;
-
-            // Skip color-tagged warning messages (already announced via SetMessage)
-            if (text.StartsWith("<color=#ff0000ff>Warning"))
-                return true;
-
-            // Skip if it looks like an unresolved localization key
-            if (text.StartsWith("EV_") || text.StartsWith("SYS_") || text.StartsWith("MSG_"))
-                return true;
-
-            return false;
+            return TextUtilities.IsPlaceholderText(text);
         }
     }
 }

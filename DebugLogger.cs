@@ -36,7 +36,8 @@ namespace DigimonNOAccess
             }
             catch (Exception ex)
             {
-                MelonLoader.Melon<Main>.Logger.Warning($"Failed to initialize debug logger: {ex.Message}");
+                // Can't use DebugLogger.Warning here since initialization failed
+                System.Console.WriteLine($"[DigimonNOAccess] Failed to initialize debug logger: {ex.Message}");
             }
         }
 
@@ -59,6 +60,16 @@ namespace DigimonNOAccess
             {
                 // Silently fail - don't want logging to break the mod
             }
+        }
+
+        public static void Warning(string message)
+        {
+            Log($"[WARN] {message}");
+        }
+
+        public static void Error(string message)
+        {
+            Log($"[ERROR] {message}");
         }
 
         public static void LogSection(string title)

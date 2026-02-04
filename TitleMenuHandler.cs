@@ -1,5 +1,4 @@
 using Il2Cpp;
-using MelonLoader;
 using UnityEngine;
 
 namespace DigimonNOAccess
@@ -11,11 +10,13 @@ namespace DigimonNOAccess
     /// Also checks MainTitle.m_State == Idle to ensure no dialogs/loading are active.
     /// Uses Localization.isActive to ensure text is ready before reading.
     /// </summary>
-    public class TitleMenuHandler
+    public class TitleMenuHandler : IAccessibilityHandler
     {
+        public int Priority => 35;
+
         private uTitlePanel _titlePanel;
         private MainTitle _mainTitle;
-        private bool _wasUsable = false;
+        private bool _wasActive = false;
         private int _lastCursor = -1;
         private bool _voiceHasFinished = false;
         private bool _wasOpen = false;
@@ -102,14 +103,7 @@ namespace DigimonNOAccess
         /// </summary>
         private bool IsLocalizationReady()
         {
-            try
-            {
-                return Localization.isActive;
-            }
-            catch
-            {
-                return false;
-            }
+            return TextUtilities.IsLocalizationReady();
         }
 
         /// <summary>
@@ -120,12 +114,12 @@ namespace DigimonNOAccess
             bool isUsable = IsUsable();
 
             // Menu just became usable
-            if (isUsable && !_wasUsable)
+            if (isUsable && !_wasActive)
             {
                 OnBecameUsable();
             }
             // Menu just became unusable
-            else if (!isUsable && _wasUsable)
+            else if (!isUsable && _wasActive)
             {
                 OnBecameUnusable();
             }
@@ -135,7 +129,7 @@ namespace DigimonNOAccess
                 CheckCursorChange();
             }
 
-            _wasUsable = isUsable;
+            _wasActive = isUsable;
         }
 
         private void OnBecameUsable()
@@ -156,7 +150,7 @@ namespace DigimonNOAccess
             string itemText = GetMenuItemText(cursor);
             int total = GetMenuItemCount();
 
-            string announcement = $"Title Menu. {itemText}, {cursor + 1} of {total}";
+            string announcement = AnnouncementBuilder.MenuOpen("Title Menu", itemText, cursor, total);
             ScreenReader.Say(announcement);
 
             DebugLogger.Log($"[TitleMenu] Menu now usable (Idle state), cursor={cursor}, text={itemText}");
@@ -190,7 +184,7 @@ namespace DigimonNOAccess
                 string itemText = GetMenuItemText(cursor);
                 int total = GetMenuItemCount();
 
-                string announcement = $"{itemText}, {cursor + 1} of {total}";
+                string announcement = AnnouncementBuilder.CursorPosition(itemText, cursor, total);
                 ScreenReader.Say(announcement);
 
                 DebugLogger.Log($"[TitleMenu] Cursor changed: {itemText}");
@@ -236,7 +230,7 @@ namespace DigimonNOAccess
                 1 => "Load Game",
                 2 => "System Settings",
                 3 => "Quit Game",
-                _ => $"Item {index + 1}"
+                _ => AnnouncementBuilder.FallbackItem("Item", index)
             };
         }
 
@@ -261,7 +255,7 @@ namespace DigimonNOAccess
             string itemText = GetMenuItemText(cursor);
             int total = GetMenuItemCount();
 
-            string announcement = $"Title Menu. {itemText}, {cursor + 1} of {total}";
+            string announcement = AnnouncementBuilder.MenuOpen("Title Menu", itemText, cursor, total);
             ScreenReader.Say(announcement);
         }
 

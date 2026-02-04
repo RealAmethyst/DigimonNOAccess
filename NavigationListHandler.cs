@@ -11,8 +11,20 @@ namespace DigimonNOAccess
     /// Scans for NPCs, items, transitions, and enemies, then lets the player
     /// cycle through categories and events via hotkeys with screen reader announcements.
     /// </summary>
-    public class NavigationListHandler
+    public class NavigationListHandler : IAccessibilityHandler
     {
+        public int Priority => 998;
+
+        /// <summary>
+        /// Background handler - never owns the status announce.
+        /// </summary>
+        public bool IsOpen() => false;
+
+        /// <summary>
+        /// Background handler - never announces status.
+        /// </summary>
+        public void AnnounceStatus() { }
+
         // Event categories
         private enum EventCategory
         {
@@ -168,48 +180,15 @@ namespace DigimonNOAccess
 
         /// <summary>
         /// Check if the player is in the field (not in battle, not in menus, not in events).
-        /// Similar to AudioNavigationHandler.IsPlayerInControl().
+        /// Delegates to GameStateService.IsPlayerInField() with additional evolution check.
         /// </summary>
         private bool IsPlayerInField()
         {
-            try
-            {
-                // Check MainGameComponent step - must be in Field mode
-                var mgc = MainGameComponent.m_instance;
-                if (mgc == null) return false;
-
-                if (mgc.m_CurStep != Il2CppMainGame.STEP.Field)
-                    return false;
-
-                // Evolution plays on the field but disables items/transitions
-                if (_evolutionActive)
-                    return false;
-
-                // Check player exists and is controllable
-                if (_playerCtrl == null) return false;
-
-                var actionState = _playerCtrl.actionState;
-                switch (actionState)
-                {
-                    case UnitCtrlBase.ActionState.ActionState_Event:
-                    case UnitCtrlBase.ActionState.ActionState_Battle:
-                    case UnitCtrlBase.ActionState.ActionState_Dead:
-                    case UnitCtrlBase.ActionState.ActionState_DeadGataway:
-                    case UnitCtrlBase.ActionState.ActionState_LiquidCrystallization:
-                        return false;
-                }
-
-                // Check game is not paused
-                var mgm = MainGameManager.m_instance;
-                if (mgm != null && mgm.m_isPause)
-                    return false;
-
-                return true;
-            }
-            catch
-            {
+            // Evolution plays on the field but disables items/transitions
+            if (_evolutionActive)
                 return false;
-            }
+
+            return GameStateService.IsPlayerInField(_playerCtrl);
         }
 
         /// <summary>

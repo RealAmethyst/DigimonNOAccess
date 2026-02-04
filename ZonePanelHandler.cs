@@ -1,5 +1,4 @@
 using Il2Cpp;
-using MelonLoader;
 using UnityEngine;
 
 namespace DigimonNOAccess
@@ -10,8 +9,15 @@ namespace DigimonNOAccess
     /// The uZonePanel briefly appears when entering a new area, showing the zone name.
     /// We need to detect when the text changes since the panel object may persist in scene.
     /// </summary>
-    public class ZonePanelHandler
+    public class ZonePanelHandler : IAccessibilityHandler
     {
+        public int Priority => 75;
+
+        /// <summary>
+        /// ZonePanelHandler shows transient zone names. It never "owns" the status announce.
+        /// </summary>
+        public void AnnounceStatus() { }
+
         private string _lastAnnouncedZone = "";
         private string _lastSeenText = "";
         private float _lastCheckTime = 0f;

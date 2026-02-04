@@ -7,8 +7,16 @@ namespace DigimonNOAccess
     /// Handles accessibility for the training result panel.
     /// Announces stat gains after training completes.
     /// </summary>
-    public class TrainingResultHandler
+    public class TrainingResultHandler : IAccessibilityHandler
     {
+        public int Priority => 52;
+
+        public void AnnounceStatus()
+        {
+            if (!IsOpen()) return;
+            ScreenReader.Say("Training results");
+        }
+
         private uTrainingPanelResult _panel;
         private bool _wasActive = false;
         private bool _resultAnnounced = false;
@@ -125,7 +133,7 @@ namespace DigimonNOAccess
             try
             {
                 // Get partner name from base class field
-                string name = $"Partner {index + 1}";
+                string name = AnnouncementBuilder.FallbackItem("Partner", index);
                 try
                 {
                     var nameText = panel.m_partnerName;
@@ -142,7 +150,7 @@ namespace DigimonNOAccess
                 var gains = new System.Collections.Generic.List<string>();
 
                 // RiseType enum: Hp=0, Mp=1, Forcefulness=2, Robustness=3, Cleverness=4, Rapidity=5, Fatigue=6
-                string[] statNames = { "HP", "MP", "STR", "STA", "WIS", "SPD", "Fatigue" };
+                var statNames = PartnerUtilities.StatNamesWithFatigue;
 
                 for (int i = 0; i < riseValues.Length && i < statNames.Length; i++)
                 {
@@ -167,11 +175,6 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[TrainingResult] Error reading partner {index}: {ex.Message}");
                 return "";
             }
-        }
-
-        public bool IsActive()
-        {
-            return IsOpen();
         }
     }
 }

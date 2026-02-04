@@ -23,10 +23,17 @@ namespace DigimonNOAccess
     ///   - Screen 1: Announce all info (both partners + rewards)
     ///   - Screen 2: "Results applied. Press Continue to return to field."
     /// </summary>
-    public class BattleResultHandler
+    public class BattleResultHandler : IAccessibilityHandler
     {
+        public int Priority => 88;
+
+        /// <summary>
+        /// IAccessibilityHandler.IsOpen() - delegates to IsActive().
+        /// </summary>
+        public bool IsOpen() => IsActive();
+
         private uBattlePanelResult _cachedResultPanel;
-        private bool _wasEnabled = false;
+        private bool _wasActive = false;
         private bool _announcedScreen1 = false;
         private bool _announcedScreen2 = false;
         private bool _wasShowingRise = false;
@@ -42,7 +49,10 @@ namespace DigimonNOAccess
                     resultPanel = battlePanel.m_result;
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[BattleResultHandler] Error getting result panel: {ex.Message}");
+            }
 
             if (resultPanel == null)
             {
@@ -55,11 +65,14 @@ namespace DigimonNOAccess
             {
                 isEnabled = resultPanel.m_enabled;
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[BattleResultHandler] Error checking enabled state: {ex.Message}");
+            }
 
             if (!isEnabled)
             {
-                if (_wasEnabled)
+                if (_wasActive)
                 {
                     ResetState();
                 }
@@ -69,9 +82,9 @@ namespace DigimonNOAccess
             _cachedResultPanel = resultPanel;
 
             // Panel just became enabled
-            if (!_wasEnabled)
+            if (!_wasActive)
             {
-                _wasEnabled = true;
+                _wasActive = true;
                 _announcedScreen1 = false;
                 _announcedScreen2 = false;
                 _wasShowingRise = false;
@@ -101,7 +114,7 @@ namespace DigimonNOAccess
         private void ResetState()
         {
             _cachedResultPanel = null;
-            _wasEnabled = false;
+            _wasActive = false;
             _announcedScreen1 = false;
             _announcedScreen2 = false;
             _wasShowingRise = false;
@@ -136,10 +149,16 @@ namespace DigimonNOAccess
                             return true;
                         }
                     }
-                    catch { }
+                    catch (System.Exception ex)
+                    {
+                        DebugLogger.Log($"[BattleResultHandler] Error checking rise state: {ex.Message}");
+                    }
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[BattleResultHandler] Error in CheckIsShowingRise: {ex.Message}");
+            }
 
             return false;
         }
@@ -219,11 +238,14 @@ namespace DigimonNOAccess
                 {
                     partnerName = panel.m_partnerName?.text ?? "";
                 }
-                catch { }
+                catch (System.Exception ex)
+                {
+                    DebugLogger.Log($"[BattleResultHandler] Error getting partner name: {ex.Message}");
+                }
 
                 if (string.IsNullOrWhiteSpace(partnerName))
                 {
-                    partnerName = $"Partner {index + 1}";
+                    partnerName = AnnouncementBuilder.FallbackItem("Partner", index);
                 }
 
                 // Get rise values
@@ -233,7 +255,7 @@ namespace DigimonNOAccess
                 if (riseValues != null && riseValues.Length > 0)
                 {
                     // Order: HP, MP, STR, STA, WIS, SPD (indices 0-5)
-                    string[] statNames = { "HP", "MP", "STR", "STA", "WIS", "SPD" };
+                    var statNames = PartnerUtilities.StatNames;
 
                     for (int j = 0; j < riseValues.Length && j < statNames.Length; j++)
                     {
@@ -255,8 +277,9 @@ namespace DigimonNOAccess
                     return GetPartnerStatsFromText(panel, partnerName);
                 }
             }
-            catch
+            catch (System.Exception ex)
             {
+                DebugLogger.Log($"[BattleResultHandler] Error in GetPartnerStatsText: {ex.Message}");
                 return "";
             }
         }
@@ -273,7 +296,7 @@ namespace DigimonNOAccess
 
                 if (riseTexts != null)
                 {
-                    string[] statNames = { "HP", "MP", "STR", "STA", "WIS", "SPD" };
+                    var statNames = PartnerUtilities.StatNames;
 
                     for (int j = 0; j < riseTexts.Length && j < statNames.Length; j++)
                     {
@@ -298,7 +321,10 @@ namespace DigimonNOAccess
                     return $"{partnerName}: {string.Join(", ", statParts)}";
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[BattleResultHandler] Error in GetPartnerStatsFromText: {ex.Message}");
+            }
 
             return "";
         }
@@ -354,7 +380,10 @@ namespace DigimonNOAccess
                     return "Rewards: " + string.Join(", ", rewardParts);
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[BattleResultHandler] Error in GetRewardsText: {ex.Message}");
+            }
 
             return "";
         }
@@ -369,7 +398,7 @@ namespace DigimonNOAccess
 
         public bool IsActive()
         {
-            return _wasEnabled && _cachedResultPanel != null;
+            return _wasActive && _cachedResultPanel != null;
         }
 
         public void AnnounceStatus()

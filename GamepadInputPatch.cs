@@ -138,7 +138,7 @@ namespace DigimonNOAccess
         // Postfixes for PadManager static methods
         private static void GetInput_Postfix(ref PadManager.BUTTON __result)
         {
-            if (_enabled && SDL2Controller.IsAvailable)
+            if (_enabled && SDLController.IsAvailable)
             {
                 __result |= _currentInjectedButtons;
             }
@@ -146,7 +146,7 @@ namespace DigimonNOAccess
 
         private static void GetTrigger_Postfix(ref PadManager.BUTTON __result)
         {
-            if (_enabled && SDL2Controller.IsAvailable)
+            if (_enabled && SDLController.IsAvailable)
             {
                 PadManager.BUTTON triggerButtons = _currentInjectedButtons & ~_lastInjectedButtons;
                 __result |= triggerButtons;
@@ -155,7 +155,7 @@ namespace DigimonNOAccess
 
         private static void GetRepeat_Postfix(ref PadManager.BUTTON __result)
         {
-            if (_enabled && SDL2Controller.IsAvailable && _repeatButtons != PadManager.BUTTON._Non)
+            if (_enabled && SDLController.IsAvailable && _repeatButtons != PadManager.BUTTON._Non)
             {
                 __result |= _repeatButtons;
             }
@@ -163,7 +163,7 @@ namespace DigimonNOAccess
 
         private static void IsTrigger_Postfix(PadManager.BUTTON button, ref bool __result)
         {
-            if (!__result && _enabled && SDL2Controller.IsAvailable)
+            if (!__result && _enabled && SDLController.IsAvailable)
             {
                 PadManager.BUTTON triggerButtons = _currentInjectedButtons & ~_lastInjectedButtons;
                 __result = (triggerButtons & button) != 0;
@@ -172,7 +172,7 @@ namespace DigimonNOAccess
 
         private static void IsRepeat_Postfix(PadManager.BUTTON button, ref bool __result)
         {
-            if (!__result && _enabled && SDL2Controller.IsAvailable)
+            if (!__result && _enabled && SDLController.IsAvailable)
             {
                 // Check if this button should repeat
                 PadManager.BUTTON triggerButtons = _currentInjectedButtons & ~_lastInjectedButtons;
@@ -184,7 +184,7 @@ namespace DigimonNOAccess
 
         private static void IsInput_Postfix(PadManager.BUTTON button, ref bool __result)
         {
-            if (!__result && _enabled && SDL2Controller.IsAvailable)
+            if (!__result && _enabled && SDLController.IsAvailable)
             {
                 __result = (_currentInjectedButtons & button) != 0;
             }
@@ -195,7 +195,7 @@ namespace DigimonNOAccess
         /// </summary>
         private static void Pad_Update_Postfix(Pad __instance)
         {
-            if (!_enabled || !SDL2Controller.IsAvailable)
+            if (!_enabled || !SDLController.IsAvailable)
                 return;
 
             try
@@ -330,56 +330,56 @@ namespace DigimonNOAccess
             // Face buttons - SWAPPED for Western convention
             // Physical Cross (A position) → bCircle (Confirm function in game)
             // Physical Circle (B position) → bCross (Cancel function in game)
-            if (SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.South))
+            if (SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.South))
                 buttons |= PadManager.BUTTON.bCircle;  // Cross → Confirm (bOK)
 
-            if (SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.East))
+            if (SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.East))
                 buttons |= PadManager.BUTTON.bCross;   // Circle → Cancel (bCANCEL)
 
             // Square and Triangle - no swap needed, same position as Xbox X/Y
-            if (SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.West))
+            if (SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.West))
                 buttons |= PadManager.BUTTON.bSquare;  // Square/X
 
-            if (SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.North))
+            if (SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.North))
                 buttons |= PadManager.BUTTON.bTriangle; // Triangle/Y
 
             // Shoulder buttons
-            if (SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.LeftShoulder))
+            if (SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.LeftShoulder))
                 buttons |= PadManager.BUTTON.bL;  // LB/L1
 
-            if (SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.RightShoulder))
+            if (SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.RightShoulder))
                 buttons |= PadManager.BUTTON.bR;  // RB/R1
 
             // D-pad
-            if (SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.DPadUp))
+            if (SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.DPadUp))
                 buttons |= PadManager.BUTTON.dUp;
 
-            if (SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.DPadDown))
+            if (SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.DPadDown))
                 buttons |= PadManager.BUTTON.dDown;
 
-            if (SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.DPadLeft))
+            if (SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.DPadLeft))
                 buttons |= PadManager.BUTTON.dLeft;
 
-            if (SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.DPadRight))
+            if (SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.DPadRight))
                 buttons |= PadManager.BUTTON.dRight;
 
             // Start/Select (Options/Share on PlayStation)
             // Options button (right side, 3 lines) = Start
-            if (SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.Start))
+            if (SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.Start))
                 buttons |= PadManager.BUTTON.bStart;
 
             // Share/Create button (left side) = Select
-            if (SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.Back))
+            if (SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.Back))
                 buttons |= PadManager.BUTTON.bSelect;
 
             // Touchpad button (DualSense/DualShock 4) - map to Select as it's often used similarly
             // Some games use this as an additional menu button
-            if (SDL2Controller.IsButtonHeld(SDL2Controller.SDL_GameControllerButton.Touchpad))
+            if (SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.Touchpad))
                 buttons |= PadManager.BUTTON.bSelect;
 
             // Convert left stick to D-pad for menu navigation
-            short leftX = SDL2Controller.GetLeftStickX();
-            short leftY = SDL2Controller.GetLeftStickY();
+            short leftX = SDLController.GetLeftStickX();
+            short leftY = SDLController.GetLeftStickY();
             const short stickDeadzone = 16000;
 
             if (leftY < -stickDeadzone)
@@ -392,8 +392,8 @@ namespace DigimonNOAccess
                 buttons |= PadManager.BUTTON.slRight;
 
             // Convert right stick as well
-            short rightX = SDL2Controller.GetRightStickX();
-            short rightY = SDL2Controller.GetRightStickY();
+            short rightX = SDLController.GetRightStickX();
+            short rightY = SDLController.GetRightStickY();
 
             if (rightY < -stickDeadzone)
                 buttons |= PadManager.BUTTON.srUp;
@@ -420,11 +420,11 @@ namespace DigimonNOAccess
 
                 // Get SDL3 stick values and convert to Unity Vector2 (normalized -1 to 1)
                 // Note: Do NOT invert Y - the game handles stick input correctly already
-                float leftX = SDL2Controller.GetLeftStickX() / 32767f;
-                float leftY = SDL2Controller.GetLeftStickY() / 32767f;
+                float leftX = SDLController.GetLeftStickX() / 32767f;
+                float leftY = SDLController.GetLeftStickY() / 32767f;
 
-                float rightX = SDL2Controller.GetRightStickX() / 32767f;
-                float rightY = SDL2Controller.GetRightStickY() / 32767f;
+                float rightX = SDLController.GetRightStickX() / 32767f;
+                float rightY = SDLController.GetRightStickY() / 32767f;
 
                 // Only overwrite if SDL3 has significant input
                 const float deadzone = 0.15f;

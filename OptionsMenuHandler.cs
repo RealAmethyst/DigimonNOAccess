@@ -1,5 +1,4 @@
 using Il2Cpp;
-using MelonLoader;
 using UnityEngine;
 
 namespace DigimonNOAccess
@@ -7,8 +6,10 @@ namespace DigimonNOAccess
     /// <summary>
     /// Handles accessibility for options/settings menus.
     /// </summary>
-    public class OptionsMenuHandler
+    public class OptionsMenuHandler : IAccessibilityHandler
     {
+        public int Priority => 40;
+
         private uOptionPanel _optionPanel;
         private bool _wasActive = false;
         private int _lastCursor = -1;
@@ -95,7 +96,7 @@ namespace DigimonNOAccess
             }
 
             ScreenReader.Say(announcement);
-            Melon<Main>.Logger.Msg($"[OptionsMenu] Opened: {menuName}");
+            DebugLogger.Log($"[OptionsMenu] Opened: {menuName}");
 
             _lastState = state;
             _lastCursor = itemInfo?.Index ?? -1;
@@ -106,7 +107,7 @@ namespace DigimonNOAccess
             _optionPanel = null;
             _lastCursor = -1;
             _lastValue = "";
-            Melon<Main>.Logger.Msg("[OptionsMenu] Closed");
+            DebugLogger.Log("[OptionsMenu] Closed");
         }
 
         private void CheckStateChange()
@@ -121,9 +122,6 @@ namespace DigimonNOAccess
                 _lastCursor = -1;
                 _lastValue = "";
                 string menuName = GetMenuName(state);
-
-                // Debug: dump panel structure when entering
-                DumpPanelStructure(state);
 
                 var itemInfo = GetCurrentItemInfo();
                 string announcement;
@@ -142,162 +140,10 @@ namespace DigimonNOAccess
                 }
 
                 ScreenReader.Say(announcement);
-                Melon<Main>.Logger.Msg($"[OptionsMenu] State changed to: {menuName}");
+                DebugLogger.Log($"[OptionsMenu] State changed to: {menuName}");
 
                 _lastState = state;
                 _lastCursor = itemInfo?.Index ?? -1;
-            }
-        }
-
-        private void DumpPanelStructure(uOptionPanel.MainSettingState state)
-        {
-            try
-            {
-                var commandPanels = _optionPanel.m_uOptionPanelCommand;
-                if (commandPanels == null)
-                    return;
-
-                int panelIndex = (int)state;
-                if (panelIndex < 0 || panelIndex >= commandPanels.Length)
-                    return;
-
-                var commandPanel = commandPanels[panelIndex];
-                if (commandPanel == null)
-                    return;
-
-                var cursor = commandPanel.m_KeyCursorController;
-                int dataIndex = cursor != null ? cursor.m_DataIndex : -1;
-                int dataMax = cursor != null ? cursor.m_DataMax : -1;
-
-                DebugLogger.LogSection($"Panel {state} Structure");
-                DebugLogger.Log($"m_IsTitle={_optionPanel.m_IsTitle}, DataIndex={dataIndex}, DataMax={dataMax}");
-
-                if (state == uOptionPanel.MainSettingState.OPTION)
-                {
-                    var settingsPanel = commandPanel.TryCast<uOptionPanelCommand>();
-                    if (settingsPanel != null)
-                    {
-                        int itemsCount = settingsPanel.m_items?.Count ?? -1;
-                        int cmdArrayLen = settingsPanel.m_CommandInfoArray?.Length ?? -1;
-                        DebugLogger.Log($"Settings: m_items.Count={itemsCount}, m_CommandInfoArray.Length={cmdArrayLen}");
-
-                        // Dump CommandInfoArray (the visible UI slots)
-                        if (settingsPanel.m_CommandInfoArray != null)
-                        {
-                            DebugLogger.Log("--- m_CommandInfoArray (visible UI slots) ---");
-                            for (int i = 0; i < settingsPanel.m_CommandInfoArray.Length; i++)
-                            {
-                                var cmdInfo = settingsPanel.m_CommandInfoArray[i];
-                                if (cmdInfo != null)
-                                {
-                                    string cmdName = cmdInfo.m_CommandName?.text ?? "(null)";
-                                    string cmdNum = cmdInfo.m_CommandNum?.text ?? "(null)";
-                                    DebugLogger.Log($"  [{i}] Name=\"{cmdName}\" Value=\"{cmdNum}\"");
-                                }
-                                else
-                                {
-                                    DebugLogger.Log($"  [{i}] (null CommandInfo)");
-                                }
-                            }
-                        }
-
-                        // Dump m_items (the data items) with proper type detection
-                        if (settingsPanel.m_items != null)
-                        {
-                            DebugLogger.Log("--- m_items (data items) ---");
-                            for (int i = 0; i < settingsPanel.m_items.Count && i < 20; i++)
-                            {
-                                var item = settingsPanel.m_items[i];
-                                if (item != null)
-                                {
-                                    // Detect specific types using TryCast
-                                    string typeName = "Unknown";
-                                    string extraInfo = "";
-
-                                    if (item.TryCast<uOptionPanelItemVoiceLanguage>() != null)
-                                    {
-                                        typeName = "VoiceLanguage";
-                                        var vlItem = item.TryCast<uOptionPanelItemVoiceLanguage>();
-                                        extraInfo = $", lang=\"{vlItem.m_languageType?.text ?? "(null)"}\"";
-                                    }
-                                    else if (item.TryCast<uOptionPanelItemBgmVolume>() != null)
-                                        typeName = "BgmVolume";
-                                    else if (item.TryCast<uOptionPanelItemVoiceVolume>() != null)
-                                        typeName = "VoiceVolume";
-                                    else if (item.TryCast<uOptionPanelItemSeVolume>() != null)
-                                        typeName = "SeVolume";
-                                    else if (item.TryCast<uOptionPanelItemCameraV>() != null)
-                                        typeName = "CameraV";
-                                    else if (item.TryCast<uOptionPanelItemCameraH>() != null)
-                                        typeName = "CameraH";
-                                    else if (item.TryCast<uOptionPanelItemSensitivity>() != null)
-                                        typeName = "Sensitivity";
-                                    else if (item.TryCast<uOptionPanelItemVoid>() != null)
-                                        typeName = "Void(Back)";
-                                    else if (item.TryCast<uOptionPanelItemSlider>() != null)
-                                        typeName = "Slider";
-                                    else if (item.TryCast<uOptionPanelItemToggle>() != null)
-                                        typeName = "Toggle";
-
-                                    DebugLogger.Log($"  [{i}] m_IndexId={item.m_IndexId}, type={typeName}, Value={item.Value}{extraInfo}");
-                                }
-                            }
-                        }
-                    }
-                }
-                else if (state == uOptionPanel.MainSettingState.KEYCONFIG)
-                {
-                    var keyPanel = commandPanel.TryCast<uOptionKeyConfigPanelCommand>();
-                    if (keyPanel != null)
-                    {
-                        int visibleCount = keyPanel.m_items?.Count ?? -1;
-                        int typeListCount = keyPanel.m_itemTypeList?.Count ?? -1;
-                        int keyListLen = keyPanel.m_keyConfigList?.Length ?? -1;
-                        int scrollPos = keyPanel.m_scrollItemPos;
-                        int scrollMax = keyPanel.m_scrollMaxValue;
-
-                        DebugLogger.Log($"KeyConfig: m_items.Count={visibleCount}, m_itemTypeList.Count={typeListCount}");
-                        DebugLogger.Log($"KeyConfig: m_keyConfigList.Length={keyListLen}, scrollPos={scrollPos}, scrollMax={scrollMax}");
-
-                        // Dump visible items
-                        if (keyPanel.m_items != null)
-                        {
-                            DebugLogger.Log("--- m_items (visible slots) ---");
-                            for (int i = 0; i < keyPanel.m_items.Count; i++)
-                            {
-                                var item = keyPanel.m_items[i];
-                                if (item != null)
-                                {
-                                    string headText = item.m_HeadText?.text ?? "(null)";
-                                    KeyCode keyCode = item.m_keyCode;
-                                    DebugLogger.Log($"  [{i}] headText=\"{headText}\", keyCode={keyCode}");
-                                }
-                            }
-                        }
-
-                        // Dump itemTypeList (all entries)
-                        if (keyPanel.m_itemTypeList != null)
-                        {
-                            DebugLogger.Log("--- m_itemTypeList (all action names) ---");
-                            try
-                            {
-                                for (int i = 0; i < keyPanel.m_itemTypeList.Count; i++)
-                                {
-                                    string typeName = keyPanel.m_itemTypeList._items[i];
-                                    DebugLogger.Log($"  [{i}]=\"{typeName}\"");
-                                }
-                            }
-                            catch (System.Exception ex)
-                            {
-                                DebugLogger.Log($"Error reading itemTypeList: {ex.Message}");
-                            }
-                        }
-                    }
-                }
-            }
-            catch (System.Exception ex)
-            {
-                DebugLogger.Log($"Error dumping panel structure: {ex.Message}");
             }
         }
 
@@ -319,7 +165,7 @@ namespace DigimonNOAccess
                 announcement += $", {itemInfo.Index} of {itemInfo.Total}";
 
                 ScreenReader.Say(announcement);
-                Melon<Main>.Logger.Msg($"[OptionsMenu] Cursor: {itemInfo.Name} = {itemInfo.Value}");
+                DebugLogger.Log($"[OptionsMenu] Cursor: {itemInfo.Name} = {itemInfo.Value}");
                 _lastCursor = itemInfo.Index;
             }
         }
@@ -337,7 +183,7 @@ namespace DigimonNOAccess
             if (itemInfo.Index == _lastCursor && !string.IsNullOrEmpty(itemInfo.Value) && itemInfo.Value != _lastValue)
             {
                 ScreenReader.Say(itemInfo.Value);
-                Melon<Main>.Logger.Msg($"[OptionsMenu] Value changed: {itemInfo.Value}");
+                DebugLogger.Log($"[OptionsMenu] Value changed: {itemInfo.Value}");
                 _lastValue = itemInfo.Value;
             }
         }
@@ -455,7 +301,7 @@ namespace DigimonNOAccess
                 }
 
                 if (string.IsNullOrEmpty(itemName))
-                    itemName = $"Item {dataIndex + 1}";
+                    itemName = AnnouncementBuilder.FallbackItem("Item", dataIndex);
 
                 return new ItemInfo
                 {
@@ -467,7 +313,7 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                Melon<Main>.Logger.Warning($"[OptionsMenu] Error getting item info: {ex.Message}");
+                DebugLogger.Warning($"[OptionsMenu] Error getting item info: {ex.Message}");
                 return null;
             }
         }
@@ -496,7 +342,7 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                Melon<Main>.Logger.Warning($"[OptionsMenu] Error reading top panel: {ex.Message}");
+                DebugLogger.Warning($"[OptionsMenu] Error reading top panel: {ex.Message}");
             }
 
             return (name, value);
@@ -660,7 +506,7 @@ namespace DigimonNOAccess
             catch (System.Exception ex)
             {
                 DebugLogger.Log($"[Settings] ERROR: {ex.Message}");
-                Melon<Main>.Logger.Warning($"[OptionsMenu] Error reading settings panel: {ex.Message}");
+                DebugLogger.Warning($"[OptionsMenu] Error reading settings panel: {ex.Message}");
             }
 
             return (name, value);
@@ -702,7 +548,7 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                Melon<Main>.Logger.Warning($"[OptionsMenu] Error reading graphics panel: {ex.Message}");
+                DebugLogger.Warning($"[OptionsMenu] Error reading graphics panel: {ex.Message}");
             }
 
             return (name, value);

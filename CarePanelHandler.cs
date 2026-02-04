@@ -1,5 +1,4 @@
 using Il2Cpp;
-using MelonLoader;
 using UnityEngine;
 
 namespace DigimonNOAccess
@@ -7,8 +6,10 @@ namespace DigimonNOAccess
     /// <summary>
     /// Handles accessibility for the Care menu (Square button in field)
     /// </summary>
-    public class CarePanelHandler
+    public class CarePanelHandler : IAccessibilityHandler
     {
+        public int Priority => 62;
+
         private uCarePanel _carePanel;
         private uCarePanelCommand _commandPanel;
         private bool _wasActive = false;
@@ -102,7 +103,7 @@ namespace DigimonNOAccess
             string announcement;
             if (total > 0)
             {
-                announcement = $"Care menu. {itemText}, {cursor + 1} of {total}";
+                announcement = AnnouncementBuilder.MenuOpen("Care menu", itemText, cursor, total);
             }
             else
             {
@@ -137,7 +138,7 @@ namespace DigimonNOAccess
                 string announcement;
                 if (total > 0)
                 {
-                    announcement = $"{itemText}, {cursor + 1} of {total}";
+                    announcement = AnnouncementBuilder.CursorPosition(itemText, cursor, total);
                 }
                 else
                 {
@@ -204,7 +205,7 @@ namespace DigimonNOAccess
             string itemText = GetCommandName(cursor);
 
             string announcement = total > 0
-                ? $"Care menu. {itemText}, {cursor + 1} of {total}"
+                ? AnnouncementBuilder.MenuOpen("Care menu", itemText, cursor, total)
                 : $"Care menu. {itemText}";
 
             ScreenReader.Say(announcement);

@@ -1,7 +1,5 @@
 using System;
 using System.Runtime.InteropServices;
-using MelonLoader;
-
 namespace DigimonNOAccess
 {
     /// <summary>
@@ -51,18 +49,18 @@ namespace DigimonNOAccess
                 {
                     var readerPtr = Tolk_DetectScreenReader();
                     var readerName = readerPtr != IntPtr.Zero ? Marshal.PtrToStringUni(readerPtr) : "Unknown";
-                    Melon<Main>.Logger.Msg($"Screen reader detected: {readerName}");
+                    DebugLogger.Log($"Screen reader detected: {readerName}");
                 }
                 else
                 {
-                    Melon<Main>.Logger.Warning("No screen reader detected or Tolk failed to load");
+                    DebugLogger.Warning("No screen reader detected or Tolk failed to load");
                 }
 
                 return _initialized;
             }
-            catch (Exception ex)
+            catch (System.Exception ex)
             {
-                Melon<Main>.Logger.Error($"Failed to initialize Tolk: {ex.Message}");
+                DebugLogger.Error($"Failed to initialize Tolk: {ex.Message}");
                 return false;
             }
         }
@@ -78,7 +76,10 @@ namespace DigimonNOAccess
                 {
                     Tolk_Unload();
                 }
-                catch { }
+                catch (System.Exception ex)
+                {
+                    DebugLogger.Log($"[ScreenReader] Error in Shutdown: {ex.Message}");
+                }
                 _initialized = false;
             }
         }
@@ -102,9 +103,9 @@ namespace DigimonNOAccess
             {
                 Tolk_Output(text, interrupt);
             }
-            catch (Exception ex)
+            catch (System.Exception ex)
             {
-                Melon<Main>.Logger.Warning($"Tolk output failed: {ex.Message}");
+                DebugLogger.Warning($"Tolk output failed: {ex.Message}");
             }
         }
 
@@ -131,7 +132,10 @@ namespace DigimonNOAccess
             {
                 Tolk_Silence();
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[ScreenReader] Error in Silence: {ex.Message}");
+            }
         }
 
         /// <summary>
