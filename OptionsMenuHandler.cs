@@ -1,5 +1,4 @@
 using Il2Cpp;
-using MelonLoader;
 using UnityEngine;
 
 namespace DigimonNOAccess
@@ -95,7 +94,7 @@ namespace DigimonNOAccess
             }
 
             ScreenReader.Say(announcement);
-            Melon<Main>.Logger.Msg($"[OptionsMenu] Opened: {menuName}");
+            DebugLogger.Log($"[OptionsMenu] Opened: {menuName}");
 
             _lastState = state;
             _lastCursor = itemInfo?.Index ?? -1;
@@ -106,7 +105,7 @@ namespace DigimonNOAccess
             _optionPanel = null;
             _lastCursor = -1;
             _lastValue = "";
-            Melon<Main>.Logger.Msg("[OptionsMenu] Closed");
+            DebugLogger.Log("[OptionsMenu] Closed");
         }
 
         private void CheckStateChange()
@@ -139,7 +138,7 @@ namespace DigimonNOAccess
                 }
 
                 ScreenReader.Say(announcement);
-                Melon<Main>.Logger.Msg($"[OptionsMenu] State changed to: {menuName}");
+                DebugLogger.Log($"[OptionsMenu] State changed to: {menuName}");
 
                 _lastState = state;
                 _lastCursor = itemInfo?.Index ?? -1;
@@ -164,7 +163,7 @@ namespace DigimonNOAccess
                 announcement += $", {itemInfo.Index} of {itemInfo.Total}";
 
                 ScreenReader.Say(announcement);
-                Melon<Main>.Logger.Msg($"[OptionsMenu] Cursor: {itemInfo.Name} = {itemInfo.Value}");
+                DebugLogger.Log($"[OptionsMenu] Cursor: {itemInfo.Name} = {itemInfo.Value}");
                 _lastCursor = itemInfo.Index;
             }
         }
@@ -182,7 +181,7 @@ namespace DigimonNOAccess
             if (itemInfo.Index == _lastCursor && !string.IsNullOrEmpty(itemInfo.Value) && itemInfo.Value != _lastValue)
             {
                 ScreenReader.Say(itemInfo.Value);
-                Melon<Main>.Logger.Msg($"[OptionsMenu] Value changed: {itemInfo.Value}");
+                DebugLogger.Log($"[OptionsMenu] Value changed: {itemInfo.Value}");
                 _lastValue = itemInfo.Value;
             }
         }
@@ -300,7 +299,7 @@ namespace DigimonNOAccess
                 }
 
                 if (string.IsNullOrEmpty(itemName))
-                    itemName = $"Item {dataIndex + 1}";
+                    itemName = AnnouncementBuilder.FallbackItem("Item", dataIndex);
 
                 return new ItemInfo
                 {
@@ -312,7 +311,7 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                Melon<Main>.Logger.Warning($"[OptionsMenu] Error getting item info: {ex.Message}");
+                DebugLogger.Warning($"[OptionsMenu] Error getting item info: {ex.Message}");
                 return null;
             }
         }
@@ -341,7 +340,7 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                Melon<Main>.Logger.Warning($"[OptionsMenu] Error reading top panel: {ex.Message}");
+                DebugLogger.Warning($"[OptionsMenu] Error reading top panel: {ex.Message}");
             }
 
             return (name, value);
@@ -505,7 +504,7 @@ namespace DigimonNOAccess
             catch (System.Exception ex)
             {
                 DebugLogger.Log($"[Settings] ERROR: {ex.Message}");
-                Melon<Main>.Logger.Warning($"[OptionsMenu] Error reading settings panel: {ex.Message}");
+                DebugLogger.Warning($"[OptionsMenu] Error reading settings panel: {ex.Message}");
             }
 
             return (name, value);
@@ -547,7 +546,7 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                Melon<Main>.Logger.Warning($"[OptionsMenu] Error reading graphics panel: {ex.Message}");
+                DebugLogger.Warning($"[OptionsMenu] Error reading graphics panel: {ex.Message}");
             }
 
             return (name, value);
