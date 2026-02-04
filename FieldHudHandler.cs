@@ -214,7 +214,10 @@ namespace DigimonNOAccess
                     return panels[index];
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[FieldHudHandler] Error in GetDigimonPanel: {ex.Message}");
+            }
 
             return null;
         }
@@ -258,7 +261,10 @@ namespace DigimonNOAccess
 
                 _wasFishingPromptActive = isActive;
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[FieldHudHandler] Error in UpdateFishingPrompt: {ex.Message}");
+            }
         }
 
         private string GetFishingPromptText(uFieldPanel fieldPanel)
@@ -275,7 +281,10 @@ namespace DigimonNOAccess
                     }
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[FieldHudHandler] Error in GetFishingPromptText: {ex.Message}");
+            }
 
             return "";
         }

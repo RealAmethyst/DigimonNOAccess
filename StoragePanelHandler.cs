@@ -194,7 +194,10 @@ namespace DigimonNOAccess
                     return itemList.Count;
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[StoragePanel] Error in GetItemCount: {ex.Message}");
+            }
             return 0;
         }
 

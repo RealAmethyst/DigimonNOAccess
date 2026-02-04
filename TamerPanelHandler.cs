@@ -183,7 +183,10 @@ namespace DigimonNOAccess
                 }
                 _lastStatusCommand = currentCommand;
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[TamerPanel] Error in CheckStatusChange: {ex.Message}");
+            }
         }
 
         private string GetStatusInfo()
@@ -216,8 +219,9 @@ namespace DigimonNOAccess
 
                 return $"{stats}{commandName}, {commandIndex + 1} of 2";
             }
-            catch
+            catch (System.Exception ex)
             {
+                DebugLogger.Log($"[TamerPanel] Error in GetStatusInfo: {ex.Message}");
                 return "";
             }
         }
@@ -321,7 +325,10 @@ namespace DigimonNOAccess
 
                 _lastSkillGetTab = currentTab;
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[TamerPanel] Error in CheckSkillGetChange: {ex.Message}");
+            }
         }
 
         private uGetSkillPanelBase GetCurrentTabPanel(uDigiviceTamerPanelSkill_Get_MainWindow mainWindow, int tabIndex)
@@ -350,7 +357,10 @@ namespace DigimonNOAccess
                     isLearned = ParameterTamerSkill.IsLearnedSkill(skill);
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[TamerPanel] Error checking skill learned status: {ex.Message}");
+            }
 
             string announcement = skillName;
 
@@ -375,7 +385,10 @@ namespace DigimonNOAccess
                     announcement += $", {skillIndex + 1} of {skillList.Count}";
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[TamerPanel] Error getting skill index: {ex.Message}");
+            }
 
             return announcement;
         }
@@ -400,8 +413,9 @@ namespace DigimonNOAccess
                     _ => -1
                 };
             }
-            catch
+            catch (System.Exception ex)
             {
+                DebugLogger.Log($"[TamerPanel] Error in GetSkillCursorIndex: {ex.Message}");
                 return -1;
             }
         }
@@ -457,7 +471,10 @@ namespace DigimonNOAccess
                     return tabPanel.GetNextCursorIndex();
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[TamerPanel] Error in GetCurrentCategoryIndex: {ex.Message}");
+            }
             return -1;
         }
 
@@ -543,8 +560,9 @@ namespace DigimonNOAccess
 
                 return info;
             }
-            catch
+            catch (System.Exception ex)
             {
+                DebugLogger.Log($"[TamerPanel] Error in GetSkillGetInfo: {ex.Message}");
                 return "";
             }
         }
@@ -617,7 +635,10 @@ namespace DigimonNOAccess
                     _lastSkillCheckSelectNo = currentSelectNo;
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[TamerPanel] Error in CheckSkillCheckChange: {ex.Message}");
+            }
         }
 
         private string GetSkillCheckInfo()
@@ -653,8 +674,9 @@ namespace DigimonNOAccess
 
                 return info;
             }
-            catch
+            catch (System.Exception ex)
             {
+                DebugLogger.Log($"[TamerPanel] Error in GetSkillCheckInfo: {ex.Message}");
                 return "";
             }
         }
@@ -761,7 +783,10 @@ namespace DigimonNOAccess
                 if (textComponent != null)
                     return textComponent.text ?? "";
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[TamerPanel] Error in GetTextSafe: {ex.Message}");
+            }
             return "";
         }
 

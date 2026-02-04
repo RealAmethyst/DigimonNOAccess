@@ -56,7 +56,10 @@ namespace DigimonNOAccess
                     CheckWindowForNewText(window, windowId);
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[CommonMessageMonitor] Error in Update: {ex.Message}");
+            }
         }
 
         private void CheckWindowForNewText(uCommonMessageWindow window, int windowIndex)
@@ -104,7 +107,10 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[CommonMessageMonitor] {text}");
                 ScreenReader.Say(DialogTextPatch.StripRichTextTags(text));
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[CommonMessageMonitor] Error in CheckWindowForNewText: {ex.Message}");
+            }
         }
 
         private bool IsLocalizationReady()

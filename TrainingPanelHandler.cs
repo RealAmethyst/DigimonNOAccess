@@ -369,8 +369,9 @@ namespace DigimonNOAccess
 
                 return string.Join(", ", bonusNames);
             }
-            catch
+            catch (System.Exception ex)
             {
+                DebugLogger.Log($"[TrainingPanel] Error in GetBonusTypes: {ex.Message}");
                 return "";
             }
         }
@@ -433,7 +434,10 @@ namespace DigimonNOAccess
                     return contents.Length;
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[TrainingPanel] Error in GetTrainingCount: {ex.Message}");
+            }
             return 7; // Default: HP, MP, STR, STA, WIS, SPD, Rest
         }
 

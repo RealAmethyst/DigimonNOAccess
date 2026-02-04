@@ -309,7 +309,10 @@ namespace DigimonNOAccess
                 if (string.IsNullOrWhiteSpace(order))
                     order = "None";
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[BattleHudHandler] Error getting partner order: {ex.Message}");
+            }
 
             string partnerLabel = PartnerUtilities.GetPartnerLabel(partnerIndex);
             ScreenReader.Say($"{partnerLabel} current order: {order}");
@@ -335,8 +338,9 @@ namespace DigimonNOAccess
                 hpText = panel.m_hpText?.text ?? panel.m_now_hp.ToString();
                 mpText = panel.m_mpText?.text ?? panel.m_now_mp.ToString();
             }
-            catch
+            catch (System.Exception ex)
             {
+                DebugLogger.Log($"[BattleHudHandler] Error reading HP/MP text: {ex.Message}");
                 hpText = panel.m_now_hp.ToString();
                 mpText = panel.m_now_mp.ToString();
             }
@@ -346,7 +350,10 @@ namespace DigimonNOAccess
                 order = panel.m_orderLabel?.text ?? "";
                 orderPower = panel.m_dispOrderPower;
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[BattleHudHandler] Error reading order/power: {ex.Message}");
+            }
 
             string announcement = $"{name}: HP {hpText}, MP {mpText}";
             if (!string.IsNullOrWhiteSpace(order))

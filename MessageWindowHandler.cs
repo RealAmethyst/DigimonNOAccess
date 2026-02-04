@@ -120,7 +120,10 @@ namespace DigimonNOAccess
                 _lastAnnouncedEventName = cleanedName;
 
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[MessageWindow] Error in OnDialogTextIntercepted: {ex.Message}");
+            }
         }
 
         private string TruncateText(string text, int maxLength)
@@ -226,7 +229,10 @@ namespace DigimonNOAccess
                         return CleanText(name);
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[MessageWindow] Error in GetEventPanelName: {ex.Message}");
+            }
 
             return "";
         }
@@ -245,7 +251,10 @@ namespace DigimonNOAccess
                         return CleanText(text);
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[MessageWindow] Error in GetEventPanelText: {ex.Message}");
+            }
 
             return "";
         }
@@ -369,7 +378,10 @@ namespace DigimonNOAccess
                         return CleanText(text);
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[MessageWindow] Error in GetCommonMessageText: {ex.Message}");
+            }
 
             return "";
         }
@@ -415,7 +427,10 @@ namespace DigimonNOAccess
                         return CleanText(text);
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[MessageWindow] Error in GetDigimonPanelText: {ex.Message}");
+            }
 
             return "";
         }
@@ -528,7 +543,10 @@ namespace DigimonNOAccess
                     }
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[MessageWindow] Error in GetBattleDialogText: {ex.Message}");
+            }
 
             return "";
         }
@@ -702,7 +720,10 @@ namespace DigimonNOAccess
                         return CleanText(text);
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[MessageWindow] Error in GetCaptionTextFromPanel: {ex.Message}");
+            }
 
             return "";
         }

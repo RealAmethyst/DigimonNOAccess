@@ -161,7 +161,10 @@ namespace DigimonNOAccess
                     return itemPanel.m_maxListNum;
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Error in GetMenuItemCount: {ex.Message}");
+            }
             return 1;
         }
 

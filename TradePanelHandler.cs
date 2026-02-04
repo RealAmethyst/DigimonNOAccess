@@ -175,7 +175,10 @@ namespace DigimonNOAccess
                     return contents.Length;
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Error in GetMenuItemCount: {ex.Message}");
+            }
             return 1;
         }
 

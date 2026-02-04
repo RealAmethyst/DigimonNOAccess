@@ -58,7 +58,7 @@ namespace DigimonNOAccess
 
                 return _initialized;
             }
-            catch (Exception ex)
+            catch (System.Exception ex)
             {
                 DebugLogger.Error($"Failed to initialize Tolk: {ex.Message}");
                 return false;
@@ -76,7 +76,10 @@ namespace DigimonNOAccess
                 {
                     Tolk_Unload();
                 }
-                catch { }
+                catch (System.Exception ex)
+                {
+                    DebugLogger.Log($"[ScreenReader] Error in Shutdown: {ex.Message}");
+                }
                 _initialized = false;
             }
         }
@@ -100,7 +103,7 @@ namespace DigimonNOAccess
             {
                 Tolk_Output(text, interrupt);
             }
-            catch (Exception ex)
+            catch (System.Exception ex)
             {
                 DebugLogger.Warning($"Tolk output failed: {ex.Message}");
             }
@@ -129,7 +132,10 @@ namespace DigimonNOAccess
             {
                 Tolk_Silence();
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[ScreenReader] Error in Silence: {ex.Message}");
+            }
         }
 
         /// <summary>

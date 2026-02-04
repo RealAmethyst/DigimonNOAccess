@@ -186,7 +186,10 @@ namespace DigimonNOAccess
                     return _panel.m_KeyCursorController.m_DataMax;
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[SavePanel] Error in GetSlotCount: {ex.Message}");
+            }
             return 3;
         }
 
