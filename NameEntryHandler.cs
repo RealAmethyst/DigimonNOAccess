@@ -7,8 +7,10 @@ namespace DigimonNOAccess
     /// <summary>
     /// Handles accessibility for the name entry screen (New Game player name input).
     /// </summary>
-    public class NameEntryHandler
+    public class NameEntryHandler : IAccessibilityHandler
     {
+        public int Priority => 25;
+
         private NameEntry _nameEntry;
         private uNameInput _nameInput;
         private bool _wasActive = false;

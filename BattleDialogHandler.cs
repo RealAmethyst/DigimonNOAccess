@@ -7,8 +7,20 @@ namespace DigimonNOAccess
     /// Handles battle dialog accessibility (escape confirmation, etc.).
     /// Announces dialog messages and Yes/No selection.
     /// </summary>
-    public class BattleDialogHandler
+    public class BattleDialogHandler : IAccessibilityHandler
     {
+        public int Priority => 80;
+
+        /// <summary>
+        /// IAccessibilityHandler.IsOpen() - delegates to IsActive().
+        /// </summary>
+        public bool IsOpen() => IsActive();
+
+        public void AnnounceStatus()
+        {
+            ScreenReader.Say("Battle dialog");
+        }
+
         private uBattlePanelDialog _cachedDialog;
         private int _lastCursorIndex = -1;
         private bool _wasActive = false;

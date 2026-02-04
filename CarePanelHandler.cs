@@ -6,8 +6,10 @@ namespace DigimonNOAccess
     /// <summary>
     /// Handles accessibility for the Care menu (Square button in field)
     /// </summary>
-    public class CarePanelHandler
+    public class CarePanelHandler : IAccessibilityHandler
     {
+        public int Priority => 62;
+
         private uCarePanel _carePanel;
         private uCarePanelCommand _commandPanel;
         private bool _wasActive = false;

@@ -7,8 +7,10 @@ namespace DigimonNOAccess
     /// <summary>
     /// Handles accessibility for the difficulty selection dialog in New Game.
     /// </summary>
-    public class DifficultyDialogHandler
+    public class DifficultyDialogHandler : IAccessibilityHandler
     {
+        public int Priority => 20;
+
         private uDifficultyDialog _dialog;
         private bool _wasActive = false;
         private int _lastCursor = -1;

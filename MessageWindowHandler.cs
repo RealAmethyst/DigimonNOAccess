@@ -12,8 +12,10 @@ namespace DigimonNOAccess
     /// Uses Harmony patches to intercept dialog text the moment it's set,
     /// announcing the full text immediately without waiting for typewriter animation.
     /// </summary>
-    public class MessageWindowHandler
+    public class MessageWindowHandler : IAccessibilityHandler
     {
+        public int Priority => 45;
+
         // EventWindowPanel tracking (main story dialog - used by TalkMain)
         private EventWindowPanel _eventPanel;
         private bool _wasEventPanelActive = false;

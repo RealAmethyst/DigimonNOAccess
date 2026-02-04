@@ -6,8 +6,10 @@ namespace DigimonNOAccess
     /// <summary>
     /// Handles accessibility for the storage panel (item storage management)
     /// </summary>
-    public class StoragePanelHandler
+    public class StoragePanelHandler : IAccessibilityHandler
     {
+        public int Priority => 65;
+
         private uStoragePanel _panel;
         private bool _wasActive = false;
         private int _lastCursorL = -1;

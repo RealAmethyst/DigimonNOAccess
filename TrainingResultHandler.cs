@@ -7,8 +7,16 @@ namespace DigimonNOAccess
     /// Handles accessibility for the training result panel.
     /// Announces stat gains after training completes.
     /// </summary>
-    public class TrainingResultHandler
+    public class TrainingResultHandler : IAccessibilityHandler
     {
+        public int Priority => 52;
+
+        public void AnnounceStatus()
+        {
+            if (!IsOpen()) return;
+            ScreenReader.Say("Training results");
+        }
+
         private uTrainingPanelResult _panel;
         private bool _wasActive = false;
         private bool _resultAnnounced = false;

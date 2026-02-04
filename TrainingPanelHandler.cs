@@ -7,8 +7,10 @@ namespace DigimonNOAccess
     /// Handles accessibility for the training panel (gym training selection).
     /// Tracks two independent cursors (one per partner) and announces training details.
     /// </summary>
-    public class TrainingPanelHandler
+    public class TrainingPanelHandler : IAccessibilityHandler
     {
+        public int Priority => 55;
+
         private uTrainingPanelCommand _panel;
         private bool _wasActive = false;
         private int _lastCursorRight = -1; // Partner 1 (Right) cursor position

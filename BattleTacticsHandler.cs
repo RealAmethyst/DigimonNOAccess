@@ -8,8 +8,15 @@ namespace DigimonNOAccess
     /// This menu appears when pressing Square during battle and contains
     /// options like MP usage policy and escape.
     /// </summary>
-    public class BattleTacticsHandler
+    public class BattleTacticsHandler : IAccessibilityHandler
     {
+        public int Priority => 86;
+
+        /// <summary>
+        /// IAccessibilityHandler.IsOpen() - delegates to IsActive().
+        /// </summary>
+        public bool IsOpen() => IsActive();
+
         private uBattlePanelTactics _cachedTacticsPanel;
         private int _lastCmdNo = -1;
         private uBattlePanelTactics.InternalMode _lastMode = uBattlePanelTactics.InternalMode.None;

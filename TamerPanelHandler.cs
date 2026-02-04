@@ -9,8 +9,10 @@ namespace DigimonNOAccess
     /// - SkillCheck (view learned skills)
     /// - SkillGet (buy new skills with TP)
     /// </summary>
-    public class TamerPanelHandler
+    public class TamerPanelHandler : IAccessibilityHandler
     {
+        public int Priority => 70;
+
         private uDigiviceTamerPanel _panel;
         private bool _wasActive = false;
         private uDigiviceTamerPanel.State _lastState = uDigiviceTamerPanel.State.None;

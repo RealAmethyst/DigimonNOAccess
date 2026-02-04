@@ -21,8 +21,20 @@ namespace DigimonNOAccess
     /// F3 = Partner 1 full status
     /// F4 = Partner 2 full status
     /// </summary>
-    public class FieldHudHandler
+    public class FieldHudHandler : IAccessibilityHandler
     {
+        public int Priority => 997;
+
+        /// <summary>
+        /// Background handler - never owns the status announce.
+        /// </summary>
+        public bool IsOpen() => false;
+
+        /// <summary>
+        /// Background handler - never announces status.
+        /// </summary>
+        public void AnnounceStatus() { }
+
         // Fishing prompt tracking
         private bool _wasFishingPromptActive = false;
         private string _lastFishingText = "";

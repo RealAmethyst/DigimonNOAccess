@@ -11,8 +11,20 @@ namespace DigimonNOAccess
     /// Scans for NPCs, items, transitions, and enemies, then lets the player
     /// cycle through categories and events via hotkeys with screen reader announcements.
     /// </summary>
-    public class NavigationListHandler
+    public class NavigationListHandler : IAccessibilityHandler
     {
+        public int Priority => 998;
+
+        /// <summary>
+        /// Background handler - never owns the status announce.
+        /// </summary>
+        public bool IsOpen() => false;
+
+        /// <summary>
+        /// Background handler - never announces status.
+        /// </summary>
+        public void AnnounceStatus() { }
+
         // Event categories
         private enum EventCategory
         {

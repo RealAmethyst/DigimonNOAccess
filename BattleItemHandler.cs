@@ -7,8 +7,20 @@ namespace DigimonNOAccess
     /// Handles battle item menu accessibility.
     /// Announces selected items and target selection.
     /// </summary>
-    public class BattleItemHandler
+    public class BattleItemHandler : IAccessibilityHandler
     {
+        public int Priority => 82;
+
+        /// <summary>
+        /// IAccessibilityHandler.IsOpen() - delegates to IsActive().
+        /// </summary>
+        public bool IsOpen() => IsActive();
+
+        public void AnnounceStatus()
+        {
+            ScreenReader.Say("Battle items");
+        }
+
         private uBattlePanelItemBox _cachedItemBox;
         private int _lastSelectNo = -1;
         private bool _wasActive = false;

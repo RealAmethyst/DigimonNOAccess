@@ -10,8 +10,20 @@ namespace DigimonNOAccess
     /// This catches notifications like "Tentomon joined the city!" that don't go
     /// through the normal SetMessage path with proper localization.
     /// </summary>
-    public class CommonMessageMonitor
+    public class CommonMessageMonitor : IAccessibilityHandler
     {
+        public int Priority => 48;
+
+        /// <summary>
+        /// CommonMessageMonitor runs in the background and never "owns" status.
+        /// </summary>
+        public bool IsOpen() => false;
+
+        /// <summary>
+        /// No-op: this monitor doesn't announce status via the priority chain.
+        /// </summary>
+        public void AnnounceStatus() { }
+
         // Track last seen text per window instance to detect changes
         // When window closes, tracking is cleared, allowing re-announcement when reopened
         private Dictionary<int, string> _lastTextPerWindow = new Dictionary<int, string>();

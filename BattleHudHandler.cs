@@ -19,8 +19,20 @@ namespace DigimonNOAccess
     ///   RStickLeft = Partner 1 Order
     ///   RStickRight = Partner 2 Order
     /// </summary>
-    public class BattleHudHandler
+    public class BattleHudHandler : IAccessibilityHandler
     {
+        public int Priority => 90;
+
+        /// <summary>
+        /// IAccessibilityHandler.IsOpen() - delegates to IsActive().
+        /// </summary>
+        public bool IsOpen() => IsActive();
+
+        public void AnnounceStatus()
+        {
+            ScreenReader.Say("In battle. Hold RB plus D-pad for Partner 1, LB plus D-pad for Partner 2");
+        }
+
         private uBattlePanel _cachedBattlePanel;
 
         private bool _loggedBattleActive = false;

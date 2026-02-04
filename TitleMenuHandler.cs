@@ -10,8 +10,10 @@ namespace DigimonNOAccess
     /// Also checks MainTitle.m_State == Idle to ensure no dialogs/loading are active.
     /// Uses Localization.isActive to ensure text is ready before reading.
     /// </summary>
-    public class TitleMenuHandler
+    public class TitleMenuHandler : IAccessibilityHandler
     {
+        public int Priority => 35;
+
         private uTitlePanel _titlePanel;
         private MainTitle _mainTitle;
         private bool _wasUsable = false;

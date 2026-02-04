@@ -7,8 +7,20 @@ namespace DigimonNOAccess
     /// Handles Order Ring (command wheel) accessibility.
     /// Announces the currently selected command as the player navigates.
     /// </summary>
-    public class BattleOrderRingHandler
+    public class BattleOrderRingHandler : IAccessibilityHandler
     {
+        public int Priority => 84;
+
+        /// <summary>
+        /// IAccessibilityHandler.IsOpen() - delegates to IsActive().
+        /// </summary>
+        public bool IsOpen() => IsActive();
+
+        public void AnnounceStatus()
+        {
+            ScreenReader.Say("Order Ring");
+        }
+
         private uBattlePanelCommand _cachedCmdPanel;
         private int _lastSelectIndex = -1;
         private int _lastSelectDigimon = -1;

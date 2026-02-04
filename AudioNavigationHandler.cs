@@ -14,8 +14,20 @@ namespace DigimonNOAccess
     /// Continuously tracks nearest objects with positional audio.
     /// No toggle keys, no speech - just audio cues.
     /// </summary>
-    public class AudioNavigationHandler
+    public class AudioNavigationHandler : IAccessibilityHandler
     {
+        public int Priority => 999;
+
+        /// <summary>
+        /// Background handler - never owns the status announce.
+        /// </summary>
+        public bool IsOpen() => false;
+
+        /// <summary>
+        /// Background handler - never announces status.
+        /// </summary>
+        public void AnnounceStatus() { }
+
         // Detection ranges (in Unity units - roughly 1 unit = 1 step)
         private const float ItemRange = 100f;
         private const float NpcRange = 120f;

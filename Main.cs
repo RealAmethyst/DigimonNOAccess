@@ -1,6 +1,7 @@
 using HarmonyLib;
 using MelonLoader;
 using UnityEngine;
+using System.Collections.Generic;
 using System.IO;
 
 [assembly: MelonInfo(typeof(DigimonNOAccess.Main), "DigimonNOAccess", "1.0.0", "Accessibility Mod")]
@@ -11,49 +12,18 @@ namespace DigimonNOAccess
     public class Main : MelonMod
     {
         private static string _modFolderPath;
-        private TitleMenuHandler _titleMenuHandler;
-        private OptionsMenuHandler _optionsMenuHandler;
-        private NameEntryHandler _nameEntryHandler;
-        private DialogHandler _dialogHandler;
-        private MessageWindowHandler _messageWindowHandler;
-        private DifficultyDialogHandler _difficultyDialogHandler;
-        private CharaSelectHandler _charaSelectHandler;
-        private DigiEggHandler _digiEggHandler;
-        private GenealogyHandler _genealogyHandler;
-        private DialogChoiceHandler _dialogChoiceHandler;
-        private CommonYesNoHandler _commonYesNoHandler;
-        private AudioNavigationHandler _audioNavigationHandler;
-        private CampCommandHandler _campCommandHandler;
-        private CommonSelectWindowHandler _commonSelectWindowHandler;
-        private TradePanelHandler _tradePanelHandler;
-        private RestaurantPanelHandler _restaurantPanelHandler;
-        private TrainingPanelHandler _trainingPanelHandler;
-        private TrainingBonusHandler _trainingBonusHandler;
-        private TrainingResultHandler _trainingResultHandler;
-        private ColosseumPanelHandler _colosseumPanelHandler;
-        private FarmPanelHandler _farmPanelHandler;
-        private SavePanelHandler _savePanelHandler;
-        private FieldItemPanelHandler _fieldItemPanelHandler;
-        private StoragePanelHandler _storagePanelHandler;
-        private MapPanelHandler _mapPanelHandler;
-        private PartnerPanelHandler _partnerPanelHandler;
-        private ItemPickPanelHandler _itemPickPanelHandler;
-        private MailPanelHandler _mailPanelHandler;
-        private DigiviceTopPanelHandler _digiviceTopPanelHandler;
-        private TamerPanelHandler _tamerPanelHandler;
-        private ZonePanelHandler _zonePanelHandler;
-        private FieldHudHandler _fieldHudHandler;
-        private CarePanelHandler _carePanelHandler;
-        private BattleHudHandler _battleHudHandler;
-        private BattleOrderRingHandler _battleOrderRingHandler;
-        private BattleItemHandler _battleItemHandler;
-        private BattleDialogHandler _battleDialogHandler;
-        private BattleTacticsHandler _battleTacticsHandler;
-        private BattleResultHandler _battleResultHandler;
-        private CommonMessageMonitor _commonMessageMonitor;
+
+        /// <summary>
+        /// All handlers in the mod, sorted by Priority (lowest first).
+        /// Used for Update() calls and AnnounceCurrentStatus() iteration.
+        /// </summary>
+        private List<IAccessibilityHandler> _handlers;
+
+        // Special handler references needed for cross-handler interactions and cleanup
         private EvolutionHandler _evolutionHandler;
-        private ModSettingsHandler _modSettingsHandler;
         private NavigationListHandler _navigationListHandler;
+        private AudioNavigationHandler _audioNavigationHandler;
+
         private HarmonyLib.Harmony _harmony;
         private bool _initialized = false;
 
@@ -98,50 +68,61 @@ namespace DigimonNOAccess
                 LoggerInstance.Msg("SDL3 not available - using game's default input (Xbox controllers via Steam)");
             }
 
-            // Create handlers
-            _titleMenuHandler = new TitleMenuHandler();
-            _optionsMenuHandler = new OptionsMenuHandler();
-            _nameEntryHandler = new NameEntryHandler();
-            _dialogHandler = new DialogHandler();
-            _messageWindowHandler = new MessageWindowHandler();
-            _difficultyDialogHandler = new DifficultyDialogHandler();
-            _charaSelectHandler = new CharaSelectHandler();
-            _digiEggHandler = new DigiEggHandler();
-            _genealogyHandler = new GenealogyHandler();
-            _dialogChoiceHandler = new DialogChoiceHandler();
-            _commonYesNoHandler = new CommonYesNoHandler();
-            _audioNavigationHandler = new AudioNavigationHandler();
-            _campCommandHandler = new CampCommandHandler();
-            _commonSelectWindowHandler = new CommonSelectWindowHandler();
-            _tradePanelHandler = new TradePanelHandler();
-            _restaurantPanelHandler = new RestaurantPanelHandler();
-            _trainingPanelHandler = new TrainingPanelHandler();
-            _trainingBonusHandler = new TrainingBonusHandler();
-            _trainingResultHandler = new TrainingResultHandler();
-            _colosseumPanelHandler = new ColosseumPanelHandler();
-            _farmPanelHandler = new FarmPanelHandler();
-            _savePanelHandler = new SavePanelHandler();
-            _fieldItemPanelHandler = new FieldItemPanelHandler();
-            _storagePanelHandler = new StoragePanelHandler();
-            _mapPanelHandler = new MapPanelHandler();
-            _partnerPanelHandler = new PartnerPanelHandler();
-            _itemPickPanelHandler = new ItemPickPanelHandler();
-            _mailPanelHandler = new MailPanelHandler();
-            _digiviceTopPanelHandler = new DigiviceTopPanelHandler();
-            _tamerPanelHandler = new TamerPanelHandler();
-            _zonePanelHandler = new ZonePanelHandler();
-            _fieldHudHandler = new FieldHudHandler();
-            _carePanelHandler = new CarePanelHandler();
-            _battleHudHandler = new BattleHudHandler();
-            _battleOrderRingHandler = new BattleOrderRingHandler();
-            _battleItemHandler = new BattleItemHandler();
-            _battleDialogHandler = new BattleDialogHandler();
-            _battleTacticsHandler = new BattleTacticsHandler();
-            _battleResultHandler = new BattleResultHandler();
-            _commonMessageMonitor = new CommonMessageMonitor();
+            // Create special handlers that need direct references
             _evolutionHandler = new EvolutionHandler();
-            _modSettingsHandler = new ModSettingsHandler();
             _navigationListHandler = new NavigationListHandler();
+            _audioNavigationHandler = new AudioNavigationHandler();
+
+            // Create all handlers and add to registry
+            _handlers = new List<IAccessibilityHandler>
+            {
+                new ModSettingsHandler(),
+                new CommonYesNoHandler(),
+                new DialogChoiceHandler(),
+                new DifficultyDialogHandler(),
+                new NameEntryHandler(),
+                new DialogHandler(),
+                new TitleMenuHandler(),
+                new CommonSelectWindowHandler(),
+                new OptionsMenuHandler(),
+                new CharaSelectHandler(),
+                new DigiEggHandler(),
+                new GenealogyHandler(),
+                new MessageWindowHandler(),
+                new CommonMessageMonitor(),
+                new TrainingBonusHandler(),
+                new TrainingResultHandler(),
+                new DigiviceTopPanelHandler(),
+                new CampCommandHandler(),
+                new TrainingPanelHandler(),
+                new FieldItemPanelHandler(),
+                new SavePanelHandler(),
+                new ColosseumPanelHandler(),
+                new FarmPanelHandler(),
+                new RestaurantPanelHandler(),
+                new TradePanelHandler(),
+                new CarePanelHandler(),
+                new StoragePanelHandler(),
+                new MapPanelHandler(),
+                new MailPanelHandler(),
+                new PartnerPanelHandler(),
+                new TamerPanelHandler(),
+                _evolutionHandler,
+                new ZonePanelHandler(),
+                new BattleDialogHandler(),
+                new BattleItemHandler(),
+                new BattleOrderRingHandler(),
+                new BattleTacticsHandler(),
+                new BattleResultHandler(),
+                new BattleHudHandler(),
+                new ItemPickPanelHandler(),
+                _audioNavigationHandler,
+                new FieldHudHandler(),
+                _navigationListHandler,
+            };
+
+            // Sort by Priority (lowest first) for consistent Update and AnnounceStatus ordering
+            _handlers.Sort((a, b) => a.Priority.CompareTo(b.Priority));
 
             _initialized = true;
             LoggerInstance.Msg("DigimonNOAccess initialized");
@@ -155,51 +136,14 @@ namespace DigimonNOAccess
             // Update the input manager first (tracks button states)
             ModInputManager.Update();
 
-            // Update all handlers
-            _titleMenuHandler.Update();
-            _optionsMenuHandler.Update();
-            _nameEntryHandler.Update();
-            _dialogHandler.Update();
-            _messageWindowHandler.Update();
-            _difficultyDialogHandler.Update();
-            _charaSelectHandler.Update();
-            _digiEggHandler.Update();
-            _genealogyHandler.Update();
-            _dialogChoiceHandler.Update();
-            _commonYesNoHandler.Update();
-            _audioNavigationHandler.Update();
-            _campCommandHandler.Update();
-            _commonSelectWindowHandler.Update();
-            _tradePanelHandler.Update();
-            _restaurantPanelHandler.Update();
-            _trainingPanelHandler.Update();
-            _trainingBonusHandler.Update();
-            _trainingResultHandler.Update();
-            _colosseumPanelHandler.Update();
-            _farmPanelHandler.Update();
-            _savePanelHandler.Update();
-            _fieldItemPanelHandler.Update();
-            _storagePanelHandler.Update();
-            _mapPanelHandler.Update();
-            _partnerPanelHandler.Update();
-            _itemPickPanelHandler.Update();
-            _mailPanelHandler.Update();
-            _digiviceTopPanelHandler.Update();
-            _tamerPanelHandler.Update();
-            _zonePanelHandler.Update();
-            _fieldHudHandler.Update();
-            _carePanelHandler.Update();
-            _battleHudHandler.Update();
-            _battleOrderRingHandler.Update();
-            _battleItemHandler.Update();
-            _battleDialogHandler.Update();
-            _battleTacticsHandler.Update();
-            _battleResultHandler.Update();
-            _commonMessageMonitor.Update();
-            _evolutionHandler.Update();
-            _modSettingsHandler.Update();
+            // Cross-handler data flow: NavigationList needs to know if evolution is active
             _navigationListHandler.SetEvolutionActive(_evolutionHandler.IsActive());
-            _navigationListHandler.Update();
+
+            // Update all handlers
+            for (int i = 0; i < _handlers.Count; i++)
+            {
+                _handlers[i].Update();
+            }
 
             // Global hotkeys
             HandleGlobalKeys();
@@ -242,151 +186,19 @@ namespace DigimonNOAccess
 
         private void AnnounceCurrentStatus()
         {
-            // Check handlers in priority order (most specific first)
-            if (_modSettingsHandler.IsOpen())
+            // Iterate handlers in priority order (lowest Priority first = most specific).
+            // The first handler that reports IsOpen() wins and announces.
+            for (int i = 0; i < _handlers.Count; i++)
             {
-                _modSettingsHandler.AnnounceStatus();
+                if (_handlers[i].IsOpen())
+                {
+                    _handlers[i].AnnounceStatus();
+                    return;
+                }
             }
-            else if (_commonYesNoHandler.IsOpen())
-            {
-                _commonYesNoHandler.AnnounceStatus();
-            }
-            else if (_dialogChoiceHandler.IsChoicesActive())
-            {
-                _dialogChoiceHandler.AnnounceStatus();
-            }
-            else if (_dialogHandler.IsOpen())
-            {
-                _dialogHandler.AnnounceStatus();
-            }
-            else if (_difficultyDialogHandler.IsOpen())
-            {
-                _difficultyDialogHandler.AnnounceStatus();
-            }
-            else if (_charaSelectHandler.IsOpen())
-            {
-                _charaSelectHandler.AnnounceStatus();
-            }
-            else if (_genealogyHandler.IsOpen())
-            {
-                _genealogyHandler.AnnounceStatus();
-            }
-            else if (_digiEggHandler.IsOpen())
-            {
-                _digiEggHandler.AnnounceStatus();
-            }
-            else if (_nameEntryHandler.IsOpen())
-            {
-                _nameEntryHandler.AnnounceStatus();
-            }
-            else if (_optionsMenuHandler.IsOpen())
-            {
-                _optionsMenuHandler.AnnounceStatus();
-            }
-            else if (_titleMenuHandler.IsOpen())
-            {
-                _titleMenuHandler.AnnounceStatus();
-            }
-            else if (_messageWindowHandler.IsOpen())
-            {
-                _messageWindowHandler.AnnounceStatus();
-            }
-            else if (_campCommandHandler.IsOpen())
-            {
-                _campCommandHandler.AnnounceStatus();
-            }
-            else if (_commonSelectWindowHandler.IsOpen())
-            {
-                _commonSelectWindowHandler.AnnounceStatus();
-            }
-            else if (_tradePanelHandler.IsOpen())
-            {
-                _tradePanelHandler.AnnounceStatus();
-            }
-            else if (_restaurantPanelHandler.IsOpen())
-            {
-                _restaurantPanelHandler.AnnounceStatus();
-            }
-            else if (_trainingPanelHandler.IsOpen())
-            {
-                _trainingPanelHandler.AnnounceStatus();
-            }
-            else if (_colosseumPanelHandler.IsOpen())
-            {
-                _colosseumPanelHandler.AnnounceStatus();
-            }
-            else if (_farmPanelHandler.IsOpen())
-            {
-                _farmPanelHandler.AnnounceStatus();
-            }
-            else if (_savePanelHandler.IsOpen())
-            {
-                _savePanelHandler.AnnounceStatus();
-            }
-            else if (_carePanelHandler.IsOpen())
-            {
-                _carePanelHandler.AnnounceStatus();
-            }
-            else if (_fieldItemPanelHandler.IsOpen())
-            {
-                _fieldItemPanelHandler.AnnounceStatus();
-            }
-            else if (_storagePanelHandler.IsOpen())
-            {
-                _storagePanelHandler.AnnounceStatus();
-            }
-            else if (_mapPanelHandler.IsOpen())
-            {
-                _mapPanelHandler.AnnounceStatus();
-            }
-            else if (_partnerPanelHandler.IsOpen())
-            {
-                _partnerPanelHandler.AnnounceStatus();
-            }
-            else if (_itemPickPanelHandler.IsOpen())
-            {
-                _itemPickPanelHandler.AnnounceStatus();
-            }
-            else if (_mailPanelHandler.IsOpen())
-            {
-                _mailPanelHandler.AnnounceStatus();
-            }
-            else if (_tamerPanelHandler.IsOpen())
-            {
-                _tamerPanelHandler.AnnounceStatus();
-            }
-            else if (_digiviceTopPanelHandler.IsOpen())
-            {
-                _digiviceTopPanelHandler.AnnounceStatus();
-            }
-            else if (_battleDialogHandler.IsActive())
-            {
-                ScreenReader.Say("Battle dialog");
-            }
-            else if (_battleItemHandler.IsActive())
-            {
-                ScreenReader.Say("Battle items");
-            }
-            else if (_battleOrderRingHandler.IsActive())
-            {
-                ScreenReader.Say("Order Ring");
-            }
-            else if (_battleTacticsHandler.IsActive())
-            {
-                _battleTacticsHandler.AnnounceStatus();
-            }
-            else if (_battleResultHandler.IsActive())
-            {
-                _battleResultHandler.AnnounceStatus();
-            }
-            else if (_battleHudHandler.IsActive())
-            {
-                ScreenReader.Say("In battle. Hold RB plus D-pad for Partner 1, LB plus D-pad for Partner 2");
-            }
-            else
-            {
-                ScreenReader.Say("No menu active");
-            }
+
+            // No handler claimed ownership
+            ScreenReader.Say("No menu active");
         }
 
         public override void OnApplicationQuit()

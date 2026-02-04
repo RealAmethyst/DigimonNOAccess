@@ -10,8 +10,10 @@ namespace DigimonNOAccess
     /// detects them and announces the current selection.
     /// Uses TalkMain.m_cursor for accurate cursor tracking.
     /// </summary>
-    public class DialogChoiceHandler
+    public class DialogChoiceHandler : IAccessibilityHandler
     {
+        public int Priority => 15;
+
         private EventWindowPanel _panel;
         private TalkMain _talkMain;
         private bool _wasChoicesActive = false;
@@ -22,6 +24,11 @@ namespace DigimonNOAccess
         private int _lastCursorPosition = -1;
         private int _pollCounter = 0;
         private const int POLL_INTERVAL = 3; // Check every N frames when choices active
+
+        /// <summary>
+        /// IAccessibilityHandler.IsOpen() - delegates to IsChoicesActive().
+        /// </summary>
+        public bool IsOpen() => IsChoicesActive();
 
         /// <summary>
         /// Check if dialog choices are currently displayed.

@@ -23,8 +23,15 @@ namespace DigimonNOAccess
     ///   - Screen 1: Announce all info (both partners + rewards)
     ///   - Screen 2: "Results applied. Press Continue to return to field."
     /// </summary>
-    public class BattleResultHandler
+    public class BattleResultHandler : IAccessibilityHandler
     {
+        public int Priority => 88;
+
+        /// <summary>
+        /// IAccessibilityHandler.IsOpen() - delegates to IsActive().
+        /// </summary>
+        public bool IsOpen() => IsActive();
+
         private uBattlePanelResult _cachedResultPanel;
         private bool _wasEnabled = false;
         private bool _announcedScreen1 = false;

@@ -6,8 +6,10 @@ namespace DigimonNOAccess
     /// <summary>
     /// Handles accessibility for options/settings menus.
     /// </summary>
-    public class OptionsMenuHandler
+    public class OptionsMenuHandler : IAccessibilityHandler
     {
+        public int Priority => 40;
+
         private uOptionPanel _optionPanel;
         private bool _wasActive = false;
         private int _lastCursor = -1;

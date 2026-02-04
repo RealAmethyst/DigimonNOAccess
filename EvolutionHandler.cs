@@ -7,8 +7,15 @@ namespace DigimonNOAccess
     /// Handles accessibility for the digivolution sequence.
     /// Announces when digivolution starts and the resulting Digimon name.
     /// </summary>
-    public class EvolutionHandler
+    public class EvolutionHandler : IAccessibilityHandler
     {
+        public int Priority => 72;
+
+        /// <summary>
+        /// IAccessibilityHandler.IsOpen() - delegates to IsActive().
+        /// </summary>
+        public bool IsOpen() => IsActive();
+
         private EvolutionBase _evolution;
         private bool _wasActive = false;
         private EvolutionBase.State _lastState = EvolutionBase.State.Loading;

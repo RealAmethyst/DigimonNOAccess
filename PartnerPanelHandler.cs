@@ -6,8 +6,10 @@ namespace DigimonNOAccess
     /// <summary>
     /// Handles accessibility for the partner status panel (Digimon stats, moves, tactics, history)
     /// </summary>
-    public class PartnerPanelHandler
+    public class PartnerPanelHandler : IAccessibilityHandler
     {
+        public int Priority => 68;
+
         private uPartnerPanel _panel;
         private bool _wasActive = false;
         private uPartnerPanel.State _lastState = uPartnerPanel.State.None;

@@ -7,8 +7,16 @@ namespace DigimonNOAccess
     /// Handles accessibility for the training bonus roulette panel.
     /// Announces only the final result when the roulette stops spinning.
     /// </summary>
-    public class TrainingBonusHandler
+    public class TrainingBonusHandler : IAccessibilityHandler
     {
+        public int Priority => 50;
+
+        public void AnnounceStatus()
+        {
+            if (!IsOpen()) return;
+            ScreenReader.Say("Bonus roulette");
+        }
+
         private uTrainingPanelBonus _panel;
         private bool _wasActive = false;
         private uTrainingPanelBonus.State _lastState = uTrainingPanelBonus.State.None;

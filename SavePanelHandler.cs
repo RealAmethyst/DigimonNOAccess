@@ -6,8 +6,10 @@ namespace DigimonNOAccess
     /// <summary>
     /// Handles accessibility for the save/load menu
     /// </summary>
-    public class SavePanelHandler
+    public class SavePanelHandler : IAccessibilityHandler
     {
+        public int Priority => 58;
+
         private uSavePanelCommand _panel;
         private bool _wasActive = false;
         private int _lastCursor = -1;

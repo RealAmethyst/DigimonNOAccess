@@ -6,7 +6,7 @@ namespace DigimonNOAccess
     /// Handles the mod settings menu.
     /// Opens with F10, provides accessible settings configuration.
     /// </summary>
-    public class ModSettingsHandler
+    public class ModSettingsHandler : IAccessibilityHandler
     {
         private bool _isOpen = false;
         private int _currentIndex = 0;
@@ -14,6 +14,8 @@ namespace DigimonNOAccess
         private bool _wasDownPressed = false;
         private bool _wasConfirmPressed = false;
         private bool _wasCancelPressed = false;
+
+        public int Priority => 5;
 
         // Settings items
         private readonly SettingItem[] _settings;
