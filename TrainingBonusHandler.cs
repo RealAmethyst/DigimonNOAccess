@@ -145,10 +145,5 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[TrainingBonus] Error reading result: {ex.Message}");
             }
         }
-
-        public bool IsActive()
-        {
-            return IsOpen();
-        }
     }
 }

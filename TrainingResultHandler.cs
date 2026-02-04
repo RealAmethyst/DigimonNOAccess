@@ -168,10 +168,5 @@ namespace DigimonNOAccess
                 return "";
             }
         }
-
-        public bool IsActive()
-        {
-            return IsOpen();
-        }
     }
 }
