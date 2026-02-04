@@ -17,7 +17,7 @@ namespace DigimonNOAccess
     /// - Standardized button mapping across all controller types
     /// - Proper DualSense/DualShock support that the game lacks
     /// </summary>
-    public static class SDL2Controller  // Keep class name for compatibility
+    public static class SDLController
     {
         // SDL3 initialization flags
         private const uint SDL_INIT_GAMEPAD = 0x00002000;
@@ -193,7 +193,7 @@ namespace DigimonNOAccess
                 DebugLogger.Log("[SDL3Controller] To enable: Download SDL3.dll from https://github.com/libsdl-org/SDL/releases and place in game folder");
                 return false;
             }
-            catch (Exception ex)
+            catch (System.Exception ex)
             {
                 DebugLogger.Log($"[SDL3Controller] Initialization error: {ex.Message}");
                 return false;
@@ -262,7 +262,7 @@ namespace DigimonNOAccess
                     }
                 }
             }
-            catch (Exception ex)
+            catch (System.Exception ex)
             {
                 DebugLogger.Log($"[SDL3Controller] Update error: {ex.Message}");
             }
@@ -441,7 +441,7 @@ namespace DigimonNOAccess
                 _sdlAvailable = false;
                 DebugLogger.Log("[SDL3Controller] SDL3 shutdown complete");
             }
-            catch (Exception ex)
+            catch (System.Exception ex)
             {
                 DebugLogger.Log($"[SDL3Controller] Shutdown error: {ex.Message}");
             }
@@ -472,7 +472,7 @@ namespace DigimonNOAccess
                     ScreenReader.Say($"Controller connected: {_controllerName}");
                 }
             }
-            catch (Exception ex)
+            catch (System.Exception ex)
             {
                 DebugLogger.Log($"[SDL3Controller] Error opening gamepad: {ex.Message}");
             }
@@ -485,8 +485,9 @@ namespace DigimonNOAccess
                 IntPtr errorPtr = SDL_GetError();
                 return errorPtr != IntPtr.Zero ? Marshal.PtrToStringUTF8(errorPtr) : "Unknown error";
             }
-            catch
+            catch (System.Exception ex)
             {
+                DebugLogger.Log($"[SDL3Controller] Error in GetSDLError: {ex.Message}");
                 return "Could not get error message";
             }
         }

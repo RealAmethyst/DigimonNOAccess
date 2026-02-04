@@ -58,7 +58,7 @@ namespace DigimonNOAccess
 
             // Apply gamepad input injection patch for PlayStation controller support
             // Apply if SDL3 is available (even if controller not connected yet)
-            if (ModInputManager.IsUsingSDL2)
+            if (ModInputManager.IsUsingSDL)
             {
                 GamepadInputPatch.Apply(_harmony);
                 LoggerInstance.Msg("Gamepad input injection enabled - SDL3 will provide controller input to game");
@@ -205,7 +205,7 @@ namespace DigimonNOAccess
         {
             LoggerInstance.Msg("DigimonNOAccess shutdown");
             _audioNavigationHandler?.Cleanup();
-            SDL2Controller.Shutdown();
+            SDLController.Shutdown();
             ScreenReader.Shutdown();
         }
     }

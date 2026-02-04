@@ -16,7 +16,7 @@ namespace DigimonNOAccess
 
         private uTitlePanel _titlePanel;
         private MainTitle _mainTitle;
-        private bool _wasUsable = false;
+        private bool _wasActive = false;
         private int _lastCursor = -1;
         private bool _voiceHasFinished = false;
         private bool _wasOpen = false;
@@ -114,12 +114,12 @@ namespace DigimonNOAccess
             bool isUsable = IsUsable();
 
             // Menu just became usable
-            if (isUsable && !_wasUsable)
+            if (isUsable && !_wasActive)
             {
                 OnBecameUsable();
             }
             // Menu just became unusable
-            else if (!isUsable && _wasUsable)
+            else if (!isUsable && _wasActive)
             {
                 OnBecameUnusable();
             }
@@ -129,7 +129,7 @@ namespace DigimonNOAccess
                 CheckCursorChange();
             }
 
-            _wasUsable = isUsable;
+            _wasActive = isUsable;
         }
 
         private void OnBecameUsable()

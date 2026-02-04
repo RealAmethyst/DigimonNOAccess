@@ -12,7 +12,6 @@ namespace DigimonNOAccess
         protected override string LogTag => "[DigiviceTopPanel]";
         public override int Priority => 50;
 
-        private int _lastCommandIndex = -1;
 
         public override bool IsOpen()
         {
@@ -37,13 +36,13 @@ namespace DigimonNOAccess
 
         protected override void OnOpen()
         {
-            _lastCommandIndex = -1;
+            _lastCursor = -1;
 
             if (_panel == null)
                 return;
 
             int commandIndex = GetCurrentCommandIndex();
-            _lastCommandIndex = commandIndex;
+            _lastCursor = commandIndex;
 
             string commandName = GetCommandName(commandIndex);
             int total = 8; // Partner, Tamer, Item, Map, DigiMessenger, Library, System, Save
@@ -53,7 +52,7 @@ namespace DigimonNOAccess
 
         protected override void OnClose()
         {
-            _lastCommandIndex = -1;
+            _lastCursor = -1;
             base.OnClose();
         }
 
@@ -69,14 +68,14 @@ namespace DigimonNOAccess
 
             int currentCommand = GetCurrentCommandIndex();
 
-            if (currentCommand != _lastCommandIndex && _lastCommandIndex >= 0)
+            if (currentCommand != _lastCursor && _lastCursor >= 0)
             {
                 string commandName = GetCommandName(currentCommand);
                 int total = 8;
                 ScreenReader.Say(AnnouncementBuilder.CursorPosition(commandName, currentCommand, total));
                 DebugLogger.Log($"{LogTag} Command changed to {commandName}");
             }
-            _lastCommandIndex = currentCommand;
+            _lastCursor = currentCommand;
         }
 
         private int GetCurrentCommandIndex()

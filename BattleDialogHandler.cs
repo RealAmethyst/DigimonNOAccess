@@ -22,7 +22,7 @@ namespace DigimonNOAccess
         }
 
         private uBattlePanelDialog _cachedDialog;
-        private int _lastCursorIndex = -1;
+        private int _lastCursor = -1;
         private bool _wasActive = false;
         private string _lastMessage = "";
 
@@ -53,16 +53,16 @@ namespace DigimonNOAccess
             if (!_wasActive)
             {
                 _wasActive = true;
-                _lastCursorIndex = dialog.m_cursorIndex;
+                _lastCursor = dialog.m_cursorIndex;
                 _lastMessage = dialog.m_messageText?.text ?? "";
                 AnnounceDialog();
                 return;
             }
 
             // Check for cursor change
-            if (dialog.m_cursorIndex != _lastCursorIndex)
+            if (dialog.m_cursorIndex != _lastCursor)
             {
-                _lastCursorIndex = dialog.m_cursorIndex;
+                _lastCursor = dialog.m_cursorIndex;
                 AnnounceSelection();
             }
 
@@ -78,7 +78,7 @@ namespace DigimonNOAccess
         private void ResetState()
         {
             _cachedDialog = null;
-            _lastCursorIndex = -1;
+            _lastCursor = -1;
             _wasActive = false;
             _lastMessage = "";
         }
