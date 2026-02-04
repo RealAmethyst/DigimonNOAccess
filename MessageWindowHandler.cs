@@ -1,5 +1,4 @@
 using Il2Cpp;
-using MelonLoader;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -25,18 +24,10 @@ namespace DigimonNOAccess
         private bool _subscribedToPatch = false;
 
         // Common message window tracking (field messages)
-        // Uses a shorter delay since these aren't animated with typewriter
         private uCommonMessageWindow _commonMessageWindow;
-        private bool _wasCommonActive = false;
-        private string _lastCommonMessage = "";
-        private string _currentCommonText = "";
-        private float _commonTextLastChangeTime = 0f;
-        private const float COMMON_TEXT_DELAY = 0.05f; // Very short delay for common messages
 
         // Digimon message panel tracking (partner messages)
         private uDigimonMessagePanel _digimonMessagePanel;
-        private bool _wasDigimonPanelActive = false;
-        private string _lastDigimonMessage = "";
 
         // Battle dialog tracking
         private uBattlePanelDialog _battleDialog;
@@ -87,13 +78,6 @@ namespace DigimonNOAccess
             // We still track panel state for status queries
             UpdateEventPanelState();
 
-            // Common messages are handled by CommonMessageMonitor and DialogTextPatch.SetMessagePrefix
-            // UpdateCommonMessageWindow() was causing duplicate/stale announcements
-            // UpdateCommonMessageWindow();
-
-            // Digimon messages are handled by DialogTextPatch.DigimonMessagePrefix and FieldDigimonMessagePrefix
-            // UpdateDigimonMessagePanel() was causing duplicate announcements
-            // UpdateDigimonMessagePanel();
             UpdateBattleDialog();
             UpdateCaption();
         }
@@ -369,73 +353,6 @@ namespace DigimonNOAccess
             return false;
         }
 
-        private void UpdateCommonMessageWindow()
-        {
-            bool isActive = IsCommonWindowOpen();
-
-            if (isActive && !_wasCommonActive)
-            {
-                OnCommonWindowOpen();
-            }
-            else if (!isActive && _wasCommonActive)
-            {
-                OnCommonWindowClose();
-            }
-            else if (isActive)
-            {
-                CheckCommonMessageChange();
-            }
-
-            _wasCommonActive = isActive;
-        }
-
-        private void OnCommonWindowOpen()
-        {
-            _lastCommonMessage = "";
-            _currentCommonText = "";
-            _commonTextLastChangeTime = Time.time;
-
-            DebugLogger.Log("[CommonMessage] Opened, waiting for text to stabilize");
-        }
-
-        private void OnCommonWindowClose()
-        {
-            _commonMessageWindow = null;
-            _lastCommonMessage = "";
-            _currentCommonText = "";
-            DebugLogger.Log("[CommonMessage] Closed");
-        }
-
-        private void CheckCommonMessageChange()
-        {
-            if (_commonMessageWindow == null)
-                return;
-
-            string message = GetCommonMessageText();
-
-            // Skip ignored text
-            if (IsIgnoredText(message))
-                return;
-
-            // Check if text is still changing
-            if (message != _currentCommonText)
-            {
-                _currentCommonText = message;
-                _commonTextLastChangeTime = Time.time;
-                return;
-            }
-
-            // Announce when text has been stable (very short delay for common messages)
-            float timeSinceChange = Time.time - _commonTextLastChangeTime;
-            if (timeSinceChange >= COMMON_TEXT_DELAY &&
-                !string.IsNullOrEmpty(_currentCommonText) &&
-                _currentCommonText != _lastCommonMessage)
-            {
-                AnnounceMessage(_currentCommonText, "Message");
-                _lastCommonMessage = _currentCommonText;
-            }
-        }
-
         private string GetCommonMessageText()
         {
             if (_commonMessageWindow == null)
@@ -480,60 +397,6 @@ namespace DigimonNOAccess
 
             _digimonMessagePanel = null;
             return false;
-        }
-
-        private void UpdateDigimonMessagePanel()
-        {
-            bool isActive = IsDigimonPanelOpen();
-
-            if (isActive && !_wasDigimonPanelActive)
-            {
-                OnDigimonPanelOpen();
-            }
-            else if (!isActive && _wasDigimonPanelActive)
-            {
-                OnDigimonPanelClose();
-            }
-            else if (isActive)
-            {
-                CheckDigimonMessageChange();
-            }
-
-            _wasDigimonPanelActive = isActive;
-        }
-
-        private void OnDigimonPanelOpen()
-        {
-            _lastDigimonMessage = "";
-
-            if (_digimonMessagePanel == null)
-                return;
-
-            string message = GetDigimonPanelText();
-            if (!string.IsNullOrEmpty(message))
-            {
-                AnnounceMessage(message, "Digimon");
-                _lastDigimonMessage = message;
-            }
-        }
-
-        private void OnDigimonPanelClose()
-        {
-            _digimonMessagePanel = null;
-            _lastDigimonMessage = "";
-        }
-
-        private void CheckDigimonMessageChange()
-        {
-            if (_digimonMessagePanel == null)
-                return;
-
-            string message = GetDigimonPanelText();
-            if (!string.IsNullOrEmpty(message) && message != _lastDigimonMessage)
-            {
-                AnnounceMessage(message, "Digimon");
-                _lastDigimonMessage = message;
-            }
         }
 
         private string GetDigimonPanelText()

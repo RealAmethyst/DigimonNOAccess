@@ -20,7 +20,6 @@ namespace DigimonNOAccess
         // Cache which axis works (determined on first successful read)
         private static string _workingLeftAxis = null;
         private static string _workingRightAxis = null;
-        private static bool _initialized = false;
 
         /// <summary>
         /// Check if Left Trigger (L2/LT) is held down.
@@ -71,12 +70,6 @@ namespace DigimonNOAccess
                     {
                         if (isLeft) _workingLeftAxis = axisName;
                         else _workingRightAxis = axisName;
-
-                        if (!_initialized)
-                        {
-                            _initialized = true;
-                            DebugLogger.Log($"[TriggerInput] Found working trigger axis: {axisName}");
-                        }
                     }
                     return value;
                 }
@@ -101,41 +94,6 @@ namespace DigimonNOAccess
             catch { }
 
             return 0f;
-        }
-
-        /// <summary>
-        /// Debug method to log all joystick axes with non-zero values.
-        /// Call this to discover which axis your triggers are on.
-        /// </summary>
-        public static void DebugLogAllAxes()
-        {
-            for (int i = 1; i <= 28; i++)
-            {
-                try
-                {
-                    string axisName = $"Axis {i}";
-                    float value = Input.GetAxisRaw(axisName);
-                    if (Mathf.Abs(value) > 0.1f)
-                    {
-                        DebugLogger.Log($"[TriggerInput] {axisName} = {value}");
-                    }
-                }
-                catch { }
-            }
-
-            // Also check joystick buttons
-            for (int i = 0; i < 20; i++)
-            {
-                try
-                {
-                    KeyCode key = (KeyCode)(KeyCode.JoystickButton0 + i);
-                    if (Input.GetKey(key))
-                    {
-                        DebugLogger.Log($"[TriggerInput] JoystickButton{i} pressed");
-                    }
-                }
-                catch { }
-            }
         }
     }
 }

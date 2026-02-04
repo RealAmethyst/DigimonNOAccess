@@ -245,10 +245,8 @@ namespace DigimonNOAccess
                 if (_gamepad != IntPtr.Zero)
                 {
                     // Swap state buffers
-                    var temp = _lastButtonStates;
                     _lastButtonStates = new Dictionary<SDL_GameControllerButton, bool>(_buttonStates);
 
-                    var tempAxis = _lastAxisStates;
                     _lastAxisStates = new Dictionary<SDL_GameControllerAxis, short>(_axisStates);
 
                     // Read current button states

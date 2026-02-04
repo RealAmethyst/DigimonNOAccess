@@ -191,21 +191,6 @@ namespace DigimonNOAccess
             return null;
         }
 
-        private void AnnouncePartnerName(int partnerIndex)
-        {
-            var panel = GetDigimonPanel(partnerIndex);
-            if (panel == null)
-            {
-                ScreenReader.Say($"Partner {partnerIndex + 1} not available");
-                return;
-            }
-
-            // Partner name isn't stored in a simple text field in battle panel
-            // Use the partner label which is sufficient for gameplay
-            string partnerLabel = partnerIndex == 0 ? "Partner 1" : "Partner 2";
-            ScreenReader.Say($"{partnerLabel} status panel");
-        }
-
         private void AnnouncePartnerHpMp(int partnerIndex)
         {
             DebugLogger.Log($"[BattleHudHandler] AnnouncePartnerHpMp called for partner {partnerIndex}");
@@ -316,26 +301,6 @@ namespace DigimonNOAccess
 
             string partnerLabel = partnerIndex == 0 ? "Partner 1" : "Partner 2";
             ScreenReader.Say($"{partnerLabel} current order: {order}");
-        }
-
-        private void AnnouncePartnerOrderPower(int partnerIndex)
-        {
-            var panel = GetDigimonPanel(partnerIndex);
-            if (panel == null)
-            {
-                ScreenReader.Say($"Partner {partnerIndex + 1} not available");
-                return;
-            }
-
-            int orderPower = 0;
-            try
-            {
-                orderPower = panel.m_dispOrderPower;
-            }
-            catch { }
-
-            string partnerLabel = partnerIndex == 0 ? "Partner 1" : "Partner 2";
-            ScreenReader.Say($"{partnerLabel} Order Power: {orderPower}");
         }
 
         private void AnnouncePartnerFullStatus(int partnerIndex)
