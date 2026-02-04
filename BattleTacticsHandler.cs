@@ -181,7 +181,7 @@ namespace DigimonNOAccess
                     return knownCommands[cmdNo];
                 }
 
-                return $"Tab {cmdNo + 1}";
+                return AnnouncementBuilder.FallbackItem("Tab", cmdNo);
             }
             catch (System.Exception ex)
             {

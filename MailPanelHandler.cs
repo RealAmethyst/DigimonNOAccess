@@ -179,7 +179,7 @@ namespace DigimonNOAccess
                 1 => "Main Quest",
                 2 => "Sub Quest",
                 3 => "Information",
-                _ => $"Folder {tabIndex + 1}"
+                _ => AnnouncementBuilder.FallbackItem("Folder", tabIndex)
             };
         }
 

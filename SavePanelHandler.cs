@@ -242,7 +242,7 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[SavePanel] Error getting slot info: {ex.Message}");
             }
 
-            return $"Slot {slotIndex + 1}";
+            return AnnouncementBuilder.FallbackItem("Slot", slotIndex);
         }
 
         private string GetSaveItemDetails(uSavePanelItemSaveItem item)

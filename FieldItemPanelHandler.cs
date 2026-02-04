@@ -72,7 +72,7 @@ namespace DigimonNOAccess
             }
             else
             {
-                announcement = $"Items, {tabName}, {internalTabName} tab. {itemInfo}, {cursor + 1} of {total}";
+                announcement = $"Items, {tabName}, {internalTabName} tab. {AnnouncementBuilder.CursorPosition(itemInfo, cursor, total)}";
             }
 
             ScreenReader.Say(announcement);
@@ -108,7 +108,7 @@ namespace DigimonNOAccess
                 }
                 else
                 {
-                    announcement = $"{itemInfo}, {cursor + 1} of {total}";
+                    announcement = AnnouncementBuilder.CursorPosition(itemInfo, cursor, total);
                 }
 
                 ScreenReader.Say(announcement);
@@ -144,7 +144,7 @@ namespace DigimonNOAccess
                 }
                 else
                 {
-                    announcement = $"{tabName}, {internalTabName} tab. {itemInfo}, {cursor + 1} of {total}";
+                    announcement = $"{tabName}, {internalTabName} tab. {AnnouncementBuilder.CursorPosition(itemInfo, cursor, total)}";
                 }
 
                 ScreenReader.Say(announcement);
@@ -169,7 +169,7 @@ namespace DigimonNOAccess
                 }
                 else
                 {
-                    announcement = $"{internalTabName} tab. {itemInfo}, {cursor + 1} of {total}";
+                    announcement = $"{internalTabName} tab. {AnnouncementBuilder.CursorPosition(itemInfo, cursor, total)}";
                 }
 
                 ScreenReader.Say(announcement);
@@ -300,7 +300,7 @@ namespace DigimonNOAccess
             }
             else
             {
-                announcement = $"Items, {tabName}, {internalTabName} tab. {itemInfo}, {cursor + 1} of {total}";
+                announcement = $"Items, {tabName}, {internalTabName} tab. {AnnouncementBuilder.CursorPosition(itemInfo, cursor, total)}";
             }
 
             ScreenReader.Say(announcement);

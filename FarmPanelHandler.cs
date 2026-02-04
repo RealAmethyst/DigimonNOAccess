@@ -71,7 +71,7 @@ namespace DigimonNOAccess
             string itemText = GetMenuItemText(cursor);
             int total = GetMenuItemCount();
 
-            string announcement = $"Farm. {stateText}. {itemText}, {cursor + 1} of {total}";
+            string announcement = AnnouncementBuilder.MenuOpenWithState("Farm", stateText, itemText, cursor, total);
             ScreenReader.Say(announcement);
 
             DebugLogger.Log($"[FarmPanel] Panel opened, state={state}, cursor={cursor}");
@@ -115,7 +115,7 @@ namespace DigimonNOAccess
                 string itemText = GetMenuItemText(cursor);
                 int total = GetMenuItemCount();
 
-                string announcement = $"{itemText}, {cursor + 1} of {total}";
+                string announcement = AnnouncementBuilder.CursorPosition(itemText, cursor, total);
                 ScreenReader.Say(announcement);
 
                 DebugLogger.Log($"[FarmPanel] Cursor changed: {itemText}");
@@ -180,7 +180,7 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[FarmPanel] Error reading text: {ex.Message}");
             }
 
-            return $"Farm slot {index + 1}";
+            return AnnouncementBuilder.FallbackItem("Farm slot", index);
         }
 
         private int GetMenuItemCount()
@@ -223,7 +223,7 @@ namespace DigimonNOAccess
             string itemText = GetMenuItemText(cursor);
             int total = GetMenuItemCount();
 
-            string announcement = $"Farm. {stateText}. {itemText}, {cursor + 1} of {total}";
+            string announcement = AnnouncementBuilder.MenuOpenWithState("Farm", stateText, itemText, cursor, total);
             ScreenReader.Say(announcement);
         }
     }

@@ -55,7 +55,7 @@ namespace DigimonNOAccess
             string itemText = GetMenuItemText(cursor);
             int total = GetMenuItemCount();
 
-            string announcement = $"Camp Menu. {itemText}, {cursor + 1} of {total}";
+            string announcement = AnnouncementBuilder.MenuOpen("Camp Menu", itemText, cursor, total);
             ScreenReader.Say(announcement);
 
             DebugLogger.Log($"[CampCommand] Menu opened, cursor={cursor}");
@@ -81,7 +81,7 @@ namespace DigimonNOAccess
                 string itemText = GetMenuItemText(cursor);
                 int total = GetMenuItemCount();
 
-                string announcement = $"{itemText}, {cursor + 1} of {total}";
+                string announcement = AnnouncementBuilder.CursorPosition(itemText, cursor, total);
                 ScreenReader.Say(announcement);
 
                 DebugLogger.Log($"[CampCommand] Cursor changed: {itemText}");
@@ -128,7 +128,7 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[CampCommand] Error reading text: {ex.Message}");
             }
 
-            return $"Option {index + 1}";
+            return AnnouncementBuilder.FallbackItem("Option", index);
         }
 
         private int GetMenuItemCount()
@@ -154,7 +154,7 @@ namespace DigimonNOAccess
             string itemText = GetMenuItemText(cursor);
             int total = GetMenuItemCount();
 
-            string announcement = $"Camp Menu. {itemText}, {cursor + 1} of {total}";
+            string announcement = AnnouncementBuilder.MenuOpen("Camp Menu", itemText, cursor, total);
             ScreenReader.Say(announcement);
         }
     }

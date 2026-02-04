@@ -64,7 +64,7 @@ namespace DigimonNOAccess
             string itemText = GetMenuItemText(cursor);
             int total = GetMenuItemCount();
 
-            string announcement = $"Selection Menu. {itemText}, {cursor + 1} of {total}";
+            string announcement = AnnouncementBuilder.MenuOpen("Selection Menu", itemText, cursor, total);
             ScreenReader.Say(announcement);
 
             DebugLogger.Log($"[CommonSelectWindow] Menu opened, cursor={cursor}, total={total}");
@@ -90,7 +90,7 @@ namespace DigimonNOAccess
                 string itemText = GetMenuItemText(cursor);
                 int total = GetMenuItemCount();
 
-                string announcement = $"{itemText}, {cursor + 1} of {total}";
+                string announcement = AnnouncementBuilder.CursorPosition(itemText, cursor, total);
                 ScreenReader.Say(announcement);
 
                 DebugLogger.Log($"[CommonSelectWindow] Cursor changed: {itemText}");
@@ -138,7 +138,7 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[CommonSelectWindow] Error reading text: {ex.Message}");
             }
 
-            return $"Option {index + 1}";
+            return AnnouncementBuilder.FallbackItem("Option", index);
         }
 
         private int GetMenuItemCount()
@@ -164,7 +164,7 @@ namespace DigimonNOAccess
             string itemText = GetMenuItemText(cursor);
             int total = GetMenuItemCount();
 
-            string announcement = $"Selection Menu. {itemText}, {cursor + 1} of {total}";
+            string announcement = AnnouncementBuilder.MenuOpen("Selection Menu", itemText, cursor, total);
             ScreenReader.Say(announcement);
         }
     }

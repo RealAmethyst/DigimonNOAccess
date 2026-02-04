@@ -282,7 +282,7 @@ namespace DigimonNOAccess
                 1 => "Moves",
                 2 => "Tactics",
                 3 => "History",
-                _ => $"Option {commandIndex + 1}"
+                _ => AnnouncementBuilder.FallbackItem("Option", commandIndex)
             };
         }
 

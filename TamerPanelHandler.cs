@@ -226,7 +226,7 @@ namespace DigimonNOAccess
             {
                 0 => "Skill Check",
                 1 => "Skill Get",
-                _ => $"Option {index + 1}"
+                _ => AnnouncementBuilder.FallbackItem("Option", index)
             };
         }
 
@@ -274,7 +274,7 @@ namespace DigimonNOAccess
                     {
                         string categoryName = GetCategoryName(currentTab, currentCategory);
                         int categoryCount = GetCategoryCount(currentTab);
-                        announcement += $". {categoryName}, {currentCategory + 1} of {categoryCount}";
+                        announcement += $". {AnnouncementBuilder.CursorPosition(categoryName, currentCategory, categoryCount)}";
                     }
                     ScreenReader.Say(announcement);
                     _lastSkillGetCategory = currentCategory;
@@ -290,7 +290,7 @@ namespace DigimonNOAccess
                     {
                         string categoryName = GetCategoryName(currentTab, currentCategory);
                         int categoryCount = GetCategoryCount(currentTab);
-                        announcement += $". {categoryName}, {currentCategory + 1} of {categoryCount}";
+                        announcement += $". {AnnouncementBuilder.CursorPosition(categoryName, currentCategory, categoryCount)}";
                     }
                     ScreenReader.Say(announcement);
                     _lastSkillGetCategory = currentCategory;
@@ -303,7 +303,7 @@ namespace DigimonNOAccess
                     {
                         string categoryName = GetCategoryName(currentTab, currentCategory);
                         int categoryCount = GetCategoryCount(currentTab);
-                        ScreenReader.Say($"{categoryName}, {currentCategory + 1} of {categoryCount}");
+                        ScreenReader.Say(AnnouncementBuilder.CursorPosition(categoryName, currentCategory, categoryCount));
                     }
                     _lastSkillGetCategory = currentCategory;
                 }
@@ -469,14 +469,14 @@ namespace DigimonNOAccess
                     1 => "Life",
                     2 => "Carrier",
                     3 => "Reverse",
-                    _ => $"Category {categoryIndex + 1}"
+                    _ => AnnouncementBuilder.FallbackItem("Category", categoryIndex)
                 },
                 1 => categoryIndex switch // Trainer
                 {
                     0 => "Teacher",
                     1 => "Lifecare",
                     2 => "Evolute",
-                    _ => $"Category {categoryIndex + 1}"
+                    _ => AnnouncementBuilder.FallbackItem("Category", categoryIndex)
                 },
                 2 => categoryIndex switch // Survivor
                 {
@@ -484,7 +484,7 @@ namespace DigimonNOAccess
                     1 => "Extractor",
                     2 => "Camper",
                     3 => "Walker",
-                    _ => $"Category {categoryIndex + 1}"
+                    _ => AnnouncementBuilder.FallbackItem("Category", categoryIndex)
                 },
                 3 => categoryIndex switch // Commander
                 {
@@ -493,9 +493,9 @@ namespace DigimonNOAccess
                     2 => "Item Throw",
                     3 => "Drop",
                     4 => "Learning",
-                    _ => $"Category {categoryIndex + 1}"
+                    _ => AnnouncementBuilder.FallbackItem("Category", categoryIndex)
                 },
-                _ => $"Category {categoryIndex + 1}"
+                _ => AnnouncementBuilder.FallbackItem("Category", categoryIndex)
             };
         }
 
@@ -536,7 +536,7 @@ namespace DigimonNOAccess
                 {
                     string categoryName = GetCategoryName(_lastSkillGetTab, currentCategory);
                     int categoryCount = GetCategoryCount(_lastSkillGetTab);
-                    info += $". {categoryName}, {currentCategory + 1} of {categoryCount}";
+                    info += $". {AnnouncementBuilder.CursorPosition(categoryName, currentCategory, categoryCount)}";
                 }
 
                 return info;
@@ -555,7 +555,7 @@ namespace DigimonNOAccess
                 1 => "Trainer",
                 2 => "Survivor",
                 3 => "Commander",
-                _ => $"Tab {index + 1}"
+                _ => AnnouncementBuilder.FallbackItem("Tab", index)
             };
         }
 

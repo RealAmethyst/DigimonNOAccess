@@ -62,7 +62,7 @@ namespace DigimonNOAccess
             string itemText = GetMenuItemText(cursor);
             int total = GetMenuItemCount();
 
-            string announcement = $"Shop. {stateText}. {itemText}, {cursor + 1} of {total}";
+            string announcement = AnnouncementBuilder.MenuOpenWithState("Shop", stateText, itemText, cursor, total);
             ScreenReader.Say(announcement);
 
             DebugLogger.Log($"[TradePanel] Panel opened, state={state}, cursor={cursor}");
@@ -106,7 +106,7 @@ namespace DigimonNOAccess
                 string itemText = GetMenuItemText(cursor);
                 int total = GetMenuItemCount();
 
-                string announcement = $"{itemText}, {cursor + 1} of {total}";
+                string announcement = AnnouncementBuilder.CursorPosition(itemText, cursor, total);
                 ScreenReader.Say(announcement);
 
                 DebugLogger.Log($"[TradePanel] Cursor changed: {itemText}");
@@ -144,7 +144,7 @@ namespace DigimonNOAccess
                     {
                         case 0: return "Buy";
                         case 1: return "Sell";
-                        default: return $"Option {index + 1}";
+                        default: return AnnouncementBuilder.FallbackItem("Option", index);
                     }
                 }
 
@@ -173,7 +173,7 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[TradePanel] Error reading text: {ex.Message}");
             }
 
-            return $"Item {index + 1}";
+            return AnnouncementBuilder.FallbackItem("Item", index);
         }
 
         private int GetMenuItemCount()
@@ -224,7 +224,7 @@ namespace DigimonNOAccess
             string itemText = GetMenuItemText(cursor);
             int total = GetMenuItemCount();
 
-            string announcement = $"Shop. {stateText}. {itemText}, {cursor + 1} of {total}";
+            string announcement = AnnouncementBuilder.MenuOpenWithState("Shop", stateText, itemText, cursor, total);
             ScreenReader.Say(announcement);
         }
     }

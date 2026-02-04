@@ -101,7 +101,7 @@ namespace DigimonNOAccess
             string announcement;
             if (total > 0)
             {
-                announcement = $"Care menu. {itemText}, {cursor + 1} of {total}";
+                announcement = AnnouncementBuilder.MenuOpen("Care menu", itemText, cursor, total);
             }
             else
             {
@@ -136,7 +136,7 @@ namespace DigimonNOAccess
                 string announcement;
                 if (total > 0)
                 {
-                    announcement = $"{itemText}, {cursor + 1} of {total}";
+                    announcement = AnnouncementBuilder.CursorPosition(itemText, cursor, total);
                 }
                 else
                 {
@@ -203,7 +203,7 @@ namespace DigimonNOAccess
             string itemText = GetCommandName(cursor);
 
             string announcement = total > 0
-                ? $"Care menu. {itemText}, {cursor + 1} of {total}"
+                ? AnnouncementBuilder.MenuOpen("Care menu", itemText, cursor, total)
                 : $"Care menu. {itemText}";
 
             ScreenReader.Say(announcement);

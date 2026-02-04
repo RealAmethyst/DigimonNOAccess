@@ -97,7 +97,7 @@ namespace DigimonNOAccess
             {
                 case 0: return "Male";
                 case 1: return "Female";
-                default: return $"Option {gender + 1}";
+                default: return AnnouncementBuilder.FallbackItem("Option", gender);
             }
         }
 

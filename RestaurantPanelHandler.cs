@@ -71,7 +71,7 @@ namespace DigimonNOAccess
             string itemText = GetMenuItemText(cursor);
             int total = GetMenuItemCount();
 
-            string announcement = $"Restaurant. {stateText}. {itemText}, {cursor + 1} of {total}";
+            string announcement = AnnouncementBuilder.MenuOpenWithState("Restaurant", stateText, itemText, cursor, total);
             ScreenReader.Say(announcement);
 
             DebugLogger.Log($"[RestaurantPanel] Panel opened, state={state}, cursor={cursor}");
@@ -115,7 +115,7 @@ namespace DigimonNOAccess
                 string itemText = GetMenuItemText(cursor);
                 int total = GetMenuItemCount();
 
-                string announcement = $"{itemText}, {cursor + 1} of {total}";
+                string announcement = AnnouncementBuilder.CursorPosition(itemText, cursor, total);
                 ScreenReader.Say(announcement);
 
                 DebugLogger.Log($"[RestaurantPanel] Cursor changed: {itemText}");
@@ -165,7 +165,7 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[RestaurantPanel] Error reading text: {ex.Message}");
             }
 
-            return $"Item {index + 1}";
+            return AnnouncementBuilder.FallbackItem("Item", index);
         }
 
         private int GetMenuItemCount()
@@ -214,7 +214,7 @@ namespace DigimonNOAccess
             string itemText = GetMenuItemText(cursor);
             int total = GetMenuItemCount();
 
-            string announcement = $"Restaurant. {stateText}. {itemText}, {cursor + 1} of {total}";
+            string announcement = AnnouncementBuilder.MenuOpenWithState("Restaurant", stateText, itemText, cursor, total);
             ScreenReader.Say(announcement);
         }
     }

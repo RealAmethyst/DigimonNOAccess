@@ -121,7 +121,7 @@ namespace DigimonNOAccess
                 }
                 else
                 {
-                    announcement = $"{itemInfo}, {cursor + 1} of {total}";
+                    announcement = AnnouncementBuilder.CursorPosition(itemInfo, cursor, total);
                 }
 
                 ScreenReader.Say(announcement);
@@ -161,7 +161,7 @@ namespace DigimonNOAccess
 
                 int cursor = panel.m_selectNo;
                 string itemInfo = GetItemInfo(panel);
-                return $"{side}: {storageType}, {itemInfo}, {cursor + 1} of {total}";
+                return $"{side}: {storageType}, {AnnouncementBuilder.CursorPosition(itemInfo, cursor, total)}";
             }
             catch (System.Exception ex)
             {
