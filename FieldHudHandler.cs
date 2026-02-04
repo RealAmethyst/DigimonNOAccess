@@ -50,36 +50,7 @@ namespace DigimonNOAccess
 
         private bool IsPlayerInFieldControl()
         {
-            // Check if battle is active
-            try
-            {
-                var battlePanel = uBattlePanel.m_instance;
-                if (battlePanel != null && battlePanel.m_enabled)
-                    return false;
-            }
-            catch { }
-
-            // Check player action state - exclude states where we shouldn't respond
-            try
-            {
-                var player = Object.FindObjectOfType<PlayerCtrl>();
-                if (player != null)
-                {
-                    var state = player.actionState;
-                    // Exclude states where player is not in normal field control
-                    if (state == PlayerCtrl.ActionState.ActionState_Event ||
-                        state == PlayerCtrl.ActionState.ActionState_Battle ||
-                        state == PlayerCtrl.ActionState.ActionState_Dead ||
-                        state == PlayerCtrl.ActionState.ActionState_DeadGataway ||
-                        state == PlayerCtrl.ActionState.ActionState_LiquidCrystallization)
-                    {
-                        return false;
-                    }
-                }
-            }
-            catch { }
-
-            return true;
+            return GameStateService.IsPlayerInFieldControl();
         }
 
         private void HandleKeyboardInput(uFieldPanel fieldPanel)
