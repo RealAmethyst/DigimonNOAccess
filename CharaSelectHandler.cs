@@ -1,7 +1,5 @@
 using Il2Cpp;
-using MelonLoader;
 using UnityEngine;
-using UnityEngine.UI;
 
 namespace DigimonNOAccess
 {
