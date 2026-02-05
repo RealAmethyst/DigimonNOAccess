@@ -13,24 +13,28 @@ namespace DigimonNOAccess
 
         private uFieldItemPanel.Type _lastType = (uFieldItemPanel.Type)(-1);
         private int _lastInternalTab = -1;
+        private MainGameManager.ORDER_UNIT _lastTarget = (MainGameManager.ORDER_UNIT)(-1);
 
         protected override void OnOpen()
         {
             _lastCursor = -1;
             _lastType = (uFieldItemPanel.Type)(-1);
             _lastInternalTab = -1;
+            _lastTarget = (MainGameManager.ORDER_UNIT)(-1);
 
             if (_panel == null)
                 return;
 
             _lastType = _panel.m_type;
             _lastInternalTab = GetInternalTab();
+            _lastTarget = GetCurrentTarget();
             int cursor = GetCursorPosition();
             int total = GetItemCount();
 
             string tabName = GetTabName(_lastType);
             string internalTabName = GetInternalTabName(_lastInternalTab);
             string itemInfo = GetItemInfo();
+            string partnerName = GetTargetPartnerName(_lastTarget);
 
             string announcement;
             if (total == 0)
@@ -42,8 +46,14 @@ namespace DigimonNOAccess
                 announcement = $"Items, {tabName}, {internalTabName} tab. {AnnouncementBuilder.CursorPosition(itemInfo, cursor, total)}";
             }
 
+            // Add partner name for Care-related item types
+            if (_lastType == uFieldItemPanel.Type.Care && !string.IsNullOrEmpty(partnerName))
+            {
+                announcement += $", {partnerName}";
+            }
+
             ScreenReader.Say(announcement);
-            DebugLogger.Log($"{LogTag} Opened, type={tabName}, tab={internalTabName}, cursor={cursor}, total={total}");
+            DebugLogger.Log($"{LogTag} Opened, type={tabName}, tab={internalTabName}, cursor={cursor}, total={total}, target={_lastTarget}");
             _lastCursor = cursor;
         }
 
@@ -51,6 +61,7 @@ namespace DigimonNOAccess
         {
             _lastType = (uFieldItemPanel.Type)(-1);
             _lastInternalTab = -1;
+            _lastTarget = (MainGameManager.ORDER_UNIT)(-1);
             base.OnClose();
         }
 
@@ -58,6 +69,7 @@ namespace DigimonNOAccess
         {
             CheckCursorChange();
             CheckTabChange();
+            CheckTargetChange();
         }
 
         private void CheckCursorChange()
@@ -248,6 +260,93 @@ namespace DigimonNOAccess
             }
 
             return "Unknown Item";
+        }
+
+        private void CheckTargetChange()
+        {
+            // Only track target changes for Care-related item types
+            if (_panel == null || _panel.m_type != uFieldItemPanel.Type.Care)
+                return;
+
+            var currentTarget = GetCurrentTarget();
+
+            if (currentTarget != _lastTarget && (int)_lastTarget >= 0)
+            {
+                string partnerName = GetTargetPartnerName(currentTarget);
+                if (!string.IsNullOrEmpty(partnerName))
+                {
+                    ScreenReader.Say(partnerName);
+                    DebugLogger.Log($"{LogTag} Target changed to {currentTarget}: {partnerName}");
+                }
+            }
+
+            _lastTarget = currentTarget;
+        }
+
+        private MainGameManager.ORDER_UNIT GetCurrentTarget()
+        {
+            try
+            {
+                // Get the target from the parent Care panel
+                var mgr = MainGameManager.m_instance;
+                if (mgr != null)
+                {
+                    var careUI = mgr.careUI;
+                    if (careUI != null)
+                    {
+                        return careUI.m_target;
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Error getting target: {ex.Message}");
+            }
+            return MainGameManager.ORDER_UNIT.Partner00;
+        }
+
+        private string GetTargetPartnerName(MainGameManager.ORDER_UNIT target)
+        {
+            try
+            {
+                // Get the partner's actual Digimon name from the game
+                Il2Cpp.PartnerCtrl partner = null;
+                if (target == MainGameManager.ORDER_UNIT.Partner00)
+                {
+                    partner = MainGameManager.GetPartnerCtrl(0);
+                }
+                else if (target == MainGameManager.ORDER_UNIT.Partner01)
+                {
+                    partner = MainGameManager.GetPartnerCtrl(1);
+                }
+
+                if (partner != null)
+                {
+                    // Use gameData.m_commonData.m_name for the actual localized name
+                    var commonData = partner.gameData?.m_commonData;
+                    if (commonData != null)
+                    {
+                        var name = commonData.m_name;
+                        if (!string.IsNullOrEmpty(name) && !name.Contains("ランゲージ"))
+                        {
+                            return name;
+                        }
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Error getting partner name: {ex.Message}");
+            }
+
+            // Fallback to generic partner label
+            return target switch
+            {
+                MainGameManager.ORDER_UNIT.Partner00 => "Partner 1",
+                MainGameManager.ORDER_UNIT.Partner01 => "Partner 2",
+                MainGameManager.ORDER_UNIT.PartnerAll => "Both Partners",
+                _ => "Partner"
+            };
         }
 
         public override void AnnounceStatus()

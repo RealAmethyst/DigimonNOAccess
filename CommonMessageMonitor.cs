@@ -27,6 +27,8 @@ namespace DigimonNOAccess
         // Track last seen text per window instance to detect changes
         // When window closes, tracking is cleared, allowing re-announcement when reopened
         private Dictionary<int, string> _lastTextPerWindow = new Dictionary<int, string>();
+        // Track if window has already announced its first message (use SayQueued for subsequent)
+        private HashSet<int> _windowHasAnnounced = new HashSet<int>();
 
         public void Update()
         {
@@ -80,6 +82,7 @@ namespace DigimonNOAccess
                 {
                     // Window not opened, clear tracking
                     _lastTextPerWindow.Remove(windowIndex);
+                    _windowHasAnnounced.Remove(windowIndex);
                     return;
                 }
 
@@ -112,7 +115,18 @@ namespace DigimonNOAccess
 
                 // Announce the text (strip rich text tags for clean screen reader output)
                 DebugLogger.Log($"[CommonMessageMonitor] {text}");
-                ScreenReader.Say(DialogTextPatch.StripRichTextTags(text));
+                string cleanText = DialogTextPatch.StripRichTextTags(text);
+
+                // First message for this window uses Say(), subsequent use SayQueued()
+                if (_windowHasAnnounced.Contains(windowIndex))
+                {
+                    ScreenReader.SayQueued(cleanText);
+                }
+                else
+                {
+                    ScreenReader.Say(cleanText);
+                    _windowHasAnnounced.Add(windowIndex);
+                }
             }
             catch (System.Exception ex)
             {

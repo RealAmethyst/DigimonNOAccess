@@ -48,6 +48,10 @@ namespace DigimonNOAccess
         private static DateTime _lastDigimonMessageTime = DateTime.MinValue;
         private static string _lastFieldDigimonMessage = "";
         private static DateTime _lastFieldDigimonMessageTime = DateTime.MinValue;
+        private static DateTime _lastItemMessageTime = DateTime.MinValue; // Track when ANY item message was announced
+        // Track multiple recent item messages to avoid double announcements
+        private static List<string> _recentItemMessages = new List<string>();
+        private static DateTime _recentItemMessagesTime = DateTime.MinValue;
 
 
         /// <summary>
@@ -217,10 +221,25 @@ namespace DigimonNOAccess
                 if (IsPlaceholderText(text))
                     return;
 
+                // Track this message in the recent list
+                var now = DateTime.Now;
+                // Clear old messages if too much time has passed
+                if ((now - _recentItemMessagesTime).TotalMilliseconds > 2000)
+                {
+                    _recentItemMessages.Clear();
+                }
+                _recentItemMessages.Add(StripRichTextTags(text).Trim());
+                _recentItemMessagesTime = now;
+                _lastItemMessageTime = now;
+
+                // Also set last common message for backwards compatibility
+                _lastCommonMessage = text;
+                _lastCommonMessageTime = now;
+
                 // Always announce - SetItemMessage is called each time user tries to use an item
-                // No duplicate check here because repeated attempts should be announced
+                // Use SayQueued so multiple item messages (when feeding both partners) don't cancel each other
                 DebugLogger.Log($"[SetItemMessage] {text}");
-                ScreenReader.Say(StripRichTextTags(text));
+                ScreenReader.SayQueued(StripRichTextTags(text));
             }
             catch (System.Exception ex)
             {
@@ -236,8 +255,11 @@ namespace DigimonNOAccess
                     return;
 
                 // Skip if panel isn't already opened (means it's being initialized, not updated)
-                // m_isOpend is inherited from UiDispBase
                 if (__instance == null || !__instance.m_isOpend)
+                    return;
+
+                // Also skip during game loading
+                if (IsGameLoading())
                     return;
 
                 if (message == _lastDigimonMessage && (DateTime.Now - _lastDigimonMessageTime).TotalMilliseconds < 500)
@@ -268,6 +290,10 @@ namespace DigimonNOAccess
                 // Skip if field panel isn't active yet (means game is still initializing)
                 var fieldPanel = uFieldPanel.m_instance;
                 if (fieldPanel == null || !fieldPanel.gameObject.activeInHierarchy)
+                    return;
+
+                // Also skip during game loading
+                if (IsGameLoading())
                     return;
 
                 if (message == _lastFieldDigimonMessage && (DateTime.Now - _lastFieldDigimonMessageTime).TotalMilliseconds < 500)
@@ -350,6 +376,17 @@ namespace DigimonNOAccess
 
             string stripped = StripRichTextTags(text).Trim();
 
+            // Check against all recent item messages
+            if (_recentItemMessages.Count > 0 && (DateTime.Now - _recentItemMessagesTime).TotalMilliseconds < 2000)
+            {
+                foreach (var msg in _recentItemMessages)
+                {
+                    if (stripped == msg)
+                        return true;
+                }
+            }
+
+            // Also check last common message for SetMessage patch
             if (!string.IsNullOrEmpty(_lastCommonMessage))
             {
                 string strippedLast = StripRichTextTags(_lastCommonMessage).Trim();

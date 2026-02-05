@@ -15,6 +15,7 @@ namespace DigimonNOAccess
         private bool _wasActive = false;
         private int _lastCursor = -1;
         private uCarePanel.State _lastState = uCarePanel.State.None;
+        private MainGameManager.ORDER_UNIT _lastTarget = (MainGameManager.ORDER_UNIT)(-1);
 
         public bool IsOpen()
         {
@@ -80,6 +81,7 @@ namespace DigimonNOAccess
             else if (isActive)
             {
                 CheckCursorChange();
+                CheckTargetChange();
             }
 
             _wasActive = isActive;
@@ -88,6 +90,7 @@ namespace DigimonNOAccess
         private void OnOpen()
         {
             _lastCursor = -1;
+            _lastTarget = (MainGameManager.ORDER_UNIT)(-1);
 
             if (_commandPanel == null)
             {
@@ -95,6 +98,11 @@ namespace DigimonNOAccess
                 DebugLogger.Log("[CarePanel] Opened but command panel is null");
                 return;
             }
+
+            // Get initial target partner
+            var currentTarget = GetCurrentTarget();
+            _lastTarget = currentTarget;
+            string partnerName = GetTargetPartnerName(currentTarget);
 
             int cursor = _commandPanel.m_selectNo;
             int total = _commandPanel.m_selectMax;
@@ -110,8 +118,14 @@ namespace DigimonNOAccess
                 announcement = $"Care menu. {itemText}";
             }
 
+            // Add partner name to the announcement
+            if (!string.IsNullOrEmpty(partnerName))
+            {
+                announcement += $", {partnerName}";
+            }
+
             ScreenReader.Say(announcement);
-            DebugLogger.Log($"[CarePanel] Opened, state={_carePanel?.m_state}, cursor={cursor}, total={total}, item={itemText}");
+            DebugLogger.Log($"[CarePanel] Opened, state={_carePanel?.m_state}, cursor={cursor}, total={total}, item={itemText}, target={currentTarget}");
             _lastCursor = cursor;
         }
 
@@ -120,6 +134,7 @@ namespace DigimonNOAccess
             _carePanel = null;
             _commandPanel = null;
             _lastCursor = -1;
+            _lastTarget = (MainGameManager.ORDER_UNIT)(-1);
             DebugLogger.Log("[CarePanel] Closed");
         }
 
@@ -149,6 +164,83 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[CarePanel] Cursor: {itemText} ({cursor + 1}/{total})");
                 _lastCursor = cursor;
             }
+        }
+
+        private void CheckTargetChange()
+        {
+            var currentTarget = GetCurrentTarget();
+
+            if (currentTarget != _lastTarget && (int)_lastTarget >= 0)
+            {
+                string partnerName = GetTargetPartnerName(currentTarget);
+                if (!string.IsNullOrEmpty(partnerName))
+                {
+                    ScreenReader.Say(partnerName);
+                    DebugLogger.Log($"[CarePanel] Target changed to {currentTarget}: {partnerName}");
+                }
+            }
+
+            _lastTarget = currentTarget;
+        }
+
+        private MainGameManager.ORDER_UNIT GetCurrentTarget()
+        {
+            try
+            {
+                if (_carePanel != null)
+                {
+                    return _carePanel.m_target;
+                }
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[CarePanel] Error getting target: {ex.Message}");
+            }
+            return MainGameManager.ORDER_UNIT.Partner00;
+        }
+
+        private string GetTargetPartnerName(MainGameManager.ORDER_UNIT target)
+        {
+            try
+            {
+                // Get the partner's actual Digimon name from the game
+                Il2Cpp.PartnerCtrl partner = null;
+                if (target == MainGameManager.ORDER_UNIT.Partner00)
+                {
+                    partner = MainGameManager.GetPartnerCtrl(0);
+                }
+                else if (target == MainGameManager.ORDER_UNIT.Partner01)
+                {
+                    partner = MainGameManager.GetPartnerCtrl(1);
+                }
+
+                if (partner != null)
+                {
+                    // Use gameData.m_commonData.m_name for the actual localized name
+                    var commonData = partner.gameData?.m_commonData;
+                    if (commonData != null)
+                    {
+                        var name = commonData.m_name;
+                        if (!string.IsNullOrEmpty(name) && !name.Contains("ランゲージ"))
+                        {
+                            return name;
+                        }
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[CarePanel] Error getting partner name: {ex.Message}");
+            }
+
+            // Fallback to generic partner label
+            return target switch
+            {
+                MainGameManager.ORDER_UNIT.Partner00 => "Partner 1",
+                MainGameManager.ORDER_UNIT.Partner01 => "Partner 2",
+                MainGameManager.ORDER_UNIT.PartnerAll => "Both Partners",
+                _ => "Partner"
+            };
         }
 
         private string GetCommandName(int index)

@@ -70,23 +70,9 @@ namespace DigimonNOAccess
             _lastState = EvolutionBase.State.Loading;
             _announcedStart = false;
             _announcedResult = false;
+            _originalPartnerName = null;
 
             DebugLogger.Log("[Evolution] Digivolution sequence started");
-
-            // Get the original partner name from m_BeforeModelName
-            _originalPartnerName = GetBeforeEvolutionName();
-
-            // Announce that digivolution is happening with partner identification
-            if (!string.IsNullOrEmpty(_originalPartnerName))
-            {
-                ScreenReader.Say($"{_originalPartnerName} is digivolving");
-                DebugLogger.Log($"[Evolution] {_originalPartnerName} is digivolving");
-            }
-            else
-            {
-                ScreenReader.Say("Digivolving");
-            }
-            _announcedStart = true;
         }
 
         private void OnEnd()
@@ -112,19 +98,53 @@ namespace DigimonNOAccess
                 {
                     DebugLogger.Log($"[Evolution] State changed to {state}");
 
-                    // Announce the result when entering Finish state
-                    if (state == EvolutionBase.State.Finish && !_announcedResult)
+                    // Announce the start when entering Start state (after animation begins)
+                    if (state == EvolutionBase.State.Start && !_announcedStart)
                     {
-                        AnnounceResult();
-                        _announcedResult = true;
+                        AnnounceStart();
+                        _announcedStart = true;
                     }
 
                     _lastState = state;
+                }
+
+                // During Update state, poll for the name UI becoming visible
+                // The name text appears on screen during Update, not at Finish
+                if (state == EvolutionBase.State.Update && !_announcedResult)
+                {
+                    try
+                    {
+                        var nameObj = _evolution.m_skillName;
+                        if (nameObj != null && nameObj.activeInHierarchy)
+                        {
+                            AnnounceResult();
+                            _announcedResult = true;
+                        }
+                    }
+                    catch { }
                 }
             }
             catch (System.Exception ex)
             {
                 DebugLogger.Log($"[Evolution] Error checking state: {ex.Message}");
+            }
+        }
+
+        private void AnnounceStart()
+        {
+            // Get the original partner name from m_BeforeModelName
+            _originalPartnerName = GetBeforeEvolutionName();
+
+            // Announce that digivolution is happening with partner identification
+            if (!string.IsNullOrEmpty(_originalPartnerName))
+            {
+                ScreenReader.Say($"{_originalPartnerName} is digivolving");
+                DebugLogger.Log($"[Evolution] {_originalPartnerName} is digivolving");
+            }
+            else
+            {
+                ScreenReader.Say("Digivolving");
+                DebugLogger.Log("[Evolution] Digivolving (no name found)");
             }
         }
 
