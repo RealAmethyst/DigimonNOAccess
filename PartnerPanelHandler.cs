@@ -303,32 +303,30 @@ namespace DigimonNOAccess
             }
             catch { }
 
-            // Try to get skill name from the skill UI array
-            string skillName = GetSkillName(command, cursorIndex);
-
-            // Try to get caption text which shows skill description
-            string description = null;
-            var caption = command.m_Caption;
-            if (caption != null)
+            // Get full info for current slot including Power/MP/Range
+            var skillCtrl = command?.m_SkillCtrl;
+            if (skillCtrl?.m_Skill != null && cursorIndex >= 0 && cursorIndex < skillCtrl.m_Skill.Length)
             {
-                var captionText = caption.m_CaptionText?.text;
-                if (!string.IsNullOrEmpty(captionText))
+                var skillUI = skillCtrl.m_Skill[cursorIndex];
+                string fullInfo = GetSkillFullInfo(skillUI);
+                if (!string.IsNullOrEmpty(fullInfo))
                 {
-                    description = TextUtilities.StripRichTextTags(captionText);
+                    // Also include description from caption
+                    string description = null;
+                    var caption = command.m_Caption;
+                    if (caption != null)
+                    {
+                        var captionText = caption.m_CaptionText?.text;
+                        if (!string.IsNullOrEmpty(captionText))
+                            description = TextUtilities.StripRichTextTags(captionText);
+                    }
+                    if (!string.IsNullOrEmpty(description))
+                        return $"{fullInfo}. {description}";
+                    return fullInfo;
                 }
             }
 
-            // Build announcement with name first, then description
-            if (!string.IsNullOrEmpty(skillName))
-            {
-                if (!string.IsNullOrEmpty(description))
-                {
-                    return $"{skillName}. {description}";
-                }
-                return skillName;
-            }
-
-            return description ?? "Select a skill slot";
+            return "No skill set";
         }
 
         private string GetSkillName(Il2Cpp.uPartnerAttackPanelCommand command, int cursorIndex)
@@ -347,6 +345,10 @@ namespace DigimonNOAccess
                 if (skillUI == null)
                     return null;
 
+                // Check if this slot actually has a skill assigned
+                if (skillUI.m_SkillCode == 0)
+                    return null;
+
                 var nameText = skillUI.m_SkillName;
                 if (nameText != null)
                 {
@@ -362,6 +364,69 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[PartnerPanel] Error getting skill name: {ex.Message}");
             }
             return null;
+        }
+
+        private string GetSkillFullInfo(Il2Cpp.uPartnerAttackPanelSkill skillUI)
+        {
+            try
+            {
+                if (skillUI == null)
+                    return null;
+
+                uint code = skillUI.m_SkillCode;
+                if (code == 0)
+                    return null;
+
+                string name = skillUI.m_SkillName?.text;
+                if (string.IsNullOrEmpty(name))
+                    return null;
+                name = TextUtilities.StripRichTextTags(name);
+
+                var parts = new System.Collections.Generic.List<string>();
+                parts.Add(name);
+
+                string power = skillUI.m_Power?.text;
+                if (!string.IsNullOrEmpty(power))
+                    parts.Add($"Power {power}");
+
+                string mp = skillUI.m_MP?.text;
+                if (!string.IsNullOrEmpty(mp))
+                    parts.Add($"MP {mp}");
+
+                // Get range from game data since it's displayed as an image
+                try
+                {
+                    var attackData = Il2Cpp.ParameterAttackData.GetParam(code);
+                    if (attackData != null)
+                    {
+                        string range = GetRangeLetter(attackData.m_range);
+                        if (!string.IsNullOrEmpty(range))
+                            parts.Add($"Range {range}");
+                    }
+                }
+                catch { }
+
+                return string.Join(", ", parts);
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[PartnerPanel] Error getting skill full info: {ex.Message}");
+                return null;
+            }
+        }
+
+        private string GetRangeLetter(int rangeIndex)
+        {
+            return rangeIndex switch
+            {
+                0 => "E",
+                1 => "D",
+                2 => "C",
+                3 => "B",
+                4 => "A",
+                5 => "S",
+                _ => ""
+            };
         }
 
         private string GetTacticsContent()
@@ -415,6 +480,11 @@ namespace DigimonNOAccess
             catch { }
 
             var parts = new System.Collections.Generic.List<string>();
+
+            // Get current digimon info from the info panel
+            string digimonInfo = GetHistoryDigimonInfo(genealogy);
+            if (!string.IsNullOrEmpty(digimonInfo))
+                parts.Add(digimonInfo);
 
             // Get generation info
             var generationText = genealogy.m_GenerationText;
@@ -614,10 +684,26 @@ namespace DigimonNOAccess
                         try { command.SetSelectSkillCaption(); } catch { }
                         string skillName = GetSelectSkillName(command);
 
-                        string announcement = "Select replacement skill";
+                        // Check if current slot already has a skill (replacing) or is empty (assigning)
+                        bool isReplacing = false;
+                        try
+                        {
+                            int slotIndex = command.m_SelectNo;
+                            var skillCtrl = command.m_SkillCtrl;
+                            if (skillCtrl != null)
+                            {
+                                uint slotCode = skillCtrl.GetSkillCode(slotIndex);
+                                isReplacing = slotCode > 0;
+                            }
+                        }
+                        catch { }
+
+                        string announcement = isReplacing ? "Select replacement skill" : "Select skill";
                         if (!string.IsNullOrEmpty(skillName))
                         {
-                            announcement += $". {skillName}";
+                            int entryCol = _lastSelectSkillX + 1;
+                            int entryRow = _lastSelectSkillY + 1;
+                            announcement += $". {skillName}, row {entryRow} of 7, column {entryCol} of 9";
                         }
                         ScreenReader.Say(announcement);
                         DebugLogger.Log($"[PartnerPanel] Entered skill select mode: {skillName}");
@@ -626,10 +712,50 @@ namespace DigimonNOAccess
                              (currentAttackState == uPartnerAttackPanel.PartnerAttackState.Nomal ||
                               currentAttackState == uPartnerAttackPanel.PartnerAttackState.NomalPrepare))
                     {
-                        // Exited skill select mode back to normal
+                        // Exited skill select mode back to normal - re-announce current slot
                         _lastSelectSkillX = -1;
                         _lastSelectSkillY = -1;
-                                    DebugLogger.Log("[PartnerPanel] Exited skill select mode");
+
+                        try
+                        {
+                            int slotIndex = command.m_SelectNo;
+                            var skillCtrl = command.m_SkillCtrl;
+                            int totalSlots = 4;
+                            try
+                            {
+                                if (skillCtrl?.m_Skill != null)
+                                    totalSlots = skillCtrl.m_Skill.Length;
+                            }
+                            catch { }
+
+                            string fullInfo = null;
+                            if (skillCtrl?.m_Skill != null && slotIndex >= 0 && slotIndex < skillCtrl.m_Skill.Length)
+                                fullInfo = GetSkillFullInfo(skillCtrl.m_Skill[slotIndex]);
+
+                            string slotAnnouncement;
+                            if (!string.IsNullOrEmpty(fullInfo))
+                            {
+                                slotAnnouncement = $"{fullInfo}, {slotIndex + 1} of {totalSlots}";
+                                string desc = null;
+                                var caption = command.m_Caption;
+                                if (caption != null)
+                                {
+                                    var captionText = caption.m_CaptionText?.text;
+                                    if (!string.IsNullOrEmpty(captionText))
+                                        desc = TextUtilities.StripRichTextTags(captionText);
+                                }
+                                if (!string.IsNullOrEmpty(desc))
+                                    slotAnnouncement += $". {desc}";
+                            }
+                            else
+                            {
+                                slotAnnouncement = $"No skill set, {slotIndex + 1} of {totalSlots}";
+                            }
+                            ScreenReader.Say(slotAnnouncement);
+                        }
+                        catch { }
+
+                        DebugLogger.Log("[PartnerPanel] Exited skill select mode");
                     }
                     _lastAttackPanelState = currentAttackState;
                 }
@@ -650,7 +776,8 @@ namespace DigimonNOAccess
                             string currentSkillName = GetSelectSkillName(command) ?? "";
                             if (!string.IsNullOrEmpty(currentSkillName))
                             {
-                                ScreenReader.Say(currentSkillName);
+                                string posInfo = $"row {curY + 1} of 7, column {curX + 1} of 9";
+                                ScreenReader.Say($"{currentSkillName}, {posInfo}");
                                 DebugLogger.Log($"[PartnerPanel] Skill select cursor ({curX},{curY}): {currentSkillName}");
                             }
                         }
@@ -665,44 +792,55 @@ namespace DigimonNOAccess
 
                 if (currentCursor != _lastAttackCursor && _lastAttackCursor >= 0)
                 {
-                    // Get skill name and description
-                    string skillName = GetSkillName(command, currentCursor);
-                    string description = null;
-                    var caption = command.m_Caption;
-                    if (caption != null)
-                    {
-                        var captionText = caption.m_CaptionText?.text;
-                        if (!string.IsNullOrEmpty(captionText))
-                        {
-                            description = TextUtilities.StripRichTextTags(captionText);
-                        }
-                    }
-
-                    // Get total slots (usually 4)
+                    // Get total slots
                     int totalSlots = 4;
+                    var skillCtrl = command.m_SkillCtrl;
                     try
                     {
-                        var skillCtrl = command.m_SkillCtrl;
                         if (skillCtrl?.m_Skill != null)
-                        {
                             totalSlots = skillCtrl.m_Skill.Length;
-                        }
                     }
                     catch { }
 
-                    // Build announcement with position
-                    string content;
-                    if (!string.IsNullOrEmpty(skillName))
+                    // Get full skill info with Power/MP/Range
+                    string fullInfo = null;
+                    if (skillCtrl?.m_Skill != null && currentCursor >= 0 && currentCursor < skillCtrl.m_Skill.Length)
                     {
-                        content = $"{skillName}, {currentCursor + 1} of {totalSlots}";
-                        if (!string.IsNullOrEmpty(description))
+                        fullInfo = GetSkillFullInfo(skillCtrl.m_Skill[currentCursor]);
+                    }
+
+                    string content;
+                    if (!string.IsNullOrEmpty(fullInfo))
+                    {
+                        content = $"{fullInfo}, {currentCursor + 1} of {totalSlots}";
+
+                        // Add caption description
+                        string description = null;
+                        var caption = command.m_Caption;
+                        if (caption != null)
                         {
-                            content += $". {description}";
+                            var captionText = caption.m_CaptionText?.text;
+                            if (!string.IsNullOrEmpty(captionText))
+                                description = TextUtilities.StripRichTextTags(captionText);
                         }
+                        if (!string.IsNullOrEmpty(description))
+                            content += $". {description}";
                     }
                     else
                     {
-                        content = $"Empty slot, {currentCursor + 1} of {totalSlots}";
+                        // Check if slot has a lock message (like "Unlocked by Acquiring Third Order")
+                        string lockMsg = null;
+                        var caption = command.m_Caption;
+                        if (caption != null)
+                        {
+                            var captionText = caption.m_CaptionText?.text;
+                            if (!string.IsNullOrEmpty(captionText))
+                                lockMsg = TextUtilities.StripRichTextTags(captionText);
+                        }
+                        if (!string.IsNullOrEmpty(lockMsg))
+                            content = $"No skill set, {currentCursor + 1} of {totalSlots}. {lockMsg}";
+                        else
+                            content = $"No skill set, {currentCursor + 1} of {totalSlots}";
                     }
 
                     ScreenReader.Say(content);
@@ -722,18 +860,55 @@ namespace DigimonNOAccess
             {
                 // m_SelectSkillCaption holds the selected skill details in the selection grid
                 var selectSkillCaption = command?.m_SelectSkillCaption;
-                if (selectSkillCaption != null)
+                if (selectSkillCaption == null) return null;
+
+                uint skillCode = selectSkillCaption.m_SkillCode;
+                if (skillCode == 0) return "Empty";
+
+                // Read the caption description - the game shows "???" for locked/unknown skills
+                // and the actual description for available ones
+                string captionDesc = null;
+                try
                 {
-                    var skillNameText = selectSkillCaption.m_SkillName;
-                    if (skillNameText != null)
+                    var caption = command.m_Caption;
+                    if (caption != null)
                     {
-                        string name = skillNameText.text;
-                        if (!string.IsNullOrEmpty(name))
-                        {
-                            return TextUtilities.StripRichTextTags(name);
-                        }
+                        var captionText = caption.m_CaptionText?.text;
+                        if (!string.IsNullOrEmpty(captionText))
+                            captionDesc = TextUtilities.StripRichTextTags(captionText);
                     }
                 }
+                catch { }
+
+                // "???" means the skill is locked/unknown
+                if (string.IsNullOrEmpty(captionDesc) || captionDesc == "???")
+                    return "Locked";
+
+                var skillNameText = selectSkillCaption.m_SkillName;
+                if (skillNameText == null) return null;
+                string name = skillNameText.text;
+                if (string.IsNullOrEmpty(name)) return null;
+                name = TextUtilities.StripRichTextTags(name);
+
+                // Check if the current digimon can use this skill
+                // The attack flag is indexed by grid position in column-major order (column * 7 + row)
+                bool canUse = false;
+                try
+                {
+                    int partner = command.m_SelectPartner;
+                    Il2Cpp.CBitFlag attackFlag = partner == 0 ? command.m_L_AttackFlag : command.m_R_AttackFlag;
+                    if (attackFlag != null)
+                    {
+                        uint gridIndex = (uint)(command.m_SelectSkillX * 7 + command.m_SelectSkillY);
+                        canUse = attackFlag[gridIndex];
+                    }
+                }
+                catch { }
+
+                if (!canUse)
+                    return $"{name}, not usable. {captionDesc}";
+
+                return $"{name}. {captionDesc}";
             }
             catch (System.Exception ex)
             {
@@ -795,8 +970,8 @@ namespace DigimonNOAccess
                 if ((currentX != _lastHistoryCursorX || currentY != _lastHistoryCursorY) &&
                     _lastHistoryCursorX >= 0 && _lastHistoryCursorY >= 0)
                 {
-                    // Get digimon name from the info panel
-                    string digimonName = GetHistoryDigimonName(genealogy);
+                    // Get full digimon info (name + nature + attribute + description)
+                    string digimonInfo = GetHistoryDigimonInfo(genealogy);
 
                     // X is generation (column), Y is the evolution branch (row)
                     int generation = currentX + 1;
@@ -806,9 +981,9 @@ namespace DigimonNOAccess
 
                     var parts = new System.Collections.Generic.List<string>();
 
-                    if (!string.IsNullOrEmpty(digimonName))
+                    if (!string.IsNullOrEmpty(digimonInfo))
                     {
-                        parts.Add(digimonName);
+                        parts.Add(digimonInfo);
                     }
 
                     if (maxBranch > 1)
@@ -822,7 +997,7 @@ namespace DigimonNOAccess
 
                     string announcement = string.Join(", ", parts);
                     ScreenReader.Say(announcement);
-                    DebugLogger.Log($"[PartnerPanel] History cursor changed to ({currentX},{currentY}): {digimonName}");
+                    DebugLogger.Log($"[PartnerPanel] History cursor changed to ({currentX},{currentY}): {digimonInfo}");
                 }
                 _lastHistoryCursorX = currentX;
                 _lastHistoryCursorY = currentY;
@@ -833,31 +1008,16 @@ namespace DigimonNOAccess
             }
         }
 
-        private string GetHistoryDigimonName(Il2Cpp.uHistoryUI genealogy)
+        private bool IsValidHistoryPosition(Il2Cpp.uHistoryUI genealogy, out string name)
         {
+            name = null;
             try
             {
-                var genelogyInfo = genealogy?.m_GenelogyInfo;
-                if (genelogyInfo == null)
-                    return null;
-
-                // Check if the unknown panel is active - applies at ANY position
-                // (unvisited branches, future evolutions, etc.)
-                var unknownObj = genelogyInfo.m_Unknown;
-                if (unknownObj != null && unknownObj.activeInHierarchy)
-                {
-                    string unknownText = genelogyInfo.m_UnknownText;
-                    if (!string.IsNullOrEmpty(unknownText))
-                        return unknownText;
-                    return "Unknown";
-                }
-
-                // Try direct data lookup from history array (bypasses UI timing issues)
                 int cursorX = genealogy.m_CursorX;
                 int historyCnt = genealogy.m_HistoryCnt;
-                string dataName = null;
 
-                // Main history entries
+                // Only positions 0..historyCnt-1 are valid (includes current digimon at historyCnt-1)
+                // Positions >= historyCnt are future/unknown slots
                 var history = genealogy.m_History;
                 if (history != null && cursorX >= 0 && cursorX < historyCnt && cursorX < history.Length)
                 {
@@ -866,47 +1026,85 @@ namespace DigimonNOAccess
                     {
                         var param = ParameterDigimonData.GetParam(digimonId);
                         if (param != null)
-                            dataName = param.GetDefaultName();
+                        {
+                            name = param.GetDefaultName();
+                            return true;
+                        }
                     }
-                }
-
-                // Current digimon (position just after history entries)
-                if (string.IsNullOrEmpty(dataName) && cursorX == historyCnt)
-                {
-                    uint currentId = genealogy.m_CurrentDigiID;
-                    if (currentId > 0)
-                    {
-                        var param = ParameterDigimonData.GetParam(currentId);
-                        if (param != null)
-                            dataName = param.GetDefaultName();
-                    }
-                }
-
-                if (!string.IsNullOrEmpty(dataName))
-                    return dataName;
-
-                // Fallback: read from UI text fields
-                var nameText = genelogyInfo.m_DigimonName;
-                if (nameText != null)
-                {
-                    string name = nameText.text;
-                    if (!string.IsNullOrEmpty(name) && !name.Contains("ランゲージ"))
-                        return TextUtilities.StripRichTextTags(name);
-                }
-
-                var evoNameText = genelogyInfo.m_DigimonName_Evo;
-                if (evoNameText != null)
-                {
-                    string evoName = evoNameText.text;
-                    if (!string.IsNullOrEmpty(evoName) && !evoName.Contains("ランゲージ"))
-                        return TextUtilities.StripRichTextTags(evoName);
                 }
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[PartnerPanel] Error getting history digimon name: {ex.Message}");
+                DebugLogger.Log($"[PartnerPanel] Error checking history position: {ex.Message}");
             }
-            return null;
+            return false;
+        }
+
+        private string GetHistoryDigimonInfo(Il2Cpp.uHistoryUI genealogy)
+        {
+            try
+            {
+                // Check if the game itself considers this position unknown
+                try
+                {
+                    var infoUI = genealogy?.m_GenelogyInfo;
+                    if (infoUI?.m_Unknown != null && infoUI.m_Unknown.activeInHierarchy)
+                        return "Unknown";
+                }
+                catch { }
+
+                // Only show full info for positions on the actual evolution path
+                if (!IsValidHistoryPosition(genealogy, out string digimonName))
+                    return "Unknown";
+
+                var genelogyInfo = genealogy?.m_GenelogyInfo;
+
+                var parts = new System.Collections.Generic.List<string>();
+
+                if (!string.IsNullOrEmpty(digimonName))
+                    parts.Add(digimonName);
+
+                if (genelogyInfo != null)
+                {
+                    // Get nature (e.g. "Dark")
+                    var natureText = genelogyInfo.m_Nature;
+                    if (natureText != null)
+                    {
+                        string nature = natureText.text;
+                        if (!string.IsNullOrEmpty(nature) && !nature.Contains("ランゲージ"))
+                            parts.Add($"Nature {TextUtilities.StripRichTextTags(nature)}");
+                    }
+
+                    // Get attribute (e.g. "Virus")
+                    var propertyText = genelogyInfo.m_Property;
+                    if (propertyText != null)
+                    {
+                        string property = propertyText.text;
+                        if (!string.IsNullOrEmpty(property) && !property.Contains("ランゲージ"))
+                            parts.Add($"Attribute {TextUtilities.StripRichTextTags(property)}");
+                    }
+
+                    // Get description
+                    var descText = genelogyInfo.m_Description;
+                    if (descText != null)
+                    {
+                        string desc = descText.text;
+                        if (!string.IsNullOrEmpty(desc) && !desc.Contains("ランゲージ"))
+                        {
+                            string cleanDesc = TextUtilities.StripRichTextTags(desc);
+                            if (!string.IsNullOrEmpty(cleanDesc))
+                                parts.Add(cleanDesc);
+                        }
+                    }
+                }
+
+                return parts.Count > 0 ? string.Join(", ", parts) : null;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[PartnerPanel] Error getting history digimon info: {ex.Message}");
+                return null;
+            }
         }
 
         private string GetTabName(uPartnerPanel.State state)
@@ -938,9 +1136,10 @@ namespace DigimonNOAccess
         {
             try
             {
-                // Use the correct API to get partner name
+                // m_SelectPartner index is inverted relative to GetPartnerCtrl
                 int partner = _panel?.m_SelectPartner ?? 0;
-                var partnerCtrl = MainGameManager.GetPartnerCtrl(partner);
+                int partnerCtrlIndex = 1 - partner;
+                var partnerCtrl = MainGameManager.GetPartnerCtrl(partnerCtrlIndex);
                 if (partnerCtrl != null)
                 {
                     var commonData = partnerCtrl.gameData?.m_commonData;
