@@ -17,6 +17,9 @@ obj/
 # Decompiled game code (copyrighted - not for distribution)
 decompiled/
 
+# Internal dev prompts
+FEATURE_WORK_PROMPT.md
+
 # Temporary files
 *.tmp
 nul
