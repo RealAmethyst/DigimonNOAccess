@@ -64,10 +64,6 @@ namespace DigimonNOAccess
             if (text.Contains("メッセージ入力欄"))
                 return true;
 
-            // Skip color-tagged warning messages (already announced via SetMessage)
-            if (text.StartsWith("<color=#ff0000ff>Warning"))
-                return true;
-
             // Skip punctuation-only text
             string trimmed = text.Trim();
             bool onlyPunctuation = true;
@@ -103,23 +99,23 @@ namespace DigimonNOAccess
 
         /// <summary>
         /// Check if game is in a loading state.
-        /// Returns true if MainGameManager is null (title screen) or _IsLoad() is true.
+        /// Returns true only when MainGameManager exists and _IsLoad() is true.
+        /// Returns false when MainGameManager is null (title/copyright screen)
+        /// so that pre-title text can be announced. Other filters (IsPlaceholderText,
+        /// IsLocalizationReady) handle garbage text at that stage.
         /// </summary>
         public static bool IsGameLoading()
         {
             try
             {
                 var mgr = MainGameManager.m_instance;
-                // If MainGameManager doesn't exist yet, we're probably at title screen
-                // Skip monitoring during this phase
                 if (mgr == null)
-                    return true;
+                    return false;
                 return mgr._IsLoad();
             }
             catch
             {
-                // On exception, assume loading to be safe
-                return true;
+                return false;
             }
         }
     }

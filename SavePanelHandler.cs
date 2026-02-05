@@ -4,16 +4,21 @@ using UnityEngine;
 namespace DigimonNOAccess
 {
     /// <summary>
-    /// Handles accessibility for the save/load menu
+    /// Handles accessibility for the save/load menu.
+    /// Uses the parent uSavePanel state as the primary IsOpen() authority because
+    /// uSavePanelCommand.m_State goes to NONE during yes/no dialogs and save operations,
+    /// while uSavePanel stays active through the entire flow.
     /// </summary>
     public class SavePanelHandler : IAccessibilityHandler
     {
         public int Priority => 58;
 
         private uSavePanelCommand _panel;
+        private uSavePanel _parentPanel;
         private bool _wasActive = false;
         private int _lastCursor = -1;
-        private uSavePanelCommand.State _lastState = uSavePanelCommand.State.NONE;
+        private uSavePanel.State _lastParentState = uSavePanel.State.NONE;
+        private string _lastMessageWindowText = "";
 
         // Small delay so "Loading data" message can be detected first
         private const float OpenAnnouncementDelay = 0.05f;
@@ -22,18 +27,66 @@ namespace DigimonNOAccess
 
         public bool IsOpen()
         {
-            if (_panel == null)
+            // Find parent panel - this is the authority for the save/load lifecycle.
+            // The command panel (uSavePanelCommand) goes to NONE during yes/no dialogs
+            // and save operations, but the parent stays active.
+            if (_parentPanel == null)
+                _parentPanel = Object.FindObjectOfType<uSavePanel>();
+
+            if (_parentPanel != null)
             {
-                _panel = Object.FindObjectOfType<uSavePanelCommand>();
+                var parentState = _parentPanel.m_State;
+                if (parentState != uSavePanel.State.NONE &&
+                    parentState != uSavePanel.State.CLOSE &&
+                    parentState != uSavePanel.State.END)
+                {
+                    // Parent is active - get command panel from parent's direct reference.
+                    // FindObjectOfType won't find it when its gameObject is deactivated
+                    // during save operations, but the parent's reference persists.
+                    if (_panel == null)
+                        _panel = _parentPanel.m_uLoadPanelCommand;
+                    return true;
+                }
             }
 
+            // Fallback: check command panel directly
             if (_panel == null)
-                return false;
+                _panel = Object.FindObjectOfType<uSavePanelCommand>();
 
-            var state = _panel.m_State;
-            return state == uSavePanelCommand.State.MAIN ||
-                   state == uSavePanelCommand.State.SAVE_CHECK ||
-                   state == uSavePanelCommand.State.LOAD_CHECK;
+            if (_panel != null)
+            {
+                var state = _panel.m_State;
+                if (state == uSavePanelCommand.State.MAIN ||
+                    state == uSavePanelCommand.State.SAVE_CHECK ||
+                    state == uSavePanelCommand.State.LOAD_CHECK ||
+                    state == uSavePanelCommand.State.SAVE ||
+                    state == uSavePanelCommand.State.LOAD)
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// True when the player can navigate save slots.
+        /// Uses the parent's MAIN_SETTING state as the authority - this is the parent's
+        /// "slot list is active and accepting input" state. The command panel's m_State
+        /// may stay in NONE after save operations even though the slot list is functional.
+        /// </summary>
+        private bool IsNavigable()
+        {
+            if (_panel == null) return false;
+            if (_parentPanel == null) return false;
+            return _parentPanel.m_State == uSavePanel.State.MAIN_SETTING;
+        }
+
+        private static bool IsParentSaveLoadState(uSavePanel.State state)
+        {
+            return state == uSavePanel.State.SAVE ||
+                   state == uSavePanel.State.POST_WAIT ||
+                   state == uSavePanel.State.SYSTEM_SAVE ||
+                   state == uSavePanel.State.SAVE_END ||
+                   state == uSavePanel.State.LOAD;
         }
 
         public void Update()
@@ -57,41 +110,139 @@ namespace DigimonNOAccess
                     _pendingOpenAnnouncement = false;
                 }
 
-                CheckCursorChange();
-                CheckStateChange();
+                // Track parent panel state and message window text
+                CheckParentState();
+
+                // Only track cursor when navigable
+                if (IsNavigable())
+                {
+                    CheckCursorChange();
+                }
             }
 
             _wasActive = isActive;
         }
 
+        /// <summary>
+        /// Track the parent uSavePanel state machine and its message window.
+        /// </summary>
+        private void CheckParentState()
+        {
+            try
+            {
+                if (_parentPanel == null)
+                    return;
+
+                var parentState = _parentPanel.m_State;
+
+                // Monitor message window text changes for announcements
+                CheckParentMessageWindow();
+
+                if (parentState != _lastParentState)
+                {
+                    DebugLogger.Log($"[SavePanel] Parent state: {_lastParentState} -> {parentState}");
+
+                    // When parent exits a save/load operation back to MAIN_SETTING,
+                    // force cursor re-announcement on the next navigable frame
+                    if (parentState == uSavePanel.State.MAIN_SETTING &&
+                        IsParentSaveLoadState(_lastParentState))
+                    {
+                        _lastCursor = -1; // Force re-announcement
+                        DebugLogger.Log("[SavePanel] Save/load complete, will re-announce slot");
+                    }
+
+                    _lastParentState = parentState;
+                }
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Monitor the parent panel's message window for text changes.
+        /// Catches auto-closing messages like "Save complete" that may not go through SetMessage.
+        /// </summary>
+        private void CheckParentMessageWindow()
+        {
+            try
+            {
+                var msgWindow = _parentPanel.m_messageWindow;
+                if (msgWindow == null)
+                    return;
+
+                if (!msgWindow.m_isOpend)
+                {
+                    _lastMessageWindowText = "";
+                    return;
+                }
+
+                var label = msgWindow.m_label;
+                if (label == null)
+                    return;
+
+                string text = label.text;
+                if (string.IsNullOrEmpty(text) || text == _lastMessageWindowText)
+                    return;
+
+                _lastMessageWindowText = text;
+
+                if (TextUtilities.IsPlaceholderText(text))
+                    return;
+
+                // Only announce if SetMessage patch didn't already catch it
+                if (DialogTextPatch.WasRecentlyAnnounced(text))
+                    return;
+
+                string cleaned = TextUtilities.CleanText(text);
+                if (!string.IsNullOrEmpty(cleaned))
+                {
+                    ScreenReader.Say(cleaned);
+                    DebugLogger.Log($"[SavePanel] Message window: {cleaned}");
+                }
+            }
+            catch { }
+        }
+
         private void OnOpen()
         {
             _lastCursor = -1;
-            _lastState = uSavePanelCommand.State.NONE;
+            _lastParentState = uSavePanel.State.NONE;
+            _lastMessageWindowText = "";
             _openTime = UnityEngine.Time.time;
             _pendingOpenAnnouncement = true;
 
+            // Cache parent panel
+            if (_parentPanel == null)
+                _parentPanel = Object.FindObjectOfType<uSavePanel>();
+            if (_parentPanel != null)
+                _lastParentState = _parentPanel.m_State;
+
+            // Cache command panel and initial cursor
             if (_panel == null)
-                return;
+                _panel = Object.FindObjectOfType<uSavePanelCommand>();
+            if (_panel != null)
+                _lastCursor = GetCursorPosition();
 
-            _lastState = _panel.m_State;
-            _lastCursor = GetCursorPosition();
-
-            DebugLogger.Log($"[SavePanel] Menu opened, state={_lastState}, cursor={_lastCursor}");
+            DebugLogger.Log($"[SavePanel] Opened, parent={_lastParentState}, cursor={_lastCursor}");
         }
 
         private void OnClose()
         {
             _panel = null;
+            _parentPanel = null;
             _lastCursor = -1;
-            _lastState = uSavePanelCommand.State.NONE;
+            _lastParentState = uSavePanel.State.NONE;
+            _lastMessageWindowText = "";
             _pendingOpenAnnouncement = false;
-            DebugLogger.Log("[SavePanel] Menu closed");
+            DebugLogger.Log("[SavePanel] Closed");
         }
 
         private void AnnounceCurrentSlot()
         {
             if (_panel == null)
+                return;
+
+            // Only announce slot info when parent is in navigable state
+            if (_parentPanel == null || _parentPanel.m_State != uSavePanel.State.MAIN_SETTING)
                 return;
 
             int cursor = GetCursorPosition();
@@ -100,9 +251,10 @@ namespace DigimonNOAccess
             string headline = GetHeadlineText();
             string slotInfo = GetSlotInfo(cursor);
 
-            // Use SayQueued so "Loading data" message speaks first
+            // Use SayQueued so any pre-open message speaks first
             string announcement = $"{headline}. {slotInfo}, slot {cursor + 1} of {total}";
             ScreenReader.SayQueued(announcement);
+            DebugLogger.Log($"[SavePanel] Open announcement: {announcement}");
 
             _lastCursor = cursor;
         }
@@ -125,38 +277,19 @@ namespace DigimonNOAccess
                 string announcement = $"{slotInfo}, slot {cursor + 1} of {total}";
                 ScreenReader.Say(announcement);
 
-                DebugLogger.Log($"[SavePanel] Cursor changed to slot {cursor + 1}: {slotInfo}");
+                DebugLogger.Log($"[SavePanel] Cursor: slot {cursor + 1}: {slotInfo}");
                 _lastCursor = cursor;
             }
         }
 
-        private void CheckStateChange()
-        {
-            if (_panel == null)
-                return;
-
-            var currentState = _panel.m_State;
-
-            if (currentState != _lastState)
-            {
-                string stateAnnouncement = GetStateAnnouncement(currentState);
-                if (!string.IsNullOrEmpty(stateAnnouncement))
-                {
-                    ScreenReader.Say(stateAnnouncement);
-                    DebugLogger.Log($"[SavePanel] State changed to {currentState}: {stateAnnouncement}");
-                }
-                _lastState = currentState;
-            }
-        }
-
-        private string GetStateAnnouncement(uSavePanelCommand.State state)
+        private string GetStateAnnouncement(uSavePanel.State state)
         {
             return state switch
             {
-                uSavePanelCommand.State.SAVE_CHECK => "Confirm save?",
-                uSavePanelCommand.State.LOAD_CHECK => "Confirm load?",
-                uSavePanelCommand.State.SAVE => "Saving...",
-                uSavePanelCommand.State.LOAD => "Loading...",
+                uSavePanel.State.SAVE_CHECK => "Confirm save?",
+                uSavePanel.State.LOAD_CHECK => "Confirm load?",
+                uSavePanel.State.SAVE => "Saving...",
+                uSavePanel.State.LOAD => "Loading...",
                 _ => ""
             };
         }
@@ -165,10 +298,8 @@ namespace DigimonNOAccess
         {
             try
             {
-                if (_panel?.m_KeyCursorController != null)
-                {
-                    return _panel.m_KeyCursorController.m_DataIndex;
-                }
+                if (_panel != null)
+                    return _panel.GetCorsorIndex();
             }
             catch (System.Exception ex)
             {
@@ -181,10 +312,9 @@ namespace DigimonNOAccess
         {
             try
             {
-                if (_panel?.m_KeyCursorController != null)
-                {
-                    return _panel.m_KeyCursorController.m_DataMax;
-                }
+                var items = _panel?.m_items;
+                if (items != null)
+                    return items.Length;
             }
             catch (System.Exception ex)
             {
@@ -210,16 +340,6 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[SavePanel] Error getting headline: {ex.Message}");
             }
 
-            // Fallback based on state
-            if (_panel != null)
-            {
-                var state = _panel.m_State;
-                if (state == uSavePanelCommand.State.SAVE_CHECK || state == uSavePanelCommand.State.SAVE)
-                    return "Save Game";
-                if (state == uSavePanelCommand.State.LOAD_CHECK || state == uSavePanelCommand.State.LOAD)
-                    return "Load Game";
-            }
-
             return "Save/Load Menu";
         }
 
@@ -233,7 +353,6 @@ namespace DigimonNOAccess
                     var item = items[slotIndex];
                     if (item != null)
                     {
-                        // Try to cast to uSavePanelItemSaveItem for detailed info
                         var saveItem = item.TryCast<uSavePanelItemSaveItem>();
                         if (saveItem != null)
                         {
@@ -267,45 +386,28 @@ namespace DigimonNOAccess
                 // Build slot details from available text fields
                 var parts = new System.Collections.Generic.List<string>();
 
-                // Player name
                 var playerName = item.m_playerNameText;
                 if (playerName != null && !string.IsNullOrEmpty(playerName.text))
-                {
                     parts.Add(playerName.text);
-                }
 
-                // Tamer level
                 var level = item.m_tamarLavelText;
                 if (level != null && !string.IsNullOrEmpty(level.text))
-                {
                     parts.Add($"Level {level.text}");
-                }
 
-                // Area/location
                 var area = item.m_areaText;
                 if (area != null && !string.IsNullOrEmpty(area.text))
-                {
                     parts.Add(area.text);
-                }
 
-                // Play time
                 var playTime = item.m_playTimeText;
                 if (playTime != null && !string.IsNullOrEmpty(playTime.text))
-                {
                     parts.Add(playTime.text);
-                }
 
-                // Timestamp
                 var timestamp = item.m_timeStampText;
                 if (timestamp != null && !string.IsNullOrEmpty(timestamp.text))
-                {
                     parts.Add(timestamp.text);
-                }
 
                 if (parts.Count > 0)
-                {
                     return string.Join(", ", parts);
-                }
             }
             catch (System.Exception ex)
             {
@@ -319,6 +421,22 @@ namespace DigimonNOAccess
         {
             if (!IsOpen())
                 return;
+
+            if (_parentPanel == null || _parentPanel.m_State != uSavePanel.State.MAIN_SETTING)
+            {
+                // During save/load operation, announce the parent state
+                if (_parentPanel != null)
+                {
+                    string stateMsg = GetStateAnnouncement(_parentPanel.m_State);
+                    if (!string.IsNullOrEmpty(stateMsg))
+                    {
+                        ScreenReader.Say($"Save/Load Menu. {stateMsg}");
+                        return;
+                    }
+                }
+                ScreenReader.Say("Save/Load Menu");
+                return;
+            }
 
             int cursor = GetCursorPosition();
             int total = GetSlotCount();

@@ -100,6 +100,15 @@ namespace DigimonNOAccess
         private bool _wasInField = false;
         private float _leftFieldTime = 0f;
 
+        // Pathfinding beacon
+        private PathfindingBeacon _pathfindingBeacon;
+        private Vector3 _pathfindingDestination;
+        private GameObject _pathfindingTarget;
+        private float _lastPathRecalcTime;
+        private bool _isPathfinding;
+        private const float PathRecalcInterval = 0.5f;
+        private const float ArrivalDistance = 2f;
+
         // Evolution state (set by Main before Update)
         private bool _evolutionActive = false;
 
@@ -127,6 +136,11 @@ namespace DigimonNOAccess
                 if (_wasInField)
                     _leftFieldTime = currentTime;
                 _wasInField = false;
+
+                // Pause pathfinding beacon audio when leaving field (will resume on return)
+                if (_isPathfinding && _pathfindingBeacon != null && _pathfindingBeacon.IsActive)
+                    _pathfindingBeacon.Stop();
+
                 return;
             }
 
@@ -176,6 +190,10 @@ namespace DigimonNOAccess
 
             // Handle input
             HandleInput();
+
+            // Update pathfinding beacon
+            if (_isPathfinding)
+                UpdatePathfinding();
         }
 
         /// <summary>
@@ -210,6 +228,10 @@ namespace DigimonNOAccess
                 {
                     _lastMapNo = mapNo;
                     _lastAreaNo = areaNo;
+
+                    // Stop pathfinding on map change (target won't exist on new map)
+                    if (_isPathfinding)
+                        StopPathfinding(null);
 
                     // Reset for new map
                     _listBuilt = false;
@@ -1585,6 +1607,13 @@ namespace DigimonNOAccess
 
         private void AnnouncePathToEvent()
         {
+            // Toggle off if already pathfinding
+            if (_isPathfinding)
+            {
+                StopPathfinding("Pathfinding stopped");
+                return;
+            }
+
             var currentList = GetCurrentEventList();
             if (currentList == null || currentList.Count == 0 || _currentEventIndex < 0)
             {
@@ -1604,10 +1633,8 @@ namespace DigimonNOAccess
             Vector3 playerPos = _playerCtrl.transform.position;
             Vector3 targetPos = navEvent.Target != null && navEvent.Target.activeInHierarchy
                 ? navEvent.Target.transform.position
-                : navEvent.Position; // Use cached position if object is currently inactive
+                : navEvent.Position;
 
-            // Use NavMesh to calculate walkable path
-            // First, find nearest valid NavMesh point to target (target may be at map edge or off-mesh)
             try
             {
                 NavMeshHit targetHit;
@@ -1620,36 +1647,242 @@ namespace DigimonNOAccess
                 NavMeshPath path = new NavMeshPath();
                 bool found = NavMesh.CalculatePath(playerPos, navTargetPos, NavMesh.AllAreas, path);
 
-                string cardinal = GetCardinalDirection(targetPos - playerPos);
-
-                if (found && path.status == UnityEngine.AI.NavMeshPathStatus.PathComplete)
+                if (!found || path.corners.Length < 2)
                 {
-                    float totalDist = 0f;
-                    for (int i = 0; i < path.corners.Length - 1; i++)
-                        totalDist += Vector3.Distance(path.corners[i], path.corners[i + 1]);
+                    ScreenReader.Say($"Cannot find path to {navEvent.Name}");
+                    return;
+                }
 
-                    ScreenReader.Say($"{navEvent.Name}: {cardinal}, {Mathf.RoundToInt(totalDist)} meters walking distance");
-                }
-                else if (found && path.status == UnityEngine.AI.NavMeshPathStatus.PathPartial)
+                // Extract path corners into flat arrays for the beacon
+                var corners = path.corners;
+                float[] cx = new float[corners.Length];
+                float[] cy = new float[corners.Length];
+                float[] cz = new float[corners.Length];
+                for (int i = 0; i < corners.Length; i++)
                 {
-                    float totalDist = 0f;
-                    for (int i = 0; i < path.corners.Length - 1; i++)
-                        totalDist += Vector3.Distance(path.corners[i], path.corners[i + 1]);
+                    cx[i] = corners[i].x;
+                    cy[i] = corners[i].y;
+                    cz[i] = corners[i].z;
+                }
 
-                    ScreenReader.Say($"{navEvent.Name}: {cardinal}, {Mathf.RoundToInt(totalDist)} meters, partial path");
-                }
-                else
-                {
-                    int dist = Mathf.RoundToInt(Vector3.Distance(playerPos, targetPos));
-                    ScreenReader.Say($"{navEvent.Name}: {cardinal}, {dist} meters straight line");
-                }
+                // Start beacon
+                if (_pathfindingBeacon == null)
+                    _pathfindingBeacon = new PathfindingBeacon();
+
+                _pathfindingBeacon.UpdatePlayerPosition(
+                    playerPos.x, playerPos.y, playerPos.z,
+                    _playerCtrl.transform.forward.x, _playerCtrl.transform.forward.z);
+                _pathfindingBeacon.Start(navTargetPos.x, navTargetPos.y, navTargetPos.z, cx, cy, cz);
+
+                _pathfindingDestination = navTargetPos;
+                _pathfindingTarget = navEvent.Target;
+                _lastPathRecalcTime = Time.time;
+                _isPathfinding = true;
+
+                // Suspend other navigation audio
+                AudioNavigationHandler.Suspended = true;
+
+                ScreenReader.Say($"Pathfinding to {navEvent.Name}");
+                DebugLogger.Log($"[NavList] Pathfinding started to {navEvent.Name}");
             }
             catch (Exception ex)
             {
                 DebugLogger.Log($"[NavList] AnnouncePathToEvent error: {ex.Message}");
-                int dist = Mathf.RoundToInt(Vector3.Distance(playerPos, targetPos));
-                ScreenReader.Say($"{navEvent.Name}: {dist} meters");
+                ScreenReader.Say($"Pathfinding error");
             }
+        }
+
+        /// <summary>
+        /// Per-frame update for active pathfinding: updates beacon position,
+        /// recalculates path periodically, checks arrival and target validity.
+        /// If the beacon was paused (e.g. battle), resumes it automatically.
+        /// </summary>
+        private void UpdatePathfinding()
+        {
+            if (_playerCtrl == null || _pathfindingBeacon == null)
+            {
+                StopPathfinding(null);
+                return;
+            }
+
+            try
+            {
+                // Check if target was destroyed (even while paused)
+                if (_pathfindingTarget == null || !_pathfindingTarget.activeInHierarchy)
+                {
+                    StopPathfinding("Target lost");
+                    return;
+                }
+
+                // If beacon was paused (not active), resume it
+                if (!_pathfindingBeacon.IsActive)
+                {
+                    ResumePathfinding();
+                    return;
+                }
+
+                Vector3 playerPos = _playerCtrl.transform.position;
+                Vector3 playerForward = _playerCtrl.transform.forward;
+
+                // Update beacon with current player position every frame
+                _pathfindingBeacon.UpdatePlayerPosition(
+                    playerPos.x, playerPos.y, playerPos.z,
+                    playerForward.x, playerForward.z);
+
+                // Check arrival
+                float distToDest = _pathfindingBeacon.GetDistanceToDestination();
+                if (distToDest < ArrivalDistance)
+                {
+                    StopPathfinding("Destination reached");
+                    return;
+                }
+
+                // Recalculate path periodically
+                float currentTime = Time.time;
+                if (currentTime - _lastPathRecalcTime >= PathRecalcInterval)
+                {
+                    _lastPathRecalcTime = currentTime;
+                    RecalculatePathfindingPath(playerPos);
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[NavList] UpdatePathfinding error: {ex.Message}");
+                StopPathfinding(null);
+            }
+        }
+
+        /// <summary>
+        /// Resume pathfinding after it was paused (e.g. returning from battle or menu).
+        /// Recalculates the path and restarts the beacon.
+        /// </summary>
+        private void ResumePathfinding()
+        {
+            try
+            {
+                if (_playerCtrl == null || _pathfindingTarget == null)
+                {
+                    StopPathfinding(null);
+                    return;
+                }
+
+                if (!_pathfindingTarget.activeInHierarchy)
+                {
+                    StopPathfinding("Target lost");
+                    return;
+                }
+
+                Vector3 playerPos = _playerCtrl.transform.position;
+
+                // Update destination from live target position
+                Vector3 livePos = _pathfindingTarget.transform.position;
+                NavMeshHit hit;
+                if (NavMesh.SamplePosition(livePos, out hit, 20f, NavMesh.AllAreas))
+                    _pathfindingDestination = hit.position;
+
+                // Calculate fresh path
+                NavMeshPath path = new NavMeshPath();
+                bool found = NavMesh.CalculatePath(playerPos, _pathfindingDestination, NavMesh.AllAreas, path);
+
+                if (!found || path.corners.Length < 2)
+                {
+                    StopPathfinding("Path lost");
+                    return;
+                }
+
+                var corners = path.corners;
+                float[] cx = new float[corners.Length];
+                float[] cy = new float[corners.Length];
+                float[] cz = new float[corners.Length];
+                for (int i = 0; i < corners.Length; i++)
+                {
+                    cx[i] = corners[i].x;
+                    cy[i] = corners[i].y;
+                    cz[i] = corners[i].z;
+                }
+
+                // Restart beacon
+                _pathfindingBeacon.UpdatePlayerPosition(
+                    playerPos.x, playerPos.y, playerPos.z,
+                    _playerCtrl.transform.forward.x, _playerCtrl.transform.forward.z);
+                _pathfindingBeacon.Start(
+                    _pathfindingDestination.x, _pathfindingDestination.y, _pathfindingDestination.z,
+                    cx, cy, cz);
+
+                // Ensure other audio stays suspended
+                AudioNavigationHandler.Suspended = true;
+                _lastPathRecalcTime = Time.time;
+
+                DebugLogger.Log("[NavList] Pathfinding resumed");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[NavList] ResumePathfinding error: {ex.Message}");
+                StopPathfinding(null);
+            }
+        }
+
+        /// <summary>
+        /// Recalculate the NavMesh path and update the beacon with new corners.
+        /// </summary>
+        private void RecalculatePathfindingPath(Vector3 playerPos)
+        {
+            try
+            {
+                // Update destination from live target position if available
+                if (_pathfindingTarget != null && _pathfindingTarget.activeInHierarchy)
+                {
+                    Vector3 livePos = _pathfindingTarget.transform.position;
+                    NavMeshHit hit;
+                    if (NavMesh.SamplePosition(livePos, out hit, 20f, NavMesh.AllAreas))
+                        _pathfindingDestination = hit.position;
+                }
+
+                NavMeshPath path = new NavMeshPath();
+                bool found = NavMesh.CalculatePath(playerPos, _pathfindingDestination, NavMesh.AllAreas, path);
+
+                if (found && path.corners.Length >= 2)
+                {
+                    var corners = path.corners;
+                    float[] cx = new float[corners.Length];
+                    float[] cy = new float[corners.Length];
+                    float[] cz = new float[corners.Length];
+                    for (int i = 0; i < corners.Length; i++)
+                    {
+                        cx[i] = corners[i].x;
+                        cy[i] = corners[i].y;
+                        cz[i] = corners[i].z;
+                    }
+                    _pathfindingBeacon.UpdatePath(cx, cy, cz);
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[NavList] RecalculatePathfindingPath error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Stop pathfinding, clean up beacon, and resume normal audio navigation.
+        /// </summary>
+        private void StopPathfinding(string announcement)
+        {
+            _isPathfinding = false;
+            _pathfindingTarget = null;
+
+            if (_pathfindingBeacon != null)
+            {
+                _pathfindingBeacon.Stop();
+            }
+
+            AudioNavigationHandler.Suspended = false;
+
+            if (!string.IsNullOrEmpty(announcement))
+            {
+                ScreenReader.Say(announcement);
+            }
+
+            DebugLogger.Log($"[NavList] Pathfinding stopped: {announcement ?? "silent"}");
         }
 
         /// <summary>

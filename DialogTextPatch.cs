@@ -339,6 +339,27 @@ namespace DigimonNOAccess
             return TextUtilities.StripRichTextTags(text);
         }
 
+        /// <summary>
+        /// Check if the given text was recently announced by SetMessage or SetItemMessage patches.
+        /// Used by CommonMessageMonitor to avoid double-announcing the same text.
+        /// </summary>
+        public static bool WasRecentlyAnnounced(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return false;
+
+            string stripped = StripRichTextTags(text).Trim();
+
+            if (!string.IsNullOrEmpty(_lastCommonMessage))
+            {
+                string strippedLast = StripRichTextTags(_lastCommonMessage).Trim();
+                if (stripped == strippedLast && (DateTime.Now - _lastCommonMessageTime).TotalMilliseconds < 2000)
+                    return true;
+            }
+
+            return false;
+        }
+
         private static bool IsPlaceholderText(string text)
         {
             return TextUtilities.IsPlaceholderText(text);

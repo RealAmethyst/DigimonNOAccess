@@ -19,6 +19,12 @@ namespace DigimonNOAccess
         public int Priority => 999;
 
         /// <summary>
+        /// When true, all positional audio and wall detection is suspended.
+        /// Used by PathfindingBeacon to silence other navigation sounds during pathfinding.
+        /// </summary>
+        public static bool Suspended { get; set; }
+
+        /// <summary>
         /// Background handler - never owns the status announce.
         /// </summary>
         public bool IsOpen() => false;
@@ -103,6 +109,18 @@ namespace DigimonNOAccess
             if (!_initialized)
             {
                 Initialize();
+            }
+
+            // When suspended (pathfinding beacon active), stop all audio and skip updates
+            if (Suspended)
+            {
+                if (_positionalAudio != null && _positionalAudio.IsPlaying)
+                {
+                    _positionalAudio.Stop();
+                    _trackedTarget = null;
+                }
+                ResetWallStates();
+                return;
             }
 
             // Find managers periodically

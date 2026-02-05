@@ -139,10 +139,17 @@ namespace DigimonNOAccess
             // Cross-handler data flow: NavigationList needs to know if evolution is active
             _navigationListHandler.SetEvolutionActive(_evolutionHandler.IsActive());
 
-            // Update all handlers
+            // Update all handlers (isolated: one handler's exception won't break others)
             for (int i = 0; i < _handlers.Count; i++)
             {
-                _handlers[i].Update();
+                try
+                {
+                    _handlers[i].Update();
+                }
+                catch (System.Exception ex)
+                {
+                    DebugLogger.Error($"[Main] Handler update error ({_handlers[i].GetType().Name}): {ex.Message}");
+                }
             }
 
             // Global hotkeys

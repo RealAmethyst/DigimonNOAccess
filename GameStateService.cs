@@ -339,6 +339,10 @@ namespace DigimonNOAccess
                     case UnitCtrlBase.ActionState.ActionState_Dead:
                     case UnitCtrlBase.ActionState.ActionState_DeadGataway:
                     case UnitCtrlBase.ActionState.ActionState_LiquidCrystallization:
+                    case UnitCtrlBase.ActionState.ActionState_Damage:
+                    case UnitCtrlBase.ActionState.ActionState_DownDamage:
+                    case UnitCtrlBase.ActionState.ActionState_BlowDamage:
+                    case UnitCtrlBase.ActionState.ActionState_Getup:
                         return false;
                 }
 
@@ -380,6 +384,10 @@ namespace DigimonNOAccess
                     case UnitCtrlBase.ActionState.ActionState_Dead:
                     case UnitCtrlBase.ActionState.ActionState_DeadGataway:
                     case UnitCtrlBase.ActionState.ActionState_LiquidCrystallization:
+                    case UnitCtrlBase.ActionState.ActionState_Damage:
+                    case UnitCtrlBase.ActionState.ActionState_DownDamage:
+                    case UnitCtrlBase.ActionState.ActionState_BlowDamage:
+                    case UnitCtrlBase.ActionState.ActionState_Getup:
                         return false;
                 }
 

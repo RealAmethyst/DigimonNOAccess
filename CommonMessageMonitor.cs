@@ -103,6 +103,13 @@ namespace DigimonNOAccess
                 if (ShouldSkipText(text))
                     return;
 
+                // Skip if DialogTextPatch already announced this text via SetMessage patch
+                if (DialogTextPatch.WasRecentlyAnnounced(text))
+                {
+                    DebugLogger.Log($"[CommonMessageMonitor] Skipping duplicate (already announced by SetMessage): {text}");
+                    return;
+                }
+
                 // Announce the text (strip rich text tags for clean screen reader output)
                 DebugLogger.Log($"[CommonMessageMonitor] {text}");
                 ScreenReader.Say(DialogTextPatch.StripRichTextTags(text));
