@@ -80,6 +80,7 @@ namespace DigimonNOAccess
                 new CommonYesNoHandler(),
                 new DialogChoiceHandler(),
                 new DifficultyDialogHandler(),
+                new AgreeWindowHandler(),
                 new NameEntryHandler(),
                 new DialogHandler(),
                 new TitleMenuHandler(),

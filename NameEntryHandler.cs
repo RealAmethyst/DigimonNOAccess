@@ -1,11 +1,12 @@
 using Il2Cpp;
 using UnityEngine;
-using UnityEngine.UI;
 
 namespace DigimonNOAccess
 {
     /// <summary>
-    /// Handles accessibility for the name entry screen (New Game player name input).
+    /// Handles accessibility for the name entry screen.
+    /// Used for entering player name (new game) and Digimon names (egg hatching).
+    /// Note: Users should disable Steam Big Picture mode as its on-screen keyboard is inaccessible.
     /// </summary>
     public class NameEntryHandler : IAccessibilityHandler
     {
@@ -13,130 +14,71 @@ namespace DigimonNOAccess
 
         private NameEntry _nameEntry;
         private uNameInput _nameInput;
-        private bool _wasActive = false;
+        private bool _wasActive;
         private NameEntry.eState _lastState = NameEntry.eState.NONE;
-        private string _lastInputText = "";
-        private bool _lastInputFieldSelect = false;
-        private static bool _steamInputDisabledGlobally = false;
+        private string _lastText = "";
 
-        /// <summary>
-        /// Check if name entry screen is currently open.
-        /// </summary>
         public bool IsOpen()
-        {
-            _nameEntry = Object.FindObjectOfType<NameEntry>();
-
-            if (_nameEntry != null &&
-                _nameEntry.gameObject != null &&
-                _nameEntry.gameObject.activeInHierarchy &&
-                _nameEntry.m_state != NameEntry.eState.NONE)
-            {
-                _nameInput = _nameEntry.m_uNameInput;
-                return true;
-            }
-
-            _nameInput = null;
-            return false;
-        }
-
-        /// <summary>
-        /// Called every frame to track state.
-        /// </summary>
-        public void Update()
-        {
-            // ALWAYS try to disable Steam text input on ALL uNameInput objects
-            // This must happen BEFORE the game can trigger Steam overlay
-            DisableSteamTextInputGlobally();
-
-            bool isActive = IsOpen();
-
-            // Screen just opened
-            if (isActive && !_wasActive)
-            {
-                OnOpen();
-            }
-            // Screen just closed
-            else if (!isActive && _wasActive)
-            {
-                OnClose();
-            }
-            // Screen is active, check for changes
-            else if (isActive)
-            {
-                CheckStateChange();
-                CheckInputFieldFocusChange();
-                CheckInputChange();
-            }
-
-            _wasActive = isActive;
-        }
-
-        /// <summary>
-        /// Find ALL uNameInput objects in the scene and disable Steam text input on them.
-        /// This prevents Steam's inaccessible overlay from ever appearing.
-        /// </summary>
-        private void DisableSteamTextInputGlobally()
         {
             try
             {
-                var allNameInputs = Object.FindObjectsOfType<uNameInput>();
-                if (allNameInputs != null && allNameInputs.Length > 0)
-                {
-                    foreach (var nameInput in allNameInputs)
-                    {
-                        if (nameInput != null && nameInput.m_canShowSteamTextInput)
-                        {
-                            nameInput.m_canShowSteamTextInput = false;
-                            if (!_steamInputDisabledGlobally)
-                            {
-                                DebugLogger.Log("[NameEntry] Disabled Steam text input globally on uNameInput");
-                                _steamInputDisabledGlobally = true;
-                            }
-                        }
-                    }
-                }
+                _nameEntry = Object.FindObjectOfType<NameEntry>();
+                if (_nameEntry == null)
+                    return false;
+
+                if (_nameEntry.gameObject == null || !_nameEntry.gameObject.activeInHierarchy)
+                    return false;
+
+                var state = _nameEntry.m_state;
+                if (state == NameEntry.eState.NONE)
+                    return false;
+
+                _nameInput = _nameEntry.m_uNameInput;
+                return true;
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[NameEntry] Error disabling Steam text input globally: {ex.Message}");
+                DebugLogger.Warning($"[NameEntry] IsOpen exception: {ex.Message}");
+                return false;
             }
+        }
+
+        public void Update()
+        {
+            bool isActive = IsOpen();
+
+            if (isActive && !_wasActive)
+                OnOpen();
+            else if (!isActive && _wasActive)
+                OnClose();
+            else if (isActive)
+                OnUpdate();
+
+            _wasActive = isActive;
         }
 
         private void OnOpen()
         {
             _lastState = NameEntry.eState.NONE;
-            _lastInputText = "";
-            _lastInputFieldSelect = false;
+            _lastText = "";
 
             if (_nameEntry == null)
                 return;
 
-            // Steam text input is already disabled globally in Update()
+            _lastState = _nameEntry.m_state;
 
-            string title = GetTitle();
-            string currentText = GetCurrentInputText();
-            string typeStr = _nameEntry.Type == NameEntry.eType.Player ? "Player Name" : "Digimon Name";
+            string entryType = GetEntryTypeName(_nameEntry.Type);
+            string currentText = GetCurrentText();
 
-            string announcement = $"Name Entry. {typeStr}";
-            if (!string.IsNullOrEmpty(title))
-                announcement += $". {title}";
+            string announcement = $"Name Entry, {entryType}";
             if (!string.IsNullOrEmpty(currentText))
-                announcement += $". Current name: {currentText}";
-
-            // Add navigation hint
-            announcement += ". Type to enter name, press Space to confirm or Backspace to cancel";
+                announcement += $", current: {currentText}";
+            announcement += ". Type to enter name.";
 
             ScreenReader.Say(announcement);
-            DebugLogger.Log($"[NameEntry] Opened: {typeStr}, title={title}, text={currentText}");
+            DebugLogger.Log($"[NameEntry] Opened: type={_nameEntry.Type}");
 
-            _lastState = _nameEntry.m_state;
-            _lastInputText = currentText;
-
-            // Track initial focus state
-            if (_nameInput != null)
-            {
-                _lastInputFieldSelect = _nameInput.isInputFieldSelect;
-            }
+            _lastText = currentText;
         }
 
         private void OnClose()
@@ -144,271 +86,173 @@ namespace DigimonNOAccess
             _nameEntry = null;
             _nameInput = null;
             _lastState = NameEntry.eState.NONE;
-            _lastInputText = "";
-            _lastInputFieldSelect = false;
+            _lastText = "";
             DebugLogger.Log("[NameEntry] Closed");
+        }
+
+        private void OnUpdate()
+        {
+            if (_nameEntry == null)
+                return;
+
+            CheckStateChange();
+            CheckTextChange();
         }
 
         private void CheckStateChange()
         {
-            if (_nameEntry == null)
+            var state = _nameEntry.m_state;
+            if (state == _lastState)
                 return;
 
-            var state = _nameEntry.m_state;
-            if (state != _lastState)
+            DebugLogger.Log($"[NameEntry] State: {_lastState} -> {state}");
+            _lastState = state;
+
+            if (state == NameEntry.eState.INPUT_END)
             {
-                // State changed - announce new state
-                string stateStr = GetStateName(state);
-                DebugLogger.Log($"[NameEntry] State changed: {stateStr}");
-
-                // When entering INPUT state, re-announce
-                if (state == NameEntry.eState.INPUT)
-                {
-                    string currentText = GetCurrentInputText();
-                    string announcement = "Input field active";
-                    if (!string.IsNullOrEmpty(currentText))
-                        announcement += $", current name: {currentText}";
-                    ScreenReader.Say(announcement);
-                }
-                else if (state == NameEntry.eState.INPUT_END)
-                {
-                    string name = GetCurrentInputText();
-                    ScreenReader.Say($"Name confirmed: {name}");
-                }
-                else if (state == NameEntry.eState.STEAM_TEXTINPUT)
-                {
-                    // Steam overlay was triggered - warn user
-                    ScreenReader.Say("Steam text input opened. Press Escape to close it, then try again.");
-                    DebugLogger.Log("[NameEntry] WARNING: Steam text input overlay was triggered!");
-                }
-
-                _lastState = state;
+                string name = GetCurrentText();
+                string announcement = string.IsNullOrEmpty(name) ? "Name confirmed" : $"Name confirmed: {name}";
+                ScreenReader.Say(announcement);
+                DebugLogger.Log($"[NameEntry] Confirmed name: {name}");
             }
         }
 
-        private void CheckInputFieldFocusChange()
+        private void CheckTextChange()
         {
-            if (_nameInput == null)
+            string currentText = GetCurrentText();
+            if (currentText == _lastText)
                 return;
 
-            bool isInputFieldSelect = _nameInput.isInputFieldSelect;
-            if (isInputFieldSelect != _lastInputFieldSelect)
+            // Determine what changed
+            if (string.IsNullOrEmpty(currentText) && !string.IsNullOrEmpty(_lastText))
             {
-                if (isInputFieldSelect)
+                // Text was cleared or last character deleted
+                if (_lastText.Length == 1)
                 {
-                    // Focus moved to input field
-                    string currentText = GetCurrentInputText();
-                    string announcement = "Name input field";
-                    if (!string.IsNullOrEmpty(currentText))
-                        announcement += $": {currentText}";
-                    ScreenReader.Say(announcement);
-                    DebugLogger.Log("[NameEntry] Focus: Input field");
+                    ScreenReader.Say($"{_lastText} deleted, no text");
                 }
                 else
                 {
-                    // Focus moved away from input field (to buttons)
-                    string buttonName = GetCurrentButtonName();
-                    if (!string.IsNullOrEmpty(buttonName))
-                    {
-                        ScreenReader.Say(buttonName);
-                        DebugLogger.Log($"[NameEntry] Focus: Button - {buttonName}");
-                    }
-                    else
-                    {
-                        ScreenReader.Say("Confirm button");
-                        DebugLogger.Log("[NameEntry] Focus: Button area (unknown)");
-                    }
+                    ScreenReader.Say("No text");
                 }
-                _lastInputFieldSelect = isInputFieldSelect;
+                DebugLogger.Log("[NameEntry] Text cleared");
             }
-        }
-
-        private void CheckInputChange()
-        {
-            if (_nameEntry == null)
-                return;
-
-            string currentText = GetCurrentInputText();
-            if (currentText != _lastInputText)
+            else if (currentText.Length < _lastText.Length)
             {
-                // Only announce if text actually changed and we're in input mode
-                if (_nameEntry.m_state == NameEntry.eState.INPUT ||
-                    _nameEntry.m_state == NameEntry.eState.STEAM_TEXTINPUT)
+                // Character(s) deleted
+                string deleted = GetDeletedCharacters(_lastText, currentText);
+                if (deleted.Length == 1)
                 {
-                    // Don't flood announcements - just track the change
-                    DebugLogger.Log($"[NameEntry] Text changed: {_lastInputText} -> {currentText}");
+                    ScreenReader.Say($"{deleted} deleted");
                 }
-                _lastInputText = currentText;
+                else
+                {
+                    ScreenReader.Say($"{deleted.Length} characters deleted");
+                }
+                DebugLogger.Log($"[NameEntry] Deleted: {deleted}");
             }
+            else if (currentText.Length > _lastText.Length)
+            {
+                // Character(s) added
+                string added = GetAddedCharacters(_lastText, currentText);
+                if (added.Length == 1)
+                {
+                    ScreenReader.Say(added);
+                }
+                else
+                {
+                    ScreenReader.Say(added);
+                }
+                DebugLogger.Log($"[NameEntry] Added: {added}");
+            }
+            else
+            {
+                // Same length but different - replacement
+                ScreenReader.Say(currentText);
+                DebugLogger.Log($"[NameEntry] Text changed: {currentText}");
+            }
+
+            _lastText = currentText;
         }
 
-        private string GetTitle()
+        private string GetDeletedCharacters(string oldText, string newText)
         {
-            if (_nameEntry == null)
-                return "";
+            // Simple case: deletion from end
+            if (oldText.StartsWith(newText))
+            {
+                return oldText.Substring(newText.Length);
+            }
+            // Deletion from start
+            if (oldText.EndsWith(newText))
+            {
+                return oldText.Substring(0, oldText.Length - newText.Length);
+            }
+            // Complex case: return what was removed
+            return oldText.Substring(newText.Length);
+        }
 
+        private string GetAddedCharacters(string oldText, string newText)
+        {
+            // Simple case: addition at end
+            if (newText.StartsWith(oldText))
+            {
+                return newText.Substring(oldText.Length);
+            }
+            // Addition at start
+            if (newText.EndsWith(oldText))
+            {
+                return newText.Substring(0, newText.Length - oldText.Length);
+            }
+            // Complex case: return the new characters
+            return newText.Substring(oldText.Length);
+        }
+
+        private string GetEntryTypeName(NameEntry.eType type)
+        {
+            return type == NameEntry.eType.Player ? "Player name" : "Digimon name";
+        }
+
+        private string GetCurrentText()
+        {
             try
             {
-                // Try to get title from NameEntry
-                string title = _nameEntry.Title;
-                if (!string.IsNullOrEmpty(title))
-                    return title;
-
-                // Try to get label from uNameInput
-                if (_nameInput?.m_label != null)
-                {
-                    string labelText = _nameInput.m_label.text;
-                    if (!string.IsNullOrEmpty(labelText))
-                        return labelText;
-                }
-            }
-            catch (System.Exception ex)
-            {
-                DebugLogger.Log($"[NameEntry] Error getting title: {ex.Message}");
-            }
-
-            return "";
-        }
-
-        private string GetCurrentInputText()
-        {
-            if (_nameEntry == null)
-                return "";
-
-            try
-            {
-                // Try to get from Name property
-                string name = _nameEntry.Name;
-                if (!string.IsNullOrEmpty(name))
-                    return name;
-
-                // Try to get from uNameInput's InputField
+                // Read from InputField first - this has live text during typing
                 if (_nameInput?.m_InputField != null)
                 {
-                    string inputText = _nameInput.m_InputField.text;
-                    if (!string.IsNullOrEmpty(inputText))
-                        return inputText;
+                    string text = _nameInput.m_InputField.text;
+                    if (text != null)
+                        return text;
+                }
+
+                // Fallback to NameEntry.Name (only updates on confirm)
+                if (_nameEntry != null)
+                {
+                    string name = _nameEntry.Name;
+                    if (name != null)
+                        return name;
                 }
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[NameEntry] Error getting input text: {ex.Message}");
+                DebugLogger.Warning($"[NameEntry] Error getting text: {ex.Message}");
             }
 
             return "";
         }
 
-        private string GetCurrentButtonName()
-        {
-            if (_nameInput == null)
-                return "";
-
-            try
-            {
-                // Try to find Button components and get their text labels
-                var buttons = _nameInput.GetComponentsInChildren<Button>();
-                if (buttons != null)
-                {
-                    foreach (var button in buttons)
-                    {
-                        if (button != null &&
-                            button.gameObject.activeInHierarchy &&
-                            button.interactable)
-                        {
-                            // Get the Text component from the button
-                            var textComponent = button.GetComponentInChildren<Text>();
-                            if (textComponent != null && !string.IsNullOrEmpty(textComponent.text))
-                            {
-                                return textComponent.text.Trim();
-                            }
-                        }
-                    }
-                }
-
-                // Fallback: search for any active Text components that might be button labels
-                var texts = _nameInput.GetComponentsInChildren<Text>();
-                if (texts != null)
-                {
-                    foreach (var text in texts)
-                    {
-                        if (text != null &&
-                            text.gameObject.activeInHierarchy &&
-                            !string.IsNullOrEmpty(text.text))
-                        {
-                            string txt = text.text.Trim().ToLower();
-                            // Look for common button labels
-                            if (txt == "ok" || txt == "confirm" || txt == "decide" ||
-                                txt == "cancel" || txt == "back" || txt == "yes" || txt == "no")
-                            {
-                                return text.text.Trim();
-                            }
-                        }
-                    }
-                }
-            }
-            catch (System.Exception ex)
-            {
-                DebugLogger.Log($"[NameEntry] Error getting button name: {ex.Message}");
-            }
-
-            return "";
-        }
-
-        private string GetStateName(NameEntry.eState state)
-        {
-            switch (state)
-            {
-                case NameEntry.eState.NONE: return "None";
-                case NameEntry.eState.INIT: return "Initializing";
-                case NameEntry.eState.REQUEST: return "Requesting";
-                case NameEntry.eState.INPUT: return "Input";
-                case NameEntry.eState.INPUT_END: return "Input Complete";
-                case NameEntry.eState.STEAM_TEXTINPUT: return "Steam Text Input";
-                case NameEntry.eState.STEAM_TEXTINPUT_END: return "Steam Input Complete";
-                default: return $"State {(int)state}";
-            }
-        }
-
-        /// <summary>
-        /// Announce current status.
-        /// </summary>
         public void AnnounceStatus()
         {
             if (!IsOpen())
                 return;
 
-            string typeStr = _nameEntry.Type == NameEntry.eType.Player ? "Player Name" : "Digimon Name";
-            string title = GetTitle();
-            string currentText = GetCurrentInputText();
+            string entryType = GetEntryTypeName(_nameEntry.Type);
+            string currentText = GetCurrentText();
 
-            string announcement = $"Name Entry, {typeStr}";
-            if (!string.IsNullOrEmpty(title))
-                announcement += $". {title}";
+            string announcement = $"Name Entry, {entryType}";
             if (!string.IsNullOrEmpty(currentText))
-                announcement += $". Current name: {currentText}";
-
-            // Check focus
-            if (_nameInput != null)
-            {
-                if (_nameInput.isInputFieldSelect)
-                {
-                    announcement += ". In input field";
-                }
-                else
-                {
-                    string buttonName = GetCurrentButtonName();
-                    if (!string.IsNullOrEmpty(buttonName))
-                    {
-                        announcement += $". On {buttonName} button";
-                    }
-                    else
-                    {
-                        announcement += ". On button";
-                    }
-                }
-            }
-
-            announcement += ". Press Space to confirm, Backspace to cancel";
+                announcement += $", current name: {currentText}";
+            else
+                announcement += ", no text";
 
             ScreenReader.Say(announcement);
         }
