@@ -418,6 +418,16 @@ namespace DigimonNOAccess
                 if (stickArray == null || stickArray.Length < 2)
                     return;
 
+                // Auto-walk: inject virtual left stick input to move the player along the path.
+                // This takes priority over real stick input so the player walks the computed path.
+                if (NavigationListHandler.AutoWalkActive)
+                {
+                    stickArray[0] = new Vector2(
+                        NavigationListHandler.AutoWalkStickX,
+                        NavigationListHandler.AutoWalkStickY);
+                    return;
+                }
+
                 // Get SDL3 stick values and convert to Unity Vector2 (normalized -1 to 1)
                 // Note: Do NOT invert Y - the game handles stick input correctly already
                 float leftX = SDLController.GetLeftStickX() / 32767f;

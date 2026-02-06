@@ -103,11 +103,31 @@ namespace DigimonNOAccess
         // Pathfinding beacon
         private PathfindingBeacon _pathfindingBeacon;
         private Vector3 _pathfindingDestination;
+        private Vector3 _pathfindingRawDestination; // Actual target position before NavMesh sampling
         private GameObject _pathfindingTarget;
         private float _lastPathRecalcTime;
         private bool _isPathfinding;
+        private EventCategory _pathfindingCategory;
         private const float PathRecalcInterval = 0.5f;
-        private const float ArrivalDistance = 2f;
+
+        // Auto-walk state
+        private bool _autoWalkEnabled = false;
+        private bool _isAutoWalking = false;
+        private Vector3[] _autoWalkCorners;
+        private int _autoWalkCornerIndex;
+        private const float CornerReachDistance = 1.5f;
+        private const float FinalApproachDistance = 1.0f;
+
+        // Stuck detection: if player hasn't moved while auto-walking, they've arrived
+        private Vector3 _autoWalkCheckPosition;
+        private float _autoWalkCheckTime;
+        private const float StuckCheckInterval = 1.0f;
+        private const float StuckMovementThreshold = 0.3f;
+
+        // Virtual stick output for auto-walk (read by GamepadInputPatch)
+        public static bool AutoWalkActive { get; private set; }
+        public static float AutoWalkStickX { get; private set; }
+        public static float AutoWalkStickY { get; private set; }
 
         // Evolution state (set by Main before Update)
         private bool _evolutionActive = false;
@@ -137,7 +157,7 @@ namespace DigimonNOAccess
                     _leftFieldTime = currentTime;
                 _wasInField = false;
 
-                // Pause pathfinding beacon audio when leaving field (will resume on return)
+                // Pause pathfinding beacon audio when leaving field (auto-walk pauses naturally since Update stops)
                 if (_isPathfinding && _pathfindingBeacon != null && _pathfindingBeacon.IsActive)
                     _pathfindingBeacon.Stop();
 
@@ -621,13 +641,14 @@ namespace DigimonNOAccess
 
             Vector3 playerPos = _playerCtrl.transform.position;
 
-            // Refresh items (check enableItemPickPoint and activeInHierarchy)
+            // Refresh items - only remove if destroyed or picked up (enableItemPickPoint false).
+            // Don't remove inactive items: the game deactivates distant objects for performance.
             var items = _events.ContainsKey(EventCategory.Items) ? _events[EventCategory.Items] : null;
             if (items != null)
             {
                 items.RemoveAll(e =>
                 {
-                    if (e.Target == null || !e.Target.activeInHierarchy)
+                    if (e.Target == null)
                         return true;
                     try
                     {
@@ -639,10 +660,10 @@ namespace DigimonNOAccess
                     return false;
                 });
 
-                // Update distances
+                // Update distances (only for active objects, keep cached position for inactive)
                 foreach (var e in items)
                 {
-                    if (e.Target != null)
+                    if (e.Target != null && e.Target.activeInHierarchy)
                     {
                         e.Position = e.Target.transform.position;
                         e.DistanceToPlayer = Vector3.Distance(playerPos, e.Position);
@@ -650,12 +671,13 @@ namespace DigimonNOAccess
                 }
             }
 
-            // Refresh enemies (check activeInHierarchy)
+            // Refresh enemies - only remove if destroyed (null).
+            // Don't remove inactive: the game deactivates distant objects for performance.
             var enemies = _events.ContainsKey(EventCategory.Enemies) ? _events[EventCategory.Enemies] : null;
             if (enemies != null)
             {
                 int beforeCount = enemies.Count;
-                enemies.RemoveAll(e => e.Target == null || !e.Target.activeInHierarchy);
+                enemies.RemoveAll(e => e.Target == null);
 
                 // Check for new enemies that may have spawned
                 if (_enemyManager != null && _enemyManager.m_EnemyCtrlArray != null)
@@ -684,10 +706,10 @@ namespace DigimonNOAccess
                     }
                 }
 
-                // Update distances for remaining
+                // Update distances for remaining (only active objects, keep cached for inactive)
                 foreach (var e in enemies)
                 {
-                    if (e.Target != null)
+                    if (e.Target != null && e.Target.activeInHierarchy)
                     {
                         e.Position = e.Target.transform.position;
                         e.DistanceToPlayer = Vector3.Distance(playerPos, e.Position);
@@ -695,14 +717,14 @@ namespace DigimonNOAccess
                 }
             }
 
-            // Refresh NPCs (update distances, remove inactive)
+            // Refresh NPCs - only remove if destroyed (null).
             var npcs = _events.ContainsKey(EventCategory.NPCs) ? _events[EventCategory.NPCs] : null;
             if (npcs != null)
             {
-                npcs.RemoveAll(e => e.Target == null || !e.Target.activeInHierarchy);
+                npcs.RemoveAll(e => e.Target == null);
                 foreach (var e in npcs)
                 {
-                    if (e.Target != null)
+                    if (e.Target != null && e.Target.activeInHierarchy)
                     {
                         e.Position = e.Target.transform.position;
                         e.DistanceToPlayer = Vector3.Distance(playerPos, e.Position);
@@ -710,14 +732,14 @@ namespace DigimonNOAccess
                 }
             }
 
-            // Refresh transitions (update distances, remove inactive)
+            // Refresh transitions - only remove if destroyed (null).
             var transitions = _events.ContainsKey(EventCategory.Transitions) ? _events[EventCategory.Transitions] : null;
             if (transitions != null)
             {
-                transitions.RemoveAll(e => e.Target == null || !e.Target.activeInHierarchy);
+                transitions.RemoveAll(e => e.Target == null);
                 foreach (var e in transitions)
                 {
-                    if (e.Target != null)
+                    if (e.Target != null && e.Target.activeInHierarchy)
                     {
                         e.Position = e.Target.transform.position;
                         e.DistanceToPlayer = Vector3.Distance(playerPos, e.Position);
@@ -725,14 +747,14 @@ namespace DigimonNOAccess
                 }
             }
 
-            // Refresh facilities (update distances, remove inactive)
+            // Refresh facilities - only remove if destroyed (null).
             var facilities = _events.ContainsKey(EventCategory.Facilities) ? _events[EventCategory.Facilities] : null;
             if (facilities != null)
             {
-                facilities.RemoveAll(e => e.Target == null || !e.Target.activeInHierarchy);
+                facilities.RemoveAll(e => e.Target == null);
                 foreach (var e in facilities)
                 {
-                    if (e.Target != null)
+                    if (e.Target != null && e.Target.activeInHierarchy)
                     {
                         e.Position = e.Target.transform.position;
                         e.DistanceToPlayer = Vector3.Distance(playerPos, e.Position);
@@ -1089,6 +1111,30 @@ namespace DigimonNOAccess
             catch (Exception ex)
             {
                 DebugLogger.Log($"[NavList] FacilityScan fishing error: {ex.Message}");
+            }
+
+            // Strategy 4: Static toilet (training hall map only - map 1, area 12)
+            try
+            {
+                if (_lastMapNo == 1 && _lastAreaNo == 12)
+                {
+                    var toiletObj = GameObject.Find("TriggerToiletPrefab");
+                    if (toiletObj != null && toiletObj.activeInHierarchy && !facilityObjects.Contains(toiletObj))
+                    {
+                        float dist = Vector3.Distance(playerPos, toiletObj.transform.position);
+                        _events[EventCategory.Facilities].Add(new NavigationEvent
+                        {
+                            Name = "Toilet", Position = toiletObj.transform.position,
+                            Target = toiletObj, Category = EventCategory.Facilities,
+                            DistanceToPlayer = dist
+                        });
+                        facilityObjects.Add(toiletObj);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[NavList] FacilityScan toilet error: {ex.Message}");
             }
         }
 
@@ -1495,10 +1541,18 @@ namespace DigimonNOAccess
                 CycleEvent(1);
             }
 
-            // Navigate to event (P key default) - will be enhanced with audio pathfinding later
+            // Navigate to event (P key default)
             if (ModInputManager.IsActionTriggered("NavToEvent"))
             {
                 AnnouncePathToEvent();
+            }
+
+            // Toggle auto-walk (Shift+P default)
+            if (ModInputManager.IsActionTriggered("ToggleAutoWalk"))
+            {
+                _autoWalkEnabled = !_autoWalkEnabled;
+                ScreenReader.Say(_autoWalkEnabled ? "Auto walk enabled" : "Auto walk disabled");
+                DebugLogger.Log($"[NavList] Auto-walk toggled: {_autoWalkEnabled}");
             }
         }
 
@@ -1675,15 +1729,25 @@ namespace DigimonNOAccess
                 _pathfindingBeacon.Start(navTargetPos.x, navTargetPos.y, navTargetPos.z, cx, cy, cz);
 
                 _pathfindingDestination = navTargetPos;
+                _pathfindingRawDestination = targetPos; // Actual position before NavMesh sampling
                 _pathfindingTarget = navEvent.Target;
+                _pathfindingCategory = navEvent.Category;
                 _lastPathRecalcTime = Time.time;
                 _isPathfinding = true;
+
+                // Start auto-walk if enabled, using the same NavMesh path corners
+                _isAutoWalking = false;
+                if (_autoWalkEnabled)
+                {
+                    StartAutoWalk(corners);
+                }
 
                 // Suspend other navigation audio
                 AudioNavigationHandler.Suspended = true;
 
-                ScreenReader.Say($"Pathfinding to {navEvent.Name}");
-                DebugLogger.Log($"[NavList] Pathfinding started to {navEvent.Name}");
+                string modeText = _isAutoWalking ? "Auto walking" : "Pathfinding";
+                ScreenReader.Say($"{modeText} to {navEvent.Name}");
+                DebugLogger.Log($"[NavList] {modeText} started to {navEvent.Name}");
             }
             catch (Exception ex)
             {
@@ -1701,16 +1765,24 @@ namespace DigimonNOAccess
         {
             if (_playerCtrl == null || _pathfindingBeacon == null)
             {
-                StopPathfinding(null);
+                // For transitions, losing playerCtrl during map load means we arrived
+                string msg = _pathfindingCategory == EventCategory.Transitions
+                    ? "Destination reached" : null;
+                StopPathfinding(msg);
                 return;
             }
 
             try
             {
-                // Check if target was destroyed (even while paused)
-                if (_pathfindingTarget == null || !_pathfindingTarget.activeInHierarchy)
+                // Check if target was destroyed (null = truly gone).
+                // Don't check activeInHierarchy: the game deactivates distant objects for performance,
+                // but we can still pathfind to their cached position.
+                // For transitions, target destroyed = map unloaded = we arrived.
+                if (_pathfindingTarget == null)
                 {
-                    StopPathfinding("Target lost");
+                    string msg = _pathfindingCategory == EventCategory.Transitions
+                        ? "Destination reached" : "Target lost";
+                    StopPathfinding(msg);
                     return;
                 }
 
@@ -1729,12 +1801,46 @@ namespace DigimonNOAccess
                     playerPos.x, playerPos.y, playerPos.z,
                     playerForward.x, playerForward.z);
 
-                // Check arrival
-                float distToDest = _pathfindingBeacon.GetDistanceToDestination();
-                if (distToDest < ArrivalDistance)
+                // Distance-based arrival for NPCs, Items, Enemies.
+                // Transitions need to walk into the zone trigger (map change stops pathfinding).
+                // Facilities need to walk right up to the NPC trigger.
+                // Both rely on stuck detection below instead.
+                if (_pathfindingCategory != EventCategory.Transitions
+                    && _pathfindingCategory != EventCategory.Facilities)
                 {
-                    StopPathfinding("Destination reached");
-                    return;
+                    float distToTarget = Vector3.Distance(playerPos, _pathfindingRawDestination);
+                    bool atPathEnd = _isAutoWalking && _autoWalkCorners != null && _autoWalkCorners.Length > 0
+                        && Vector3.Distance(playerPos, _autoWalkCorners[_autoWalkCorners.Length - 1]) < FinalApproachDistance;
+                    if (atPathEnd || distToTarget < FinalApproachDistance)
+                    {
+                        StopPathfinding("Destination reached");
+                        return;
+                    }
+                }
+
+                // Stuck detection: player is auto-walking but not moving (hit a collider/wall).
+                // Primary arrival method for transitions and facilities.
+                if (_isAutoWalking)
+                {
+                    float timeSinceCheck = Time.time - _autoWalkCheckTime;
+                    if (timeSinceCheck >= StuckCheckInterval)
+                    {
+                        float movedDist = Vector3.Distance(playerPos, _autoWalkCheckPosition);
+                        if (movedDist < StuckMovementThreshold)
+                        {
+                            DebugLogger.Log($"[NavList] Stuck detected, dist to target: {Vector3.Distance(playerPos, _pathfindingRawDestination):F1}");
+                            StopPathfinding("Destination reached");
+                            return;
+                        }
+                        _autoWalkCheckPosition = playerPos;
+                        _autoWalkCheckTime = Time.time;
+                    }
+                }
+
+                // Move player along path if auto-walking
+                if (_isAutoWalking)
+                {
+                    UpdateAutoWalk();
                 }
 
                 // Recalculate path periodically
@@ -1766,19 +1872,18 @@ namespace DigimonNOAccess
                     return;
                 }
 
-                if (!_pathfindingTarget.activeInHierarchy)
-                {
-                    StopPathfinding("Target lost");
-                    return;
-                }
-
                 Vector3 playerPos = _playerCtrl.transform.position;
 
-                // Update destination from live target position
-                Vector3 livePos = _pathfindingTarget.transform.position;
-                NavMeshHit hit;
-                if (NavMesh.SamplePosition(livePos, out hit, 20f, NavMesh.AllAreas))
-                    _pathfindingDestination = hit.position;
+                // Update destination from live target position if active
+                if (_pathfindingTarget.activeInHierarchy)
+                {
+                    Vector3 livePos = _pathfindingTarget.transform.position;
+                    _pathfindingRawDestination = livePos;
+                    NavMeshHit hit;
+                    if (NavMesh.SamplePosition(livePos, out hit, 20f, NavMesh.AllAreas))
+                        _pathfindingDestination = hit.position;
+                }
+                // Otherwise keep using cached _pathfindingDestination
 
                 // Calculate fresh path
                 NavMeshPath path = new NavMeshPath();
@@ -1809,6 +1914,13 @@ namespace DigimonNOAccess
                     _pathfindingDestination.x, _pathfindingDestination.y, _pathfindingDestination.z,
                     cx, cy, cz);
 
+                // Resume auto-walk if it was active
+                if (_isAutoWalking)
+                {
+                    UpdateAutoWalkPath(corners);
+                    DebugLogger.Log("[NavList] Auto-walk resumed");
+                }
+
                 // Ensure other audio stays suspended
                 AudioNavigationHandler.Suspended = true;
                 _lastPathRecalcTime = Time.time;
@@ -1833,6 +1945,7 @@ namespace DigimonNOAccess
                 if (_pathfindingTarget != null && _pathfindingTarget.activeInHierarchy)
                 {
                     Vector3 livePos = _pathfindingTarget.transform.position;
+                    _pathfindingRawDestination = livePos;
                     NavMeshHit hit;
                     if (NavMesh.SamplePosition(livePos, out hit, 20f, NavMesh.AllAreas))
                         _pathfindingDestination = hit.position;
@@ -1854,6 +1967,12 @@ namespace DigimonNOAccess
                         cz[i] = corners[i].z;
                     }
                     _pathfindingBeacon.UpdatePath(cx, cy, cz);
+
+                    // Update auto-walk path corners
+                    if (_isAutoWalking)
+                    {
+                        UpdateAutoWalkPath(corners);
+                    }
                 }
             }
             catch (Exception ex)
@@ -1870,6 +1989,8 @@ namespace DigimonNOAccess
             _isPathfinding = false;
             _pathfindingTarget = null;
 
+            StopAutoWalk();
+
             if (_pathfindingBeacon != null)
             {
                 _pathfindingBeacon.Stop();
@@ -1883,6 +2004,161 @@ namespace DigimonNOAccess
             }
 
             DebugLogger.Log($"[NavList] Pathfinding stopped: {announcement ?? "silent"}");
+        }
+
+        /// <summary>
+        /// Start auto-walking the player to the given NavMesh destination
+        /// using the game's built-in NavMeshAgent pathfinding.
+        /// </summary>
+        private void StartAutoWalk(Vector3[] corners)
+        {
+            if (_playerCtrl == null || corners == null || corners.Length < 2)
+                return;
+
+            _autoWalkCorners = corners;
+            // Start from corner 1 (corner 0 is player's current position)
+            _autoWalkCornerIndex = 1;
+            _isAutoWalking = true;
+
+            // Initialize stuck detection
+            _autoWalkCheckPosition = _playerCtrl.transform.position;
+            _autoWalkCheckTime = Time.time;
+
+            DebugLogger.Log($"[NavList] Auto-walk started, {corners.Length} corners");
+        }
+
+        /// <summary>
+        /// Stop auto-walking the player.
+        /// </summary>
+        private void StopAutoWalk()
+        {
+            if (!_isAutoWalking) return;
+
+            _isAutoWalking = false;
+            _autoWalkCorners = null;
+            AutoWalkActive = false;
+            AutoWalkStickX = 0;
+            AutoWalkStickY = 0;
+            DebugLogger.Log("[NavList] Auto-walk stopped");
+        }
+
+        /// <summary>
+        /// Calculate virtual stick input to move the player along the NavMesh path.
+        /// The actual movement is handled by the game's normal player movement system
+        /// via GamepadInputPatch injecting our stick values.
+        /// </summary>
+        private void UpdateAutoWalk()
+        {
+            if (!_isAutoWalking || _playerCtrl == null || _autoWalkCorners == null)
+            {
+                AutoWalkActive = false;
+                return;
+            }
+
+            try
+            {
+                Vector3 currentPos = _playerCtrl.transform.position;
+                Vector3 target;
+
+                if (_autoWalkCornerIndex >= _autoWalkCorners.Length)
+                {
+                    // All corners reached - walk toward actual target position
+                    // to enter interaction trigger volume
+                    target = _pathfindingRawDestination;
+                }
+                else
+                {
+                    target = _autoWalkCorners[_autoWalkCornerIndex];
+
+                    // Skip past all corners that are within reach (not just one per frame)
+                    float distToCorner = Vector3.Distance(currentPos, target);
+                    while (distToCorner < CornerReachDistance)
+                    {
+                        _autoWalkCornerIndex++;
+                        if (_autoWalkCornerIndex >= _autoWalkCorners.Length)
+                        {
+                            // All corners reached - walk toward actual target
+                            target = _pathfindingRawDestination;
+                            break;
+                        }
+                        target = _autoWalkCorners[_autoWalkCornerIndex];
+                        distToCorner = Vector3.Distance(currentPos, target);
+                    }
+                }
+
+                // Calculate direction to next corner (horizontal only)
+                Vector3 direction = target - currentPos;
+                direction.y = 0;
+
+                if (direction.sqrMagnitude > 0.001f)
+                {
+                    direction.Normalize();
+
+                    // Convert world direction to camera-relative stick values.
+                    // The game applies camera transform to stick input internally,
+                    // so we must project our world direction onto camera axes.
+                    Camera cam = Camera.main;
+                    if (cam != null)
+                    {
+                        Vector3 camForward = cam.transform.forward;
+                        Vector3 camRight = cam.transform.right;
+                        camForward.y = 0;
+                        camRight.y = 0;
+                        camForward.Normalize();
+                        camRight.Normalize();
+
+                        AutoWalkStickX = Vector3.Dot(direction, camRight);
+                        // Negative because SDL convention: stick up (forward) = negative Y
+                        AutoWalkStickY = -Vector3.Dot(direction, camForward);
+                    }
+                    else
+                    {
+                        // Fallback: assume camera looks at -Z
+                        AutoWalkStickX = direction.x;
+                        AutoWalkStickY = direction.z;
+                    }
+                    AutoWalkActive = true;
+                }
+                else
+                {
+                    AutoWalkActive = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[NavList] UpdateAutoWalk error: {ex.Message}");
+                AutoWalkActive = false;
+                StopAutoWalk();
+            }
+        }
+
+        /// <summary>
+        /// Update the auto-walk path corners when the path is recalculated.
+        /// Finds the nearest upcoming corner to continue from.
+        /// </summary>
+        private void UpdateAutoWalkPath(Vector3[] newCorners)
+        {
+            if (!_isAutoWalking || newCorners == null || newCorners.Length < 2 || _playerCtrl == null)
+                return;
+
+            Vector3 playerPos = _playerCtrl.transform.position;
+
+            // Find the nearest corner ahead of the player
+            int bestIndex = 1;
+            float bestDist = float.MaxValue;
+            for (int i = 1; i < newCorners.Length; i++)
+            {
+                float dist = Vector3.Distance(playerPos, newCorners[i]);
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    bestIndex = i;
+                }
+            }
+
+            _autoWalkCorners = newCorners;
+            _autoWalkCornerIndex = bestIndex;
+            DebugLogger.Log($"[NavList] Auto-walk path updated: {newCorners.Length} corners, starting at {bestIndex}, nearest dist={bestDist:F1}");
         }
 
         /// <summary>

@@ -234,6 +234,10 @@ namespace DigimonNOAccess
             RegisterAction("NavToEvent",
                 keyboard: new InputBinding(KeyCode.P),
                 controller: null);
+
+            RegisterAction("ToggleAutoWalk",
+                keyboard: new InputBinding(KeyCode.P, false, false, true),
+                controller: null);
         }
 
         private static void RegisterAction(string actionName, InputBinding keyboard, InputBinding controller)
@@ -264,12 +268,21 @@ namespace DigimonNOAccess
 
         private static bool CheckKeyboardBinding(InputBinding binding)
         {
-            // Check modifiers are held
+            // Check required modifiers are held
             if (binding.RequiresCtrl && !Input.GetKey(KeyCode.LeftControl) && !Input.GetKey(KeyCode.RightControl))
                 return false;
             if (binding.RequiresAlt && !Input.GetKey(KeyCode.LeftAlt) && !Input.GetKey(KeyCode.RightAlt))
                 return false;
             if (binding.RequiresShift && !Input.GetKey(KeyCode.LeftShift) && !Input.GetKey(KeyCode.RightShift))
+                return false;
+
+            // Reject if extra modifiers are held that aren't required
+            // (e.g. Shift+P should not trigger an action bound to just P)
+            if (!binding.RequiresCtrl && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)))
+                return false;
+            if (!binding.RequiresAlt && (Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt)))
+                return false;
+            if (!binding.RequiresShift && (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)))
                 return false;
 
             // Check main key (trigger detection)
@@ -706,6 +719,8 @@ NavCurrentEvent = K
 NavNextEvent = L
 ; Announce path to the selected event
 NavToEvent = P
+; Toggle auto-walk (when enabled, pathfinding also walks the player)
+ToggleAutoWalk = Shift+P
 
 [Controller]
 ; === Global ===
@@ -742,6 +757,8 @@ NavCurrentEvent = None
 NavNextEvent = None
 ; Announce path to the selected event
 NavToEvent = None
+; Toggle auto-walk (when enabled, pathfinding also walks the player)
+ToggleAutoWalk = None
 ";
 
             try
