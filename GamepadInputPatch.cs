@@ -128,6 +128,16 @@ namespace DigimonNOAccess
                         postfix: new HarmonyMethod(typeof(GamepadInputPatch), nameof(IsInput_Postfix)));
                     DebugLogger.Log("[GamepadInputPatch] Patched PadManager.IsInput");
                 }
+
+                // Patch GetLeftStick - returns left analog stick as Vector2
+                // This ensures auto-walk virtual stick values are seen by the game's movement system
+                var getLeftStickMethod = AccessTools.Method(typeof(PadManager), "GetLeftStick");
+                if (getLeftStickMethod != null)
+                {
+                    harmony.Patch(getLeftStickMethod,
+                        postfix: new HarmonyMethod(typeof(GamepadInputPatch), nameof(GetLeftStick_Postfix)));
+                    DebugLogger.Log("[GamepadInputPatch] Patched PadManager.GetLeftStick");
+                }
             }
             catch (System.Exception ex)
             {
@@ -187,6 +197,32 @@ namespace DigimonNOAccess
             if (!__result && _enabled && SDLController.IsAvailable)
             {
                 __result = (_currentInjectedButtons & button) != 0;
+            }
+        }
+
+        private static void GetLeftStick_Postfix(ref Vector2 __result)
+        {
+            // Auto-walk: override the stick value so the game's movement system
+            // walks the player along the computed path
+            if (NavigationListHandler.AutoWalkActive)
+            {
+                __result = new Vector2(
+                    NavigationListHandler.AutoWalkStickX,
+                    NavigationListHandler.AutoWalkStickY);
+                return;
+            }
+
+            // Inject SDL3 left stick if significant input present
+            if (_enabled && SDLController.IsAvailable)
+            {
+                float leftX = SDLController.GetLeftStickX() / 32767f;
+                float leftY = SDLController.GetLeftStickY() / 32767f;
+                const float deadzone = 0.15f;
+
+                if (Mathf.Abs(leftX) > deadzone || Mathf.Abs(leftY) > deadzone)
+                {
+                    __result = new Vector2(leftX, leftY);
+                }
             }
         }
 

@@ -123,6 +123,14 @@ namespace DigimonNOAccess
         private float _autoWalkCheckTime;
         private const float StuckCheckInterval = 1.0f;
         private const float StuckMovementThreshold = 0.3f;
+        private const float StuckArrivalDistance = 15f; // Within this range, stuck = arrived
+
+        // Obstacle avoidance: when stuck mid-path, find walkable detour to get around enemies/obstacles
+        private bool _isAvoidingObstacle;
+        private Vector3 _avoidanceDetourTarget;
+        private float _avoidanceStartTime;
+        private int _avoidanceAttempt; // Increments to alternate left/right
+        private const float AvoidanceTimeout = 10f; // Max seconds trying to reach detour point
 
         // Virtual stick output for auto-walk (read by GamepadInputPatch)
         public static bool AutoWalkActive { get; private set; }
@@ -165,18 +173,15 @@ namespace DigimonNOAccess
             }
 
             // Rescan after returning to field from evolution/battles (>2s away)
+            // Don't wipe existing lists - just do an additive rescan that removes
+            // destroyed/picked-up objects and adds any new ones. This prevents losing
+            // all items when briefly leaving the field (e.g. item pickup dialog).
             if (!_wasInField && _listBuilt && (currentTime - _leftFieldTime > 2f))
             {
                 _isRescanning = true;
                 _mapChangeTime = currentTime;
                 _nextRescanTime = currentTime + InitialScanDelay;
-                _knownTargets.Clear();
-                _facilityNpcObjects.Clear();
-                foreach (var cat in AllCategories)
-                    if (_events.ContainsKey(cat))
-                        _events[cat].Clear();
-                _listBuilt = false;
-                DebugLogger.Log("[NavList] Returned to field after extended absence, rescanning");
+                DebugLogger.Log("[NavList] Returned to field after extended absence, rescanning (preserving lists)");
             }
             _wasInField = true;
 
@@ -465,7 +470,7 @@ namespace DigimonNOAccess
                 {
                     foreach (var point in itemManager.m_itemPickPoints)
                     {
-                        if (point == null || point.gameObject == null || !point.gameObject.activeInHierarchy)
+                        if (point == null || point.gameObject == null)
                             continue;
                         if (!point.enableItemPickPoint)
                             continue;
@@ -550,31 +555,43 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[NavList] Rescan Enemies error: {ex.Message}");
             }
 
-            // Only remove truly destroyed objects during rescan (null target).
-            // Don't remove inactive objects - the game deactivates distant objects for performance.
+            // Remove destroyed objects and picked-up items during rescan.
+            // Don't remove inactive non-item objects - the game deactivates distant objects for performance.
             foreach (var cat in AllCategories)
             {
                 if (_events.ContainsKey(cat))
                 {
                     _events[cat].RemoveAll(e =>
                     {
+                        // Destroyed object
                         if (e.Target == null)
                         {
-                            _knownTargets.Remove(e.Target);
+                            // Note: can't remove null from HashSet, but that's fine
                             return true;
+                        }
+                        // Picked-up items: enableItemPickPoint becomes false after pickup.
+                        // Don't check activeInHierarchy - game deactivates distant items for performance.
+                        if (e.Category == EventCategory.Items)
+                        {
+                            var pickPoint = e.Target.GetComponent<ItemPickPointBase>();
+                            if (pickPoint != null && !pickPoint.enableItemPickPoint)
+                            {
+                                _knownTargets.Remove(e.Target);
+                                return true;
+                            }
                         }
                         return false;
                     });
                 }
             }
 
+            // Always update categories after cleanup (items may have been removed)
+            foreach (var kvp in _events)
+                kvp.Value.Sort((a, b) => a.DistanceToPlayer.CompareTo(b.DistanceToPlayer));
+            UpdateActiveCategories();
+
             if (newCount > 0)
             {
-                // Sort and update categories
-                foreach (var kvp in _events)
-                    kvp.Value.Sort((a, b) => a.DistanceToPlayer.CompareTo(b.DistanceToPlayer));
-                UpdateActiveCategories();
-
                 DebugLogger.Log($"[NavList] Rescan found {newCount} new objects. Totals: " +
                     $"{_events[EventCategory.NPCs].Count} NPCs, " +
                     $"{_events[EventCategory.Items].Count} items, " +
@@ -875,7 +892,10 @@ namespace DigimonNOAccess
 
                 foreach (var point in itemManager.m_itemPickPoints)
                 {
-                    if (point == null || point.gameObject == null || !point.gameObject.activeInHierarchy)
+                    // Only need the point to exist and be enabled for pickup.
+                    // Don't check activeInHierarchy - the game deactivates distant items
+                    // for performance, but they're still valid pickup points.
+                    if (point == null || point.gameObject == null)
                         continue;
 
                     if (!point.enableItemPickPoint)
@@ -1801,12 +1821,14 @@ namespace DigimonNOAccess
                     playerPos.x, playerPos.y, playerPos.z,
                     playerForward.x, playerForward.z);
 
-                // Distance-based arrival for NPCs, Items, Enemies.
+                // Distance-based arrival for NPCs and Enemies.
                 // Transitions need to walk into the zone trigger (map change stops pathfinding).
                 // Facilities need to walk right up to the NPC trigger.
-                // Both rely on stuck detection below instead.
+                // Items need close proximity to trigger the pickup prompt.
+                // All three rely on stuck detection below instead.
                 if (_pathfindingCategory != EventCategory.Transitions
-                    && _pathfindingCategory != EventCategory.Facilities)
+                    && _pathfindingCategory != EventCategory.Facilities
+                    && _pathfindingCategory != EventCategory.Items)
                 {
                     float distToTarget = Vector3.Distance(playerPos, _pathfindingRawDestination);
                     bool atPathEnd = _isAutoWalking && _autoWalkCorners != null && _autoWalkCorners.Length > 0
@@ -1828,10 +1850,23 @@ namespace DigimonNOAccess
                         float movedDist = Vector3.Distance(playerPos, _autoWalkCheckPosition);
                         if (movedDist < StuckMovementThreshold)
                         {
-                            DebugLogger.Log($"[NavList] Stuck detected, dist to target: {Vector3.Distance(playerPos, _pathfindingRawDestination):F1}");
-                            StopPathfinding("Destination reached");
+                            float distToTarget = Vector3.Distance(playerPos, _pathfindingRawDestination);
+                            DebugLogger.Log($"[NavList] Stuck detected, dist to target: {distToTarget:F1}");
+
+                            // Near destination: we've arrived (trigger zone / close enough)
+                            if (distToTarget < StuckArrivalDistance)
+                            {
+                                StopPathfinding("Destination reached");
+                                return;
+                            }
+
+                            // Far from destination: blocked mid-path by enemy/obstacle.
+                            // Start walking sideways to get around it.
+                            StartObstacleAvoidance(playerPos);
                             return;
                         }
+                        // Player is moving - clear avoidance state
+                        _isAvoidingObstacle = false;
                         _autoWalkCheckPosition = playerPos;
                         _autoWalkCheckTime = Time.time;
                     }
@@ -1918,7 +1953,15 @@ namespace DigimonNOAccess
                 if (_isAutoWalking)
                 {
                     UpdateAutoWalkPath(corners);
+                    _isAvoidingObstacle = false;
+                    _avoidanceAttempt = 0;
                     DebugLogger.Log("[NavList] Auto-walk resumed");
+                }
+                else
+                {
+                    // Reset stuck detection for non-auto-walk resume too
+                    _autoWalkCheckPosition = playerPos;
+                    _autoWalkCheckTime = Time.time;
                 }
 
                 // Ensure other audio stays suspended
@@ -2020,9 +2063,11 @@ namespace DigimonNOAccess
             _autoWalkCornerIndex = 1;
             _isAutoWalking = true;
 
-            // Initialize stuck detection
+            // Initialize stuck detection and avoidance
             _autoWalkCheckPosition = _playerCtrl.transform.position;
             _autoWalkCheckTime = Time.time;
+            _isAvoidingObstacle = false;
+            _avoidanceAttempt = 0;
 
             DebugLogger.Log($"[NavList] Auto-walk started, {corners.Length} corners");
         }
@@ -2036,10 +2081,81 @@ namespace DigimonNOAccess
 
             _isAutoWalking = false;
             _autoWalkCorners = null;
+            _isAvoidingObstacle = false;
             AutoWalkActive = false;
             AutoWalkStickX = 0;
             AutoWalkStickY = 0;
             DebugLogger.Log("[NavList] Auto-walk stopped");
+        }
+
+        /// <summary>
+        /// When stuck mid-path (blocked by enemy/obstacle), find a walkable detour point
+        /// on the NavMesh to the side or behind the player, verify a path exists from there
+        /// to the destination, and walk to it. Alternates left/right on each attempt.
+        /// </summary>
+        private void StartObstacleAvoidance(Vector3 playerPos)
+        {
+            // Direction we were heading toward
+            Vector3 targetDir;
+            if (_autoWalkCorners != null && _autoWalkCornerIndex < _autoWalkCorners.Length)
+                targetDir = _autoWalkCorners[_autoWalkCornerIndex] - playerPos;
+            else
+                targetDir = _pathfindingRawDestination - playerPos;
+            targetDir.y = 0;
+            if (targetDir.sqrMagnitude < 0.001f)
+            {
+                // Can't determine heading, just reset timer and retry
+                _autoWalkCheckPosition = playerPos;
+                _autoWalkCheckTime = Time.time;
+                return;
+            }
+            targetDir.Normalize();
+
+            // Perpendicular direction (right of heading)
+            Vector3 rightDir = new Vector3(targetDir.z, 0, -targetDir.x);
+
+            _avoidanceAttempt++;
+
+            // Build candidate offsets: alternate starting left/right, include backward options
+            // Try multiple distances to find a walkable point the player can reach
+            Vector3[] directions;
+            if (_avoidanceAttempt % 2 == 1)
+                directions = new[] { rightDir, -rightDir, (-targetDir + rightDir).normalized, (-targetDir - rightDir).normalized, -targetDir };
+            else
+                directions = new[] { -rightDir, rightDir, (-targetDir - rightDir).normalized, (-targetDir + rightDir).normalized, -targetDir };
+
+            float[] distances = { 5f, 8f, 12f };
+
+            NavMeshHit hit;
+            foreach (var dir in directions)
+            {
+                foreach (var dist in distances)
+                {
+                    Vector3 candidate = playerPos + dir * dist;
+                    if (NavMesh.SamplePosition(candidate, out hit, 3f, NavMesh.AllAreas))
+                    {
+                        // Verify a path exists from the detour point to our destination
+                        NavMeshPath testPath = new NavMeshPath();
+                        if (NavMesh.CalculatePath(hit.position, _pathfindingDestination, NavMesh.AllAreas, testPath)
+                            && testPath.corners.Length >= 2)
+                        {
+                            _avoidanceDetourTarget = hit.position;
+                            _isAvoidingObstacle = true;
+                            _avoidanceStartTime = Time.time;
+                            _autoWalkCheckPosition = playerPos;
+                            _autoWalkCheckTime = Time.time;
+                            DebugLogger.Log($"[NavList] Avoiding obstacle, detour {Vector3.Distance(playerPos, hit.position):F1}m away, attempt {_avoidanceAttempt}");
+                            return;
+                        }
+                    }
+                }
+            }
+
+            // No walkable detour found - just reset stuck timer and keep trying
+            // (enemy might move on its own)
+            _autoWalkCheckPosition = playerPos;
+            _autoWalkCheckTime = Time.time;
+            DebugLogger.Log($"[NavList] No walkable detour found, retrying, attempt {_avoidanceAttempt}");
         }
 
         /// <summary>
@@ -2060,7 +2176,23 @@ namespace DigimonNOAccess
                 Vector3 currentPos = _playerCtrl.transform.position;
                 Vector3 target;
 
-                if (_autoWalkCornerIndex >= _autoWalkCorners.Length)
+                // Obstacle avoidance: walk to detour point instead of normal path
+                if (_isAvoidingObstacle)
+                {
+                    float distToDetour = Vector3.Distance(currentPos, _avoidanceDetourTarget);
+                    if (distToDetour < CornerReachDistance || Time.time - _avoidanceStartTime > AvoidanceTimeout)
+                    {
+                        // Reached detour point or timed out - resume normal pathfinding
+                        _isAvoidingObstacle = false;
+                        _autoWalkCheckPosition = currentPos;
+                        _autoWalkCheckTime = Time.time;
+                        RecalculatePathfindingPath(currentPos);
+                        DebugLogger.Log("[NavList] Avoidance complete, resuming path");
+                        return;
+                    }
+                    target = _avoidanceDetourTarget;
+                }
+                else if (_autoWalkCornerIndex >= _autoWalkCorners.Length)
                 {
                     // All corners reached - walk toward actual target position
                     // to enter interaction trigger volume
@@ -2143,22 +2275,49 @@ namespace DigimonNOAccess
 
             Vector3 playerPos = _playerCtrl.transform.position;
 
-            // Find the nearest corner ahead of the player
-            int bestIndex = 1;
-            float bestDist = float.MaxValue;
-            for (int i = 1; i < newCorners.Length; i++)
+            // Find which path segment the player is closest to, then target the END of that segment.
+            // This prevents picking a corner behind the player (which causes backward walking/oscillation).
+            // We project the player position onto each segment [i, i+1] and pick the closest one.
+            int bestNextIndex = 1;
+            float bestSegDist = float.MaxValue;
+
+            for (int i = 0; i < newCorners.Length - 1; i++)
             {
-                float dist = Vector3.Distance(playerPos, newCorners[i]);
-                if (dist < bestDist)
+                Vector3 segStart = newCorners[i];
+                Vector3 segEnd = newCorners[i + 1];
+                Vector3 seg = segEnd - segStart;
+                float segLenSq = seg.sqrMagnitude;
+
+                float distToSeg;
+                if (segLenSq < 0.001f)
                 {
-                    bestDist = dist;
-                    bestIndex = i;
+                    distToSeg = Vector3.Distance(playerPos, segStart);
+                }
+                else
+                {
+                    float t = Mathf.Clamp01(Vector3.Dot(playerPos - segStart, seg) / segLenSq);
+                    Vector3 closestPoint = segStart + seg * t;
+                    distToSeg = Vector3.Distance(playerPos, closestPoint);
+                }
+
+                if (distToSeg < bestSegDist)
+                {
+                    bestSegDist = distToSeg;
+                    bestNextIndex = i + 1; // Target the end of this segment (the next corner ahead)
                 }
             }
 
+            // Skip past corners within reach distance
+            while (bestNextIndex < newCorners.Length - 1
+                && Vector3.Distance(playerPos, newCorners[bestNextIndex]) < CornerReachDistance)
+            {
+                bestNextIndex++;
+            }
+
             _autoWalkCorners = newCorners;
-            _autoWalkCornerIndex = bestIndex;
-            DebugLogger.Log($"[NavList] Auto-walk path updated: {newCorners.Length} corners, starting at {bestIndex}, nearest dist={bestDist:F1}");
+            _autoWalkCornerIndex = bestNextIndex;
+
+            DebugLogger.Log($"[NavList] Auto-walk path updated: {newCorners.Length} corners, starting at {bestNextIndex}, nearest dist={Vector3.Distance(playerPos, newCorners[bestNextIndex]):F1}");
         }
 
         /// <summary>

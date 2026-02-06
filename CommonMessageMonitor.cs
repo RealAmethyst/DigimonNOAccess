@@ -144,9 +144,29 @@ namespace DigimonNOAccess
             return TextUtilities.IsGameLoading();
         }
 
+        // System/copyright text that should never be re-announced during gameplay.
+        // The initial startup announcement is handled by SetMessagePrefix in DialogTextPatch.
+        private static readonly string[] _systemTextPatterns = new string[]
+        {
+            "Warning",
+            "Transmitting",
+            "prohibited",
+            "\u00a9",           // © copyright symbol
+            "BANDAI NAMCO",
+        };
+
         private bool ShouldSkipText(string text)
         {
-            return TextUtilities.IsPlaceholderText(text);
+            if (TextUtilities.IsPlaceholderText(text))
+                return true;
+
+            foreach (var pattern in _systemTextPatterns)
+            {
+                if (text.Contains(pattern))
+                    return true;
+            }
+
+            return false;
         }
     }
 }
