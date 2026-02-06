@@ -658,8 +658,8 @@ namespace DigimonNOAccess
 
             Vector3 playerPos = _playerCtrl.transform.position;
 
-            // Refresh items - only remove if destroyed or picked up (enableItemPickPoint false).
-            // Don't remove inactive items: the game deactivates distant objects for performance.
+            // Refresh items - remove picked up, add newly loaded.
+            // Items load via coroutines so some may appear after the initial scan.
             var items = _events.ContainsKey(EventCategory.Items) ? _events[EventCategory.Items] : null;
             if (items != null)
             {
@@ -676,6 +676,36 @@ namespace DigimonNOAccess
                     catch { }
                     return false;
                 });
+
+                // Check for new items that may have loaded since the last scan
+                var itemManager = ItemPickPointManager.m_instance;
+                if (itemManager != null && itemManager.m_itemPickPoints != null)
+                {
+                    var existingTargets = new HashSet<GameObject>();
+                    foreach (var e in items)
+                        if (e.Target != null) existingTargets.Add(e.Target);
+
+                    foreach (var point in itemManager.m_itemPickPoints)
+                    {
+                        if (point == null || point.gameObject == null)
+                            continue;
+                        if (!point.enableItemPickPoint)
+                            continue;
+                        if (existingTargets.Contains(point.gameObject))
+                            continue;
+
+                        string name = GetItemName(point);
+                        float dist = Vector3.Distance(playerPos, point.transform.position);
+                        items.Add(new NavigationEvent
+                        {
+                            Name = name,
+                            Position = point.transform.position,
+                            Target = point.gameObject,
+                            Category = EventCategory.Items,
+                            DistanceToPlayer = dist
+                        });
+                    }
+                }
 
                 // Update distances (only for active objects, keep cached position for inactive)
                 foreach (var e in items)
@@ -734,11 +764,11 @@ namespace DigimonNOAccess
                 }
             }
 
-            // Refresh NPCs - only remove if destroyed (null).
+            // Refresh NPCs - remove if destroyed or deactivated (recruited NPCs get deactivated).
             var npcs = _events.ContainsKey(EventCategory.NPCs) ? _events[EventCategory.NPCs] : null;
             if (npcs != null)
             {
-                npcs.RemoveAll(e => e.Target == null);
+                npcs.RemoveAll(e => e.Target == null || !e.Target.activeInHierarchy);
                 foreach (var e in npcs)
                 {
                     if (e.Target != null && e.Target.activeInHierarchy)
@@ -892,9 +922,6 @@ namespace DigimonNOAccess
 
                 foreach (var point in itemManager.m_itemPickPoints)
                 {
-                    // Only need the point to exist and be enabled for pickup.
-                    // Don't check activeInHierarchy - the game deactivates distant items
-                    // for performance, but they're still valid pickup points.
                     if (point == null || point.gameObject == null)
                         continue;
 
@@ -913,6 +940,8 @@ namespace DigimonNOAccess
                         DistanceToPlayer = dist
                     });
                 }
+
+                DebugLogger.Log($"[NavList] ScanItems complete: {_events[EventCategory.Items].Count} items found");
             }
             catch (Exception ex)
             {

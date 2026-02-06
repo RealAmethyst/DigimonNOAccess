@@ -28,8 +28,18 @@ namespace DigimonNOAccess
         // Event that fires when new text is intercepted
         public static event Action<string, string> OnTextIntercepted;
 
-        // Track last announced text to avoid duplicates
+        // Track last announced text to avoid duplicates within a single conversation.
+        // Reset when dialog panel closes so repeated talks to the same NPC work.
         private static string _lastAnnouncedText = "";
+
+        /// <summary>
+        /// Reset the last announced text tracker. Call when dialog panel closes
+        /// so the same NPC dialog can be re-announced on the next interaction.
+        /// </summary>
+        public static void ResetLastAnnouncedText()
+        {
+            _lastAnnouncedText = "";
+        }
 
         // Track voiced dialog - these texts will be spoken by the game, so we skip TTS
         private static HashSet<string> _voicedTextKeys = new HashSet<string>();

@@ -199,6 +199,7 @@ namespace DigimonNOAccess
                 _eventPanel = null;
                 _lastAnnouncedEventText = "";
                 _lastAnnouncedEventName = "";
+                DialogTextPatch.ResetLastAnnouncedText();
                 DebugLogger.Log("[EventPanel] Closed");
             }
 

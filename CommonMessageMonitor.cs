@@ -29,6 +29,9 @@ namespace DigimonNOAccess
         private Dictionary<int, string> _lastTextPerWindow = new Dictionary<int, string>();
         // Track if window has already announced its first message (use SayQueued for subsequent)
         private HashSet<int> _windowHasAnnounced = new HashSet<int>();
+        // Persistent tracking of announced text to prevent re-announcing stale messages
+        // after returning to field from battles/events. Cleared only on map change.
+        private string _lastAnnouncedText = "";
 
         public void Update()
         {
@@ -113,9 +116,18 @@ namespace DigimonNOAccess
                     return;
                 }
 
-                // Announce the text (strip rich text tags for clean screen reader output)
+                // Skip stale text that was already announced by this monitor
+                // (prevents re-announcing old "X received" text after returning from battles)
+                string cleanText = DialogTextPatch.StripRichTextTags(text).Trim();
+                if (cleanText == _lastAnnouncedText)
+                {
+                    DebugLogger.Log($"[CommonMessageMonitor] Skipping stale text: {text}");
+                    return;
+                }
+
+                // Announce the text
                 DebugLogger.Log($"[CommonMessageMonitor] {text}");
-                string cleanText = DialogTextPatch.StripRichTextTags(text);
+                _lastAnnouncedText = cleanText;
 
                 // First message for this window uses Say(), subsequent use SayQueued()
                 if (_windowHasAnnounced.Contains(windowIndex))
