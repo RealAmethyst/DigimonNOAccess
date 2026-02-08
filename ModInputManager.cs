@@ -238,6 +238,11 @@ namespace DigimonNOAccess
             RegisterAction("ToggleAutoWalk",
                 keyboard: new InputBinding(KeyCode.P, false, false, true),
                 controller: null);
+
+            // === Shop/Trade Menu ===
+            RegisterAction("ShopCheckBits",
+                keyboard: new InputBinding(KeyCode.F10),
+                controller: new InputBinding(ControllerButton.RT, ControllerButton.DPadDown));
         }
 
         private static void RegisterAction(string actionName, InputBinding keyboard, InputBinding controller)
@@ -722,6 +727,10 @@ NavToEvent = P
 ; Toggle auto-walk (when enabled, pathfinding also walks the player)
 ToggleAutoWalk = Shift+P
 
+; === Shop/Trade Menu ===
+; Announce current bits (only works when shop or trade panel is open)
+ShopCheckBits = F10
+
 [Controller]
 ; === Global ===
 RepeatLast = None
@@ -759,6 +768,10 @@ NavNextEvent = None
 NavToEvent = None
 ; Toggle auto-walk (when enabled, pathfinding also walks the player)
 ToggleAutoWalk = None
+
+; === Shop/Trade Menu ===
+; Announce current bits (only works when shop or trade panel is open)
+ShopCheckBits = RT+DPadDown
 ";
 
             try

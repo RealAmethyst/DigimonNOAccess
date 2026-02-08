@@ -44,6 +44,9 @@ namespace DigimonNOAccess
             else
             {
                 announcement = $"Items, {tabName}, {internalTabName} tab. {AnnouncementBuilder.CursorPosition(itemInfo, cursor, total)}";
+                string desc = GetItemDescription();
+                if (!string.IsNullOrEmpty(desc))
+                    announcement += $". {desc}";
             }
 
             // Add partner name for Care-related item types
@@ -92,6 +95,9 @@ namespace DigimonNOAccess
                 else
                 {
                     announcement = AnnouncementBuilder.CursorPosition(itemInfo, cursor, total);
+                    string desc = GetItemDescription();
+                    if (!string.IsNullOrEmpty(desc))
+                        announcement += $". {desc}";
                 }
 
                 ScreenReader.Say(announcement);
@@ -128,6 +134,9 @@ namespace DigimonNOAccess
                 else
                 {
                     announcement = $"{tabName}, {internalTabName} tab. {AnnouncementBuilder.CursorPosition(itemInfo, cursor, total)}";
+                    string desc = GetItemDescription();
+                    if (!string.IsNullOrEmpty(desc))
+                        announcement += $". {desc}";
                 }
 
                 ScreenReader.Say(announcement);
@@ -153,6 +162,9 @@ namespace DigimonNOAccess
                 else
                 {
                     announcement = $"{internalTabName} tab. {AnnouncementBuilder.CursorPosition(itemInfo, cursor, total)}";
+                    string desc = GetItemDescription();
+                    if (!string.IsNullOrEmpty(desc))
+                        announcement += $". {desc}";
                 }
 
                 ScreenReader.Say(announcement);
@@ -250,6 +262,9 @@ namespace DigimonNOAccess
                     string name = paramData.GetName();
                     if (!string.IsNullOrEmpty(name))
                     {
+                        int qty = GetSelectedItemQuantity();
+                        if (qty > 0)
+                            return $"{qty} {name}";
                         return name;
                     }
                 }
@@ -260,6 +275,34 @@ namespace DigimonNOAccess
             }
 
             return "Unknown Item";
+        }
+
+        private int GetSelectedItemQuantity()
+        {
+            try
+            {
+                var item = _panel?.GetSelectItemData();
+                if (item != null)
+                    return item.m_itemNum;
+            }
+            catch { }
+            return 0;
+        }
+
+        private string GetItemDescription()
+        {
+            try
+            {
+                var paramData = _panel?.GetSelectItemParam();
+                if (paramData != null)
+                {
+                    string desc = paramData.GetDescription();
+                    if (!string.IsNullOrEmpty(desc))
+                        return TextUtilities.StripRichTextTags(desc);
+                }
+            }
+            catch { }
+            return "";
         }
 
         private void CheckTargetChange()
@@ -371,6 +414,9 @@ namespace DigimonNOAccess
             else
             {
                 announcement = $"Items, {tabName}, {internalTabName} tab. {AnnouncementBuilder.CursorPosition(itemInfo, cursor, total)}";
+                string desc = GetItemDescription();
+                if (!string.IsNullOrEmpty(desc))
+                    announcement += $". {desc}";
             }
 
             ScreenReader.Say(announcement);

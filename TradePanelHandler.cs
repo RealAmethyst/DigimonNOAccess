@@ -57,8 +57,36 @@ namespace DigimonNOAccess
 
         protected override void OnUpdate()
         {
+            if (ModInputManager.IsActionTriggered("ShopCheckBits"))
+            {
+                AnnounceBits();
+                return;
+            }
+
             CheckStateChange();
             CheckCursorChange();
+        }
+
+        private void AnnounceBits()
+        {
+            try
+            {
+                var bitPanel = UnityEngine.Object.FindObjectOfType<uTradePanelBit>();
+                if (bitPanel?.m_bit != null)
+                {
+                    string bits = bitPanel.m_bit.text;
+                    if (!string.IsNullOrEmpty(bits))
+                    {
+                        ScreenReader.Say($"You have {TextUtilities.StripRichTextTags(bits)} bits");
+                        return;
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Error reading bits: {ex.Message}");
+            }
+            ScreenReader.Say("Bits unknown");
         }
 
         private void CheckStateChange()

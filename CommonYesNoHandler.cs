@@ -174,14 +174,15 @@ namespace DigimonNOAccess
         {
             if (_window == null || _window.m_message == null)
                 return "";
-            return _window.m_message.text ?? "";
+            string text = TextUtilities.CleanText(_window.m_message.text);
+            return TextUtilities.FormatItemMessage(text);
         }
 
         private string GetYesText()
         {
             if (_window == null || _window.m_yes == null)
                 return "Yes";
-            string text = _window.m_yes.text;
+            string text = TextUtilities.CleanText(_window.m_yes.text);
             return string.IsNullOrEmpty(text) ? "Yes" : text;
         }
 
@@ -189,7 +190,7 @@ namespace DigimonNOAccess
         {
             if (_window == null || _window.m_no == null)
                 return "No";
-            string text = _window.m_no.text;
+            string text = TextUtilities.CleanText(_window.m_no.text);
             return string.IsNullOrEmpty(text) ? "No" : text;
         }
 

@@ -71,6 +71,11 @@ namespace DigimonNOAccess
                 return $"{prefix} {count} {itemName}!";
             }
 
+            // General: swap any remaining "ItemName x N" to "N ItemName"
+            // Handles patterns like "Recovery Disk x 7 will all be discarded."
+            if (text.Contains(" x "))
+                return Regex.Replace(text, @"([\w'-]+(?:\s+[\w'-]+)*?)\s+x\s+(\d+)", "$2 $1");
+
             return text;
         }
 
