@@ -238,6 +238,10 @@ namespace DigimonNOAccess
                 {
                     _recentItemMessages.Clear();
                 }
+
+                // First message in a sequence uses Say (interrupts), subsequent use SayQueued (queues)
+                bool isFirstInSequence = _recentItemMessages.Count == 0;
+
                 _recentItemMessages.Add(StripRichTextTags(text).Trim());
                 _recentItemMessagesTime = now;
                 _lastItemMessageTime = now;
@@ -246,10 +250,12 @@ namespace DigimonNOAccess
                 _lastCommonMessage = text;
                 _lastCommonMessageTime = now;
 
-                // Always announce - SetItemMessage is called each time user tries to use an item
-                // Use SayQueued so multiple item messages (when feeding both partners) don't cancel each other
+                string cleanText = StripRichTextTags(text);
                 DebugLogger.Log($"[SetItemMessage] {text}");
-                ScreenReader.SayQueued(StripRichTextTags(text));
+                if (isFirstInSequence)
+                    ScreenReader.Say(cleanText);
+                else
+                    ScreenReader.SayQueued(cleanText);
             }
             catch (System.Exception ex)
             {

@@ -102,6 +102,7 @@ namespace DigimonNOAccess
                 new FarmPanelHandler(),
                 new RestaurantPanelHandler(),
                 new TradePanelHandler(),
+                new EducationPanelHandler(),
                 new CarePanelHandler(),
                 new StoragePanelHandler(),
                 new MapPanelHandler(),

@@ -71,15 +71,10 @@ namespace DigimonNOAccess
         {
             try
             {
-                // Check if window is visible - use m_isOpend OR activeInHierarchy with text
-                // Some windows may have text set before m_isOpend is true
+                // Check if window is visible using the game's own m_isOpend flag
+                // (set by enablePanel). Don't use activeInHierarchy as fallback -
+                // closed windows can remain in hierarchy with stale label text.
                 bool isVisible = window.m_isOpend;
-                if (!isVisible && window.gameObject != null && window.gameObject.activeInHierarchy)
-                {
-                    // Fallback: check if there's actually text in the label
-                    if (window.m_label != null && !string.IsNullOrEmpty(window.m_label.text))
-                        isVisible = true;
-                }
 
                 if (!isVisible)
                 {
