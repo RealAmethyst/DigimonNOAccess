@@ -203,7 +203,9 @@ namespace DigimonNOAccess
                     return;
 
                 DebugLogger.Log($"[SetMessage] {str}");
-                ScreenReader.Say(StripRichTextTags(str));
+                string cleaned = StripRichTextTags(str);
+                cleaned = TextUtilities.FormatItemMessage(cleaned);
+                ScreenReader.Say(cleaned);
                 OnCommonMessageIntercepted?.Invoke(str);
             }
             catch (System.Exception ex)

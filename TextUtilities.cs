@@ -18,6 +18,9 @@ namespace DigimonNOAccess
         {
             if (string.IsNullOrEmpty(text))
                 return text;
+            // Strip <icon>...</icon> pairs entirely (content is a sprite marker, not readable text)
+            text = Regex.Replace(text, @"<icon>[^<]*</icon>", "");
+            // Strip remaining rich text tags
             return Regex.Replace(text, @"<[^>]+>", "");
         }
 
@@ -36,6 +39,39 @@ namespace DigimonNOAccess
             cleaned = Regex.Replace(cleaned, @"\s+", " ");
 
             return cleaned.Trim();
+        }
+
+        /// <summary>
+        /// Reformats game item messages for more natural screen reader output.
+        /// Handles multiple game formats:
+        /// - "Duty Fruit x 1 received." → "Received 1 Duty Fruit."
+        /// - "You got Medicine x 2!" → "You got 2 Medicine!"
+        /// </summary>
+        public static string FormatItemMessage(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return text;
+
+            // Match "ItemName x N received." pattern (field pickups)
+            var match = Regex.Match(text, @"^(.+?)\s+x\s+(\d+)\s+received\.\s*$");
+            if (match.Success)
+            {
+                string itemName = match.Groups[1].Value.Trim();
+                string count = match.Groups[2].Value;
+                return $"Received {count} {itemName}.";
+            }
+
+            // Match "You got ItemName x N!" pattern (NPC gifts)
+            match = Regex.Match(text, @"^(You got)\s+(.+?)\s+x\s+(\d+)!\s*$");
+            if (match.Success)
+            {
+                string prefix = match.Groups[1].Value;
+                string itemName = match.Groups[2].Value.Trim();
+                string count = match.Groups[3].Value;
+                return $"{prefix} {count} {itemName}!";
+            }
+
+            return text;
         }
 
         /// <summary>

@@ -124,14 +124,17 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[CommonMessageMonitor] {text}");
                 _lastAnnouncedText = cleanText;
 
+                // Reformat item messages for cleaner output
+                string announcement = TextUtilities.FormatItemMessage(cleanText);
+
                 // First message for this window uses Say(), subsequent use SayQueued()
                 if (_windowHasAnnounced.Contains(windowIndex))
                 {
-                    ScreenReader.SayQueued(cleanText);
+                    ScreenReader.SayQueued(announcement);
                 }
                 else
                 {
-                    ScreenReader.Say(cleanText);
+                    ScreenReader.Say(announcement);
                     _windowHasAnnounced.Add(windowIndex);
                 }
             }

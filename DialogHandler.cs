@@ -18,9 +18,7 @@ namespace DigimonNOAccess
         {
             _panel = Object.FindObjectOfType<uDialogBase>();
 
-            return _panel != null &&
-                   _panel.gameObject != null &&
-                   _panel.gameObject.activeInHierarchy;
+            return _panel != null && _panel.m_isOpend;
         }
 
         protected override void OnOpen()

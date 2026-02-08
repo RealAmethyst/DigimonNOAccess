@@ -31,10 +31,6 @@ namespace DigimonNOAccess
         // Digimon message panel tracking (partner messages)
         private uDigimonMessagePanel _digimonMessagePanel;
 
-        // Battle dialog tracking
-        private uBattlePanelDialog _battleDialog;
-        private bool _wasBattleDialogActive = false;
-        private string _lastBattleMessage = "";
 
         // Caption tracking (field hints/instructions)
         private uCaptionBase _captionPanel;
@@ -61,7 +57,7 @@ namespace DigimonNOAccess
         /// </summary>
         public bool IsOpen()
         {
-            return IsEventPanelOpen() || IsCommonWindowOpen() || IsDigimonPanelOpen() || IsBattleDialogOpen() || IsCaptionOpen();
+            return IsEventPanelOpen() || IsCommonWindowOpen() || IsDigimonPanelOpen() || IsCaptionOpen();
         }
 
         /// <summary>
@@ -80,7 +76,6 @@ namespace DigimonNOAccess
             // We still track panel state for status queries
             UpdateEventPanelState();
 
-            UpdateBattleDialog();
             UpdateCaption();
         }
 
@@ -284,79 +279,34 @@ namespace DigimonNOAccess
                     return false;
                 }
 
-                // Get the center message window (main field messages)
+                // Check each message window - only consider it open if m_isOpend is true
+                // (prevents reading stale label text from closed windows)
                 var centerWindow = msgMgr.GetCenter();
-                if (centerWindow != null)
+                if (IsWindowOpen(centerWindow))
                 {
-                    string text = "";
-                    try
-                    {
-                        if (centerWindow.m_label != null)
-                            text = centerWindow.m_label.text ?? "";
-                    }
-                    catch { }
-
-                    if (!string.IsNullOrEmpty(text) && !IsIgnoredText(text))
-                    {
-                        _commonMessageWindow = centerWindow;
-                        return true;
-                    }
+                    _commonMessageWindow = centerWindow;
+                    return true;
                 }
 
-                // Also check partner message windows (Get00, Get01)
                 var partner0 = msgMgr.Get00();
-                if (partner0 != null)
+                if (IsWindowOpen(partner0))
                 {
-                    string text = "";
-                    try
-                    {
-                        if (partner0.m_label != null)
-                            text = partner0.m_label.text ?? "";
-                    }
-                    catch { }
-
-                    if (!string.IsNullOrEmpty(text) && !IsIgnoredText(text))
-                    {
-                        _commonMessageWindow = partner0;
-                        return true;
-                    }
+                    _commonMessageWindow = partner0;
+                    return true;
                 }
 
                 var partner1 = msgMgr.Get01();
-                if (partner1 != null)
+                if (IsWindowOpen(partner1))
                 {
-                    string text = "";
-                    try
-                    {
-                        if (partner1.m_label != null)
-                            text = partner1.m_label.text ?? "";
-                    }
-                    catch { }
-
-                    if (!string.IsNullOrEmpty(text) && !IsIgnoredText(text))
-                    {
-                        _commonMessageWindow = partner1;
-                        return true;
-                    }
+                    _commonMessageWindow = partner1;
+                    return true;
                 }
 
-                // Also check RightUp window (recruitment notifications, etc.)
                 var rightUp = msgMgr.GetRightUp();
-                if (rightUp != null)
+                if (IsWindowOpen(rightUp))
                 {
-                    string text = "";
-                    try
-                    {
-                        if (rightUp.m_label != null)
-                            text = rightUp.m_label.text ?? "";
-                    }
-                    catch { }
-
-                    if (!string.IsNullOrEmpty(text) && !IsIgnoredText(text))
-                    {
-                        _commonMessageWindow = rightUp;
-                        return true;
-                    }
+                    _commonMessageWindow = rightUp;
+                    return true;
                 }
             }
             catch { }
@@ -431,122 +381,6 @@ namespace DigimonNOAccess
             catch (System.Exception ex)
             {
                 DebugLogger.Log($"[MessageWindow] Error in GetDigimonPanelText: {ex.Message}");
-            }
-
-            return "";
-        }
-
-        #endregion
-
-        #region uBattlePanelDialog (Battle Messages)
-
-        private bool IsBattleDialogOpen()
-        {
-            try
-            {
-                var dialogs = Object.FindObjectsOfType<uBattlePanelDialog>();
-                if (dialogs != null)
-                {
-                    foreach (var dialog in dialogs)
-                    {
-                        if (dialog != null && dialog.m_isOpend)
-                        {
-                            _battleDialog = dialog;
-                            return true;
-                        }
-                    }
-                }
-            }
-            catch { }
-
-            _battleDialog = null;
-            return false;
-        }
-
-        private void UpdateBattleDialog()
-        {
-            bool isActive = IsBattleDialogOpen();
-
-            if (isActive && !_wasBattleDialogActive)
-            {
-                OnBattleDialogOpen();
-            }
-            else if (!isActive && _wasBattleDialogActive)
-            {
-                OnBattleDialogClose();
-            }
-            else if (isActive)
-            {
-                CheckBattleDialogChange();
-            }
-
-            _wasBattleDialogActive = isActive;
-        }
-
-        private void OnBattleDialogOpen()
-        {
-            _lastBattleMessage = "";
-
-            if (_battleDialog == null)
-                return;
-
-            string message = GetBattleDialogText();
-            if (!string.IsNullOrEmpty(message) && !IsIgnoredText(message))
-            {
-                AnnounceMessage(message, "Battle");
-                _lastBattleMessage = message;
-            }
-        }
-
-        private void OnBattleDialogClose()
-        {
-            _battleDialog = null;
-            _lastBattleMessage = "";
-        }
-
-        private void CheckBattleDialogChange()
-        {
-            if (_battleDialog == null)
-                return;
-
-            string message = GetBattleDialogText();
-
-            // Skip ignored text
-            if (IsIgnoredText(message))
-                return;
-
-            if (!string.IsNullOrEmpty(message) && message != _lastBattleMessage)
-            {
-                AnnounceMessage(message, "Battle");
-                _lastBattleMessage = message;
-            }
-        }
-
-        private string GetBattleDialogText()
-        {
-            if (_battleDialog == null)
-                return "";
-
-            try
-            {
-                // Search all Text components in the battle dialog
-                var texts = _battleDialog.GetComponentsInChildren<Text>();
-                if (texts != null)
-                {
-                    foreach (var text in texts)
-                    {
-                        if (text != null && !string.IsNullOrEmpty(text.text))
-                        {
-                            string txt = CleanText(text.text);
-                            if (txt.Length > 5)
-                                return txt;
-                        }
-                    }
-                }
-            }
-            catch (System.Exception ex)
-            {
-                DebugLogger.Log($"[MessageWindow] Error in GetBattleDialogText: {ex.Message}");
             }
 
             return "";
@@ -734,6 +568,29 @@ namespace DigimonNOAccess
         #region Utility Methods
 
         /// <summary>
+        /// Check if a common message window is actually open and has displayable text.
+        /// Uses the game's m_isOpend flag to avoid reading stale label text from closed windows.
+        /// </summary>
+        private bool IsWindowOpen(uCommonMessageWindow window)
+        {
+            if (window == null || !window.m_isOpend)
+                return false;
+
+            try
+            {
+                if (window.m_label != null)
+                {
+                    string text = window.m_label.text ?? "";
+                    if (!string.IsNullOrEmpty(text) && !IsIgnoredText(text))
+                        return true;
+                }
+            }
+            catch { }
+
+            return false;
+        }
+
+        /// <summary>
         /// Check if text matches any ignored placeholder/system text patterns.
         /// </summary>
         private bool IsIgnoredText(string text)
@@ -793,10 +650,6 @@ namespace DigimonNOAccess
             else if (IsDigimonPanelOpen())
             {
                 announcement = GetDigimonPanelText();
-            }
-            else if (IsBattleDialogOpen())
-            {
-                announcement = GetBattleDialogText();
             }
             else if (IsCaptionOpen())
             {

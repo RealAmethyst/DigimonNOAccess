@@ -38,7 +38,7 @@ namespace DigimonNOAccess
 
             // Find the dialog
             var dialog = Object.FindObjectOfType<uBattlePanelDialog>();
-            if (dialog == null || !dialog.gameObject.activeInHierarchy)
+            if (dialog == null || !dialog.m_isOpend)
             {
                 if (_wasActive)
                 {
