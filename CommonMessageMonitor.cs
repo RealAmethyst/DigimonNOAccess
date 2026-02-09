@@ -6,9 +6,10 @@ using UnityEngine;
 namespace DigimonNOAccess
 {
     /// <summary>
-    /// Monitors uCommonMessageWindow instances for text changes and announces them.
-    /// This catches notifications like "Tentomon joined the city!" that don't go
-    /// through the normal SetMessage path with proper localization.
+    /// Monitors specific uCommonMessageWindow slots for text changes and announces them.
+    /// Uses AppMainScript.MessageManager to target only gameplay-relevant windows
+    /// (Center for notifications, partner windows for partner messages) and ignores
+    /// other windows (save panel, system messages) that shouldn't be announced.
     /// </summary>
     public class CommonMessageMonitor : IAccessibilityHandler
     {
@@ -33,6 +34,41 @@ namespace DigimonNOAccess
         // after returning to field from battles/events. Cleared only on map change.
         private string _lastAnnouncedText = "";
 
+        /// <summary>
+        /// Collect the specific message windows we want to monitor.
+        /// Uses CommonMessageWindowManager slots rather than FindObjectsOfType
+        /// to avoid picking up unrelated windows (save panel, system messages).
+        /// To monitor additional windows, add them here.
+        /// </summary>
+        private List<uCommonMessageWindow> GetMonitoredWindows()
+        {
+            var windows = new List<uCommonMessageWindow>();
+
+            try
+            {
+                var app = AppMainScript.m_instance;
+                if (app == null) return windows;
+
+                var manager = app.MessageManager;
+                if (manager == null) return windows;
+
+                // Center window: main gameplay notifications (item rewards, recruitment, etc.)
+                var center = manager.GetCenter();
+                if (center != null)
+                    windows.Add(center);
+
+                // Add more windows here if needed, e.g.:
+                // var partnerL = manager.Get01();
+                // if (partnerL != null) windows.Add(partnerL);
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[CommonMessageMonitor] Error getting managed windows: {ex.Message}");
+            }
+
+            return windows;
+        }
+
         public void Update()
         {
             try
@@ -45,18 +81,11 @@ namespace DigimonNOAccess
                 if (IsGameLoading())
                     return;
 
-                // Find ALL uCommonMessageWindow instances in the scene
-                var commonWindows = UnityEngine.Object.FindObjectsOfType<uCommonMessageWindow>();
-                if (commonWindows == null || commonWindows.Length == 0)
-                    return;
+                // Monitor only specific gameplay windows from the message manager
+                var windows = GetMonitoredWindows();
 
-                // Check each window
-                foreach (var window in commonWindows)
+                foreach (var window in windows)
                 {
-                    if (window == null)
-                        continue;
-
-                    // Use instance hash code as window identifier
                     int windowId = window.GetHashCode();
                     CheckWindowForNewText(window, windowId);
                 }

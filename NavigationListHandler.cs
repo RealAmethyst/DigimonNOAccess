@@ -30,6 +30,7 @@ namespace DigimonNOAccess
         {
             NPCs,
             Items,
+            Materials,
             Transitions,
             Enemies,
             Facilities
@@ -49,6 +50,7 @@ namespace DigimonNOAccess
         private static readonly EventCategory[] AllCategories = {
             EventCategory.NPCs,
             EventCategory.Items,
+            EventCategory.Materials,
             EventCategory.Transitions,
             EventCategory.Enemies,
             EventCategory.Facilities
@@ -81,6 +83,11 @@ namespace DigimonNOAccess
 
         // Track if list has been built for current area
         private bool _listBuilt = false;
+
+        // Track if async data has finished loading (items, NPCs, enemies load via coroutines)
+        private bool _itemsLoadComplete = false;
+        private bool _npcsLoadComplete = false;
+        private bool _enemiesLoadComplete = false;
 
         // Continuous rescan after map change (objects load asynchronously)
         private float _mapChangeTime = 0f;
@@ -200,6 +207,7 @@ namespace DigimonNOAccess
                     DebugLogger.Log($"[NavList] Rescan period ended. Final counts: " +
                         $"{_events[EventCategory.NPCs].Count} NPCs, " +
                         $"{_events[EventCategory.Items].Count} items, " +
+                        $"{_events[EventCategory.Materials].Count} materials, " +
                         $"{_events[EventCategory.Transitions].Count} transitions, " +
                         $"{_events[EventCategory.Enemies].Count} enemies, " +
                         $"{_events[EventCategory.Facilities].Count} facilities");
@@ -273,12 +281,16 @@ namespace DigimonNOAccess
                     _events.Clear();
                     _events[EventCategory.NPCs] = new List<NavigationEvent>();
                     _events[EventCategory.Items] = new List<NavigationEvent>();
+                    _events[EventCategory.Materials] = new List<NavigationEvent>();
                     _events[EventCategory.Transitions] = new List<NavigationEvent>();
                     _events[EventCategory.Enemies] = new List<NavigationEvent>();
                     _events[EventCategory.Facilities] = new List<NavigationEvent>();
                     _activeCategories.Clear();
                     _knownTargets.Clear();
                     _facilityNpcObjects.Clear();
+                    _itemsLoadComplete = false;
+                    _npcsLoadComplete = false;
+                    _enemiesLoadComplete = false;
 
                     DebugLogger.Log($"[NavList] Map changed to {mapNo}/{areaNo}, will rescan for {RescanDuration}s");
                 }
@@ -430,10 +442,23 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[NavList] Rescan Facilities error: {ex.Message}");
             }
 
-            // Scan for new NPCs (excluding facility NPCs)
+            // Scan for new NPCs (excluding facility NPCs) - only if NPC data has finished loading
+            if (!_npcsLoadComplete)
+            {
+                try
+                {
+                    var mgm = MainGameManager.m_instance;
+                    if (mgm != null && mgm._IsLoadEndNpcPlacementData())
+                    {
+                        _npcsLoadComplete = true;
+                        DebugLogger.Log("[NavList] NPC placement data load complete, scanning NPCs");
+                    }
+                }
+                catch { }
+            }
             try
             {
-                if (_npcManager != null && _npcManager.m_NpcCtrlArray != null)
+                if (_npcsLoadComplete && _npcManager != null && _npcManager.m_NpcCtrlArray != null)
                 {
                     foreach (var npc in _npcManager.m_NpcCtrlArray)
                     {
@@ -462,11 +487,24 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[NavList] Rescan NPCs error: {ex.Message}");
             }
 
-            // Scan for new items
+            // Scan for new items and materials (only if item data has finished loading)
+            if (!_itemsLoadComplete)
+            {
+                try
+                {
+                    var mgm = MainGameManager.m_instance;
+                    if (mgm != null && mgm._IsLoadEndItemPickPointData())
+                    {
+                        _itemsLoadComplete = true;
+                        DebugLogger.Log("[NavList] Item pick point data load complete, scanning items");
+                    }
+                }
+                catch { }
+            }
             try
             {
                 var itemManager = ItemPickPointManager.m_instance;
-                if (itemManager != null && itemManager.m_itemPickPoints != null)
+                if (_itemsLoadComplete && itemManager != null && itemManager.m_itemPickPoints != null)
                 {
                     foreach (var point in itemManager.m_itemPickPoints)
                     {
@@ -477,12 +515,13 @@ namespace DigimonNOAccess
                         if (_knownTargets.Contains(point.gameObject))
                             continue;
 
+                        var category = point.isMaterial ? EventCategory.Materials : EventCategory.Items;
                         string name = GetItemName(point);
                         float dist = Vector3.Distance(playerPos, point.transform.position);
-                        _events[EventCategory.Items].Add(new NavigationEvent
+                        _events[category].Add(new NavigationEvent
                         {
                             Name = name, Position = point.transform.position,
-                            Target = point.gameObject, Category = EventCategory.Items,
+                            Target = point.gameObject, Category = category,
                             DistanceToPlayer = dist
                         });
                         _knownTargets.Add(point.gameObject);
@@ -525,10 +564,23 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[NavList] Rescan Transitions error: {ex.Message}");
             }
 
-            // Scan for new enemies
+            // Scan for new enemies - only if enemy data has finished loading
+            if (!_enemiesLoadComplete)
+            {
+                try
+                {
+                    var mgm = MainGameManager.m_instance;
+                    if (mgm != null && mgm._IsLoadEndEnemyPlacementData())
+                    {
+                        _enemiesLoadComplete = true;
+                        DebugLogger.Log("[NavList] Enemy placement data load complete, scanning enemies");
+                    }
+                }
+                catch { }
+            }
             try
             {
-                if (_enemyManager != null && _enemyManager.m_EnemyCtrlArray != null)
+                if (_enemiesLoadComplete && _enemyManager != null && _enemyManager.m_EnemyCtrlArray != null)
                 {
                     foreach (var enemy in _enemyManager.m_EnemyCtrlArray)
                     {
@@ -569,9 +621,9 @@ namespace DigimonNOAccess
                             // Note: can't remove null from HashSet, but that's fine
                             return true;
                         }
-                        // Picked-up items: enableItemPickPoint becomes false after pickup.
+                        // Picked-up items/materials: enableItemPickPoint becomes false after pickup.
                         // Don't check activeInHierarchy - game deactivates distant items for performance.
-                        if (e.Category == EventCategory.Items)
+                        if (e.Category == EventCategory.Items || e.Category == EventCategory.Materials)
                         {
                             var pickPoint = e.Target.GetComponent<ItemPickPointBase>();
                             if (pickPoint != null && !pickPoint.enableItemPickPoint)
@@ -595,6 +647,7 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[NavList] Rescan found {newCount} new objects. Totals: " +
                     $"{_events[EventCategory.NPCs].Count} NPCs, " +
                     $"{_events[EventCategory.Items].Count} items, " +
+                    $"{_events[EventCategory.Materials].Count} materials, " +
                     $"{_events[EventCategory.Transitions].Count} transitions, " +
                     $"{_events[EventCategory.Enemies].Count} enemies, " +
                     $"{_events[EventCategory.Facilities].Count} facilities");
@@ -609,6 +662,7 @@ namespace DigimonNOAccess
             _events.Clear();
             _events[EventCategory.NPCs] = new List<NavigationEvent>();
             _events[EventCategory.Items] = new List<NavigationEvent>();
+            _events[EventCategory.Materials] = new List<NavigationEvent>();
             _events[EventCategory.Transitions] = new List<NavigationEvent>();
             _events[EventCategory.Enemies] = new List<NavigationEvent>();
             _events[EventCategory.Facilities] = new List<NavigationEvent>();
@@ -619,10 +673,56 @@ namespace DigimonNOAccess
 
             // Scan facilities BEFORE NPCs so facility NPCs are excluded from the NPC list
             ScanFacilities(playerPos);
-            ScanNPCs(playerPos);
-            ScanItems(playerPos);
+
+            // NPCs load asynchronously via coroutines - only scan once the game confirms loading is done
+            if (!_npcsLoadComplete)
+            {
+                try
+                {
+                    var mgm = MainGameManager.m_instance;
+                    if (mgm != null && mgm._IsLoadEndNpcPlacementData())
+                        _npcsLoadComplete = true;
+                }
+                catch { }
+            }
+            if (_npcsLoadComplete)
+                ScanNPCs(playerPos);
+            else
+                DebugLogger.Log("[NavList] NPC placement data not yet loaded, skipping NPC scan");
+
+            // Items load asynchronously via coroutines - only scan once the game confirms loading is done
+            if (!_itemsLoadComplete)
+            {
+                try
+                {
+                    var mgm = MainGameManager.m_instance;
+                    if (mgm != null && mgm._IsLoadEndItemPickPointData())
+                        _itemsLoadComplete = true;
+                }
+                catch { }
+            }
+            if (_itemsLoadComplete)
+                ScanItems(playerPos);
+            else
+                DebugLogger.Log("[NavList] Item pick point data not yet loaded, skipping item scan");
+
             ScanTransitions(playerPos);
-            ScanEnemies(playerPos);
+
+            // Enemies load asynchronously via coroutines - only scan once the game confirms loading is done
+            if (!_enemiesLoadComplete)
+            {
+                try
+                {
+                    var mgm = MainGameManager.m_instance;
+                    if (mgm != null && mgm._IsLoadEndEnemyPlacementData())
+                        _enemiesLoadComplete = true;
+                }
+                catch { }
+            }
+            if (_enemiesLoadComplete)
+                ScanEnemies(playerPos);
+            else
+                DebugLogger.Log("[NavList] Enemy placement data not yet loaded, skipping enemy scan");
 
             // Sort each category by distance
             foreach (var kvp in _events)
@@ -644,6 +744,7 @@ namespace DigimonNOAccess
 
             DebugLogger.Log($"[NavList] Built lists: {_events[EventCategory.NPCs].Count} NPCs, " +
                 $"{_events[EventCategory.Items].Count} items, " +
+                $"{_events[EventCategory.Materials].Count} materials, " +
                 $"{_events[EventCategory.Transitions].Count} transitions, " +
                 $"{_events[EventCategory.Enemies].Count} enemies, " +
                 $"{_events[EventCategory.Facilities].Count} facilities");
@@ -658,57 +759,83 @@ namespace DigimonNOAccess
 
             Vector3 playerPos = _playerCtrl.transform.position;
 
-            // Refresh items - remove picked up, add newly loaded.
+            // Refresh items and materials - remove picked up, add newly loaded.
             // Items load via coroutines so some may appear after the initial scan.
-            var items = _events.ContainsKey(EventCategory.Items) ? _events[EventCategory.Items] : null;
-            if (items != null)
+            Func<NavigationEvent, bool> removePickedUp = e =>
             {
-                items.RemoveAll(e =>
+                if (e.Target == null)
+                    return true;
+                try
                 {
-                    if (e.Target == null)
+                    var pickPoint = e.Target.GetComponent<ItemPickPointBase>();
+                    if (pickPoint != null && !pickPoint.enableItemPickPoint)
                         return true;
-                    try
-                    {
-                        var pickPoint = e.Target.GetComponent<ItemPickPointBase>();
-                        if (pickPoint != null && !pickPoint.enableItemPickPoint)
-                            return true;
-                    }
-                    catch { }
-                    return false;
-                });
+                }
+                catch { }
+                return false;
+            };
 
-                // Check for new items that may have loaded since the last scan
-                var itemManager = ItemPickPointManager.m_instance;
-                if (itemManager != null && itemManager.m_itemPickPoints != null)
+            var items = _events.ContainsKey(EventCategory.Items) ? _events[EventCategory.Items] : null;
+            var materials = _events.ContainsKey(EventCategory.Materials) ? _events[EventCategory.Materials] : null;
+            items?.RemoveAll(e => removePickedUp(e));
+            materials?.RemoveAll(e => removePickedUp(e));
+
+            // Check for new items/materials that may have loaded since the last scan
+            if (!_itemsLoadComplete)
+            {
+                try
                 {
-                    var existingTargets = new HashSet<GameObject>();
-                    foreach (var e in items)
-                        if (e.Target != null) existingTargets.Add(e.Target);
-
-                    foreach (var point in itemManager.m_itemPickPoints)
+                    var mgm = MainGameManager.m_instance;
+                    if (mgm != null && mgm._IsLoadEndItemPickPointData())
                     {
-                        if (point == null || point.gameObject == null)
-                            continue;
-                        if (!point.enableItemPickPoint)
-                            continue;
-                        if (existingTargets.Contains(point.gameObject))
-                            continue;
-
-                        string name = GetItemName(point);
-                        float dist = Vector3.Distance(playerPos, point.transform.position);
-                        items.Add(new NavigationEvent
-                        {
-                            Name = name,
-                            Position = point.transform.position,
-                            Target = point.gameObject,
-                            Category = EventCategory.Items,
-                            DistanceToPlayer = dist
-                        });
+                        _itemsLoadComplete = true;
+                        DebugLogger.Log("[NavList] Item pick point data load complete during refresh");
                     }
                 }
+                catch { }
+            }
+            var itemManager = ItemPickPointManager.m_instance;
+            if (_itemsLoadComplete && itemManager != null && itemManager.m_itemPickPoints != null)
+            {
+                var existingTargets = new HashSet<GameObject>();
+                if (items != null)
+                    foreach (var e in items)
+                        if (e.Target != null) existingTargets.Add(e.Target);
+                if (materials != null)
+                    foreach (var e in materials)
+                        if (e.Target != null) existingTargets.Add(e.Target);
 
-                // Update distances (only for active objects, keep cached position for inactive)
-                foreach (var e in items)
+                foreach (var point in itemManager.m_itemPickPoints)
+                {
+                    if (point == null || point.gameObject == null)
+                        continue;
+                    if (!point.enableItemPickPoint)
+                        continue;
+                    if (existingTargets.Contains(point.gameObject))
+                        continue;
+
+                    var category = point.isMaterial ? EventCategory.Materials : EventCategory.Items;
+                    var targetList = point.isMaterial ? materials : items;
+                    if (targetList == null) continue;
+
+                    string name = GetItemName(point);
+                    float dist = Vector3.Distance(playerPos, point.transform.position);
+                    targetList.Add(new NavigationEvent
+                    {
+                        Name = name,
+                        Position = point.transform.position,
+                        Target = point.gameObject,
+                        Category = category,
+                        DistanceToPlayer = dist
+                    });
+                }
+            }
+
+            // Update distances (only for active objects, keep cached position for inactive)
+            Action<List<NavigationEvent>> updateDistances = list =>
+            {
+                if (list == null) return;
+                foreach (var e in list)
                 {
                     if (e.Target != null && e.Target.activeInHierarchy)
                     {
@@ -716,7 +843,9 @@ namespace DigimonNOAccess
                         e.DistanceToPlayer = Vector3.Distance(playerPos, e.Position);
                     }
                 }
-            }
+            };
+            updateDistances(items);
+            updateDistances(materials);
 
             // Refresh enemies - only remove if destroyed (null).
             // Don't remove inactive: the game deactivates distant objects for performance.
@@ -726,8 +855,21 @@ namespace DigimonNOAccess
                 int beforeCount = enemies.Count;
                 enemies.RemoveAll(e => e.Target == null);
 
-                // Check for new enemies that may have spawned
-                if (_enemyManager != null && _enemyManager.m_EnemyCtrlArray != null)
+                // Check for new enemies that may have spawned (only if enemy data loaded)
+                if (!_enemiesLoadComplete)
+                {
+                    try
+                    {
+                        var mgm = MainGameManager.m_instance;
+                        if (mgm != null && mgm._IsLoadEndEnemyPlacementData())
+                        {
+                            _enemiesLoadComplete = true;
+                            DebugLogger.Log("[NavList] Enemy placement data load complete during refresh");
+                        }
+                    }
+                    catch { }
+                }
+                if (_enemiesLoadComplete && _enemyManager != null && _enemyManager.m_EnemyCtrlArray != null)
                 {
                     var existingTargets = new HashSet<GameObject>();
                     foreach (var e in enemies)
@@ -928,20 +1070,21 @@ namespace DigimonNOAccess
                     if (!point.enableItemPickPoint)
                         continue;
 
+                    var category = point.isMaterial ? EventCategory.Materials : EventCategory.Items;
                     string name = GetItemName(point);
                     float dist = Vector3.Distance(playerPos, point.transform.position);
 
-                    _events[EventCategory.Items].Add(new NavigationEvent
+                    _events[category].Add(new NavigationEvent
                     {
                         Name = name,
                         Position = point.transform.position,
                         Target = point.gameObject,
-                        Category = EventCategory.Items,
+                        Category = category,
                         DistanceToPlayer = dist
                     });
                 }
 
-                DebugLogger.Log($"[NavList] ScanItems complete: {_events[EventCategory.Items].Count} items found");
+                DebugLogger.Log($"[NavList] ScanItems complete: {_events[EventCategory.Items].Count} items, {_events[EventCategory.Materials].Count} materials found");
             }
             catch (Exception ex)
             {
@@ -1240,6 +1383,55 @@ namespace DigimonNOAccess
                 }
                 catch { }
 
+                // Fallback: use NpcCtrl.unitParamId to look up the Digimon name directly.
+                // Some town NPCs (e.g. "C007" = Palmon) use IDs that don't match any model name
+                // in ParameterDigimonData, but their unitParamId maps to the correct Digimon entry.
+                try
+                {
+                    uint unitParamId = npc.unitParamId;
+                    if (unitParamId != 0)
+                    {
+                        var paramData = ParameterDigimonData.GetParam(unitParamId);
+                        if (paramData != null)
+                        {
+                            string name = paramData.GetDefaultName();
+                            if (!string.IsNullOrEmpty(name) && !name.Contains("ランゲージ"))
+                                return name;
+                        }
+                    }
+                }
+                catch { }
+
+                // Fallback: try _GetNpcObjectName which may return the display name
+                try
+                {
+                    if (npc._GetNpcObjectName(out string objName) && !string.IsNullOrEmpty(objName))
+                    {
+                        // Try to resolve the object name as a model name
+                        uint digimonId2 = ParameterDigimonData.FindBaseIdToModelName(objName);
+                        if (digimonId2 != 0)
+                        {
+                            var paramData = ParameterDigimonData.GetParam(digimonId2);
+                            if (paramData != null)
+                            {
+                                string name = paramData.GetDefaultName();
+                                if (!string.IsNullOrEmpty(name) && !name.Contains("ランゲージ"))
+                                    return name;
+                            }
+                        }
+                    }
+                }
+                catch { }
+
+                // Fallback: try gameObject.name
+                try
+                {
+                    string goName = npc.gameObject.name;
+                    if (!string.IsNullOrEmpty(goName) && goName != npcId)
+                        return goName;
+                }
+                catch { }
+
                 return npcId;
             }
 
@@ -1259,12 +1451,7 @@ namespace DigimonNOAccess
                     {
                         string name = itemData.GetName();
                         if (!string.IsNullOrEmpty(name))
-                        {
-                            // Indicate if it's a material
-                            if (point.isMaterial)
-                                return $"{name} (Material)";
                             return name;
-                        }
                     }
                 }
             }
@@ -2401,6 +2588,7 @@ namespace DigimonNOAccess
             {
                 case EventCategory.NPCs: return "NPCs";
                 case EventCategory.Items: return "Items";
+                case EventCategory.Materials: return "Materials";
                 case EventCategory.Transitions: return "Transitions";
                 case EventCategory.Enemies: return "Enemies";
                 case EventCategory.Facilities: return "Facilities";

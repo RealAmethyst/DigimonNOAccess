@@ -352,9 +352,10 @@ namespace DigimonNOAccess
                     rewardParts.Add($"{bit} Bits");
                 }
 
-                // Items
+                // Items - use m_getItemList for actual received quantities
+                // (m_itemNumText shows total inventory count, not amount received)
                 var itemTexts = getPanel.m_itemText;
-                var itemNums = getPanel.m_itemNumText;
+                var getItemList = getPanel.m_getItemList;
                 if (itemTexts != null)
                 {
                     for (int i = 0; i < itemTexts.Length && i < 5; i++)
@@ -362,15 +363,19 @@ namespace DigimonNOAccess
                         string itemName = itemTexts[i]?.text;
                         if (!string.IsNullOrWhiteSpace(itemName))
                         {
-                            string itemNum = itemNums != null && i < itemNums.Length ? itemNums[i]?.text : "";
-                            if (!string.IsNullOrWhiteSpace(itemNum) && itemNum != "1")
+                            itemName = TextUtilities.StripRichTextTags(itemName);
+                            int qty = 1;
+                            try
                             {
-                                rewardParts.Add($"{itemName} x{itemNum}");
+                                if (getItemList != null && i < getItemList.Count)
+                                    qty = getItemList[i].m_num;
                             }
+                            catch { }
+
+                            if (qty > 1)
+                                rewardParts.Add($"{qty} {itemName}");
                             else
-                            {
                                 rewardParts.Add(itemName);
-                            }
                         }
                     }
                 }

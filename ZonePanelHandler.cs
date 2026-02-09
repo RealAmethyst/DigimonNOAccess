@@ -79,6 +79,12 @@ namespace DigimonNOAccess
                 // Check if text changed and is valid
                 if (!string.IsNullOrWhiteSpace(currentText) && currentText != _lastSeenText)
                 {
+                    // Only announce when player is in field control so we don't
+                    // cut off other messages (e.g. storage transfer notifications).
+                    // Don't update _lastSeenText yet so we retry next frame.
+                    if (!GameStateService.IsPlayerInField())
+                        return;
+
                     _lastSeenText = currentText;
 
                     // Only announce if different from last announced zone
