@@ -205,7 +205,14 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[SetMessage] {str}");
                 string cleaned = StripRichTextTags(str);
                 cleaned = TextUtilities.FormatItemMessage(cleaned);
-                ScreenReader.Say(cleaned);
+
+                // Partner01 (second partner) messages queue after Partner00 (first partner)
+                // so both are heard (e.g. sleep stat recovery for each partner)
+                if (window_pos == uCommonMessageWindow.Pos.Partner01)
+                    ScreenReader.SayQueued(cleaned);
+                else
+                    ScreenReader.Say(cleaned);
+
                 OnCommonMessageIntercepted?.Invoke(str);
             }
             catch (System.Exception ex)
@@ -214,7 +221,7 @@ namespace DigimonNOAccess
             }
         }
 
-        private static void SetItemMessagePostfix(uCommonMessageWindow __instance)
+        private static void SetItemMessagePostfix(uCommonMessageWindow __instance, uCommonMessageWindow.Pos pos)
         {
             try
             {
@@ -233,17 +240,10 @@ namespace DigimonNOAccess
                 if (IsPlaceholderText(text))
                     return;
 
-                // Track this message in the recent list
                 var now = DateTime.Now;
-                // Clear old messages if too much time has passed
+                // Clear old messages for dedup tracking (used by WasRecentlyAnnounced)
                 if ((now - _recentItemMessagesTime).TotalMilliseconds > 2000)
-                {
                     _recentItemMessages.Clear();
-                }
-
-                // First message in a sequence uses Say (interrupts), subsequent use SayQueued (queues)
-                bool isFirstInSequence = _recentItemMessages.Count == 0;
-
                 _recentItemMessages.Add(StripRichTextTags(text).Trim());
                 _recentItemMessagesTime = now;
                 _lastItemMessageTime = now;
@@ -254,10 +254,13 @@ namespace DigimonNOAccess
 
                 string cleanText = StripRichTextTags(text);
                 DebugLogger.Log($"[SetItemMessage] {text}");
-                if (isFirstInSequence)
-                    ScreenReader.Say(cleanText);
-                else
+
+                // Partner01 (second partner) messages queue after Partner00 (first partner)
+                // so both are heard (e.g. using items on both partners)
+                if (pos == uCommonMessageWindow.Pos.Partner01)
                     ScreenReader.SayQueued(cleanText);
+                else
+                    ScreenReader.Say(cleanText);
             }
             catch (System.Exception ex)
             {

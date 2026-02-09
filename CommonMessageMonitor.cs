@@ -7,9 +7,9 @@ namespace DigimonNOAccess
 {
     /// <summary>
     /// Monitors specific uCommonMessageWindow slots for text changes and announces them.
-    /// Uses AppMainScript.MessageManager to target only gameplay-relevant windows
-    /// (Center for notifications, partner windows for partner messages) and ignores
-    /// other windows (save panel, system messages) that shouldn't be announced.
+    /// Uses AppMainScript.MessageManager.GetCenter() for general gameplay notifications
+    /// and TalkMain.m_common_message_window for NPC conversation messages (item rewards, etc.).
+    /// Avoids FindObjectsOfType to prevent picking up unrelated windows (save panel, system messages).
     /// </summary>
     public class CommonMessageMonitor : IAccessibilityHandler
     {
@@ -34,40 +34,8 @@ namespace DigimonNOAccess
         // after returning to field from battles/events. Cleared only on map change.
         private string _lastAnnouncedText = "";
 
-        /// <summary>
-        /// Collect the specific message windows we want to monitor.
-        /// Uses CommonMessageWindowManager slots rather than FindObjectsOfType
-        /// to avoid picking up unrelated windows (save panel, system messages).
-        /// To monitor additional windows, add them here.
-        /// </summary>
-        private List<uCommonMessageWindow> GetMonitoredWindows()
-        {
-            var windows = new List<uCommonMessageWindow>();
-
-            try
-            {
-                var app = AppMainScript.m_instance;
-                if (app == null) return windows;
-
-                var manager = app.MessageManager;
-                if (manager == null) return windows;
-
-                // Center window: main gameplay notifications (item rewards, recruitment, etc.)
-                var center = manager.GetCenter();
-                if (center != null)
-                    windows.Add(center);
-
-                // Add more windows here if needed, e.g.:
-                // var partnerL = manager.Get01();
-                // if (partnerL != null) windows.Add(partnerL);
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Log($"[CommonMessageMonitor] Error getting managed windows: {ex.Message}");
-            }
-
-            return windows;
-        }
+        // Dedicated window ID for TalkMain's message window (avoids collision with managed windows)
+        private const int TalkMainWindowId = -1000;
 
         public void Update()
         {
@@ -81,19 +49,67 @@ namespace DigimonNOAccess
                 if (IsGameLoading())
                     return;
 
-                // Monitor only specific gameplay windows from the message manager
-                var windows = GetMonitoredWindows();
-
-                foreach (var window in windows)
+                // Monitor the center gameplay window from the message manager
+                try
                 {
-                    int windowId = window.GetHashCode();
-                    CheckWindowForNewText(window, windowId);
+                    var app = AppMainScript.m_instance;
+                    if (app != null)
+                    {
+                        var manager = app.MessageManager;
+                        if (manager != null)
+                        {
+                            var center = manager.GetCenter();
+                            if (center != null)
+                                CheckWindowForNewText(center, center.GetHashCode());
+                        }
+                    }
                 }
+                catch { }
+
+                // Monitor TalkMain's message window for NPC conversation messages
+                // (item notifications, recruitment, etc. that use a non-center window)
+                CheckTalkMainWindow();
             }
             catch (System.Exception ex)
             {
                 DebugLogger.Log($"[CommonMessageMonitor] Error in Update: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Check TalkMain's m_common_message_window for NPC conversation messages.
+        /// This catches item notifications during NPC talks (e.g. Koromon giving items)
+        /// without picking up save system or other unrelated windows.
+        /// </summary>
+        private void CheckTalkMainWindow()
+        {
+            try
+            {
+                var talkMains = UnityEngine.Object.FindObjectsOfType<TalkMain>();
+                if (talkMains == null) return;
+
+                bool foundActiveWindow = false;
+                foreach (var talk in talkMains)
+                {
+                    if (talk == null) continue;
+
+                    var window = talk.m_common_message_window;
+                    if (window == null) continue;
+
+                    // Use a dedicated ID so it doesn't collide with managed window tracking
+                    CheckWindowForNewText(window, TalkMainWindowId);
+                    foundActiveWindow = true;
+                    break;
+                }
+
+                // If no TalkMain window found, clear its tracking
+                if (!foundActiveWindow)
+                {
+                    _lastTextPerWindow.Remove(TalkMainWindowId);
+                    _windowHasAnnounced.Remove(TalkMainWindowId);
+                }
+            }
+            catch { }
         }
 
         private void CheckWindowForNewText(uCommonMessageWindow window, int windowIndex)
@@ -192,6 +208,7 @@ namespace DigimonNOAccess
             "prohibited",
             "\u00a9",           // © copyright symbol
             "BANDAI NAMCO",
+            "Saving system save data",
         };
 
         private bool ShouldSkipText(string text)
