@@ -250,38 +250,105 @@ namespace DigimonNOAccess
 
             var parts = new System.Collections.Generic.List<string>();
 
-            // HP
+            // Basic info section (top of screen)
+            string growthStage = status.m_Growth_Stage?.text;
+            if (!string.IsNullOrEmpty(growthStage))
+                parts.Add(TextUtilities.StripRichTextTags(growthStage));
+
+            string age = status.m_Age?.text;
+            if (!string.IsNullOrEmpty(age))
+                parts.Add($"Age {age}");
+
+            string weight = status.m_Weight?.text;
+            if (!string.IsNullOrEmpty(weight))
+                parts.Add($"Weight {weight}");
+
+            string nature = status.m_Nature?.text;
+            if (!string.IsNullOrEmpty(nature))
+                parts.Add($"Nature {TextUtilities.StripRichTextTags(nature)}");
+
+            string property = status.m_Property?.text;
+            if (!string.IsNullOrEmpty(property))
+                parts.Add($"Attribute {TextUtilities.StripRichTextTags(property)}");
+
+            string activeTime = status.m_ActiveTime?.text;
+            if (!string.IsNullOrEmpty(activeTime))
+                parts.Add($"Active {activeTime}");
+
+            string personality = status.m_Personality?.text;
+            if (!string.IsNullOrEmpty(personality))
+                parts.Add($"Personality {TextUtilities.StripRichTextTags(personality)}");
+
+            // HP/MP
             string hpCurrent = status.m_HPCurrent?.text;
             string hpMax = status.m_HPMax?.text;
             if (!string.IsNullOrEmpty(hpCurrent) && !string.IsNullOrEmpty(hpMax))
-            {
                 parts.Add($"HP {hpCurrent} of {hpMax}");
-            }
 
-            // MP
             string mpCurrent = status.m_MPCurrent?.text;
             string mpMax = status.m_MPMax?.text;
             if (!string.IsNullOrEmpty(mpCurrent) && !string.IsNullOrEmpty(mpMax))
-            {
                 parts.Add($"MP {mpCurrent} of {mpMax}");
-            }
 
-            // Stats
-            string attack = status.m_Attack?.text;
-            string defense = status.m_Defense?.text;
-            string speed = status.m_Speed?.text;
-            string wisdom = status.m_Wisdom?.text;
+            // Stats - m_Attack is STR (Strength), m_Defense is STA (Stamina)
+            string str = status.m_Attack?.text;
+            string sta = status.m_Defense?.text;
+            string spd = status.m_Speed?.text;
+            string wis = status.m_Wisdom?.text;
 
-            if (!string.IsNullOrEmpty(attack))
-                parts.Add($"ATK {attack}");
-            if (!string.IsNullOrEmpty(defense))
-                parts.Add($"DEF {defense}");
-            if (!string.IsNullOrEmpty(speed))
-                parts.Add($"SPD {speed}");
-            if (!string.IsNullOrEmpty(wisdom))
-                parts.Add($"WIS {wisdom}");
+            if (!string.IsNullOrEmpty(str))
+                parts.Add($"STR {str}");
+            if (!string.IsNullOrEmpty(sta))
+                parts.Add($"STA {sta}");
+            if (!string.IsNullOrEmpty(wis))
+                parts.Add($"WIS {wis}");
+            if (!string.IsNullOrEmpty(spd))
+                parts.Add($"SPD {spd}");
+
+            // Care meters (bar section at bottom)
+            string moodText = status.m_Mood?.text;
+            if (!string.IsNullOrEmpty(moodText))
+                parts.Add($"Happiness {moodText}");
+            else
+                AddSliderPercentage(parts, "Happiness", status.m_MoodPlus);
+
+            string disciplineText = status.m_Upbringing?.text;
+            if (!string.IsNullOrEmpty(disciplineText))
+                parts.Add($"Discipline {disciplineText}");
+            else
+                AddSliderPercentage(parts, "Discipline", status.m_UpbringingPlus);
+
+            string curseText = status.m_Curse?.text;
+            if (!string.IsNullOrEmpty(curseText))
+                parts.Add($"Curse {curseText}");
+            else
+                AddSliderPercentage(parts, "Curse", status.m_CurseSlider);
+
+            string tirednessText = status.m_Tiredness?.text;
+            if (!string.IsNullOrEmpty(tirednessText))
+                parts.Add($"Tiredness {tirednessText}");
+            else
+                AddSliderPercentage(parts, "Tiredness", status.m_TirednessSlider);
 
             return parts.Count > 0 ? string.Join(", ", parts) : null;
+        }
+
+        private void AddSliderPercentage(System.Collections.Generic.List<string> parts, string label, UnityEngine.UI.Slider slider)
+        {
+            try
+            {
+                if (slider != null)
+                {
+                    float val = slider.value;
+                    float max = slider.maxValue;
+                    if (max > 0)
+                    {
+                        int pct = (int)((val / max) * 100f);
+                        parts.Add($"{label} {pct}%");
+                    }
+                }
+            }
+            catch { }
         }
 
         private string GetAttackContent()
