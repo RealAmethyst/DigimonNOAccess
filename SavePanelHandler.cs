@@ -188,10 +188,6 @@ namespace DigimonNOAccess
                 if (TextUtilities.IsPlaceholderText(text))
                     return;
 
-                // Only announce if SetMessage patch didn't already catch it
-                if (DialogTextPatch.WasRecentlyAnnounced(text))
-                    return;
-
                 string cleaned = TextUtilities.CleanText(text);
                 if (!string.IsNullOrEmpty(cleaned))
                 {

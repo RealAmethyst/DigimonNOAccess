@@ -14,7 +14,11 @@ namespace DigimonNOAccess
     /// We patch:
     /// - EventWindowPanel.TextShrink(string text) - story dialog text
     /// - TalkMain.PlayVoiceText - to detect voiced dialog and skip TTS
-    /// - uCommonMessageWindow.SetMessage - field notifications (recruitment, etc.)
+    /// - uCommonMessageWindow.SetMessage - field notifications (direct text)
+    /// - uCommonMessageWindow.SetLangMessage - field notifications (localization key)
+    /// - uCommonMessageWindow.SetItemMessage - item use/pickup messages
+    /// - TalkMain.CommonMessageWindow - NPC talk script message popups (item rewards, etc.)
+    /// - TalkMain.ItemWindow - NPC talk script item display popups
     /// - uDigimonMessagePanel.StartMessage - Digimon-specific field messages
     /// - uFieldPanel.StartDigimonMessage - static method for field Digimon messages
     /// </summary>
@@ -48,20 +52,13 @@ namespace DigimonNOAccess
         // Toggle: When true, read ALL text including voiced dialog (for non-English voice users)
         public static bool AlwaysReadText { get; set; } = false;
 
-        // Event for common message window notifications
-        public static event Action<string> OnCommonMessageIntercepted;
-
-        // Track last messages to avoid duplicates
+        // Track last messages to avoid duplicates (back-to-back identical calls)
         private static string _lastCommonMessage = "";
         private static DateTime _lastCommonMessageTime = DateTime.MinValue;
         private static string _lastDigimonMessage = "";
         private static DateTime _lastDigimonMessageTime = DateTime.MinValue;
         private static string _lastFieldDigimonMessage = "";
         private static DateTime _lastFieldDigimonMessageTime = DateTime.MinValue;
-        private static DateTime _lastItemMessageTime = DateTime.MinValue; // Track when ANY item message was announced
-        // Track multiple recent item messages to avoid double announcements
-        private static List<string> _recentItemMessages = new List<string>();
-        private static DateTime _recentItemMessagesTime = DateTime.MinValue;
 
 
         /// <summary>
@@ -102,12 +99,48 @@ namespace DigimonNOAccess
                     harmony.Patch(setMessageMethod, prefix: new HarmonyMethod(AccessTools.Method(typeof(DialogTextPatch), nameof(SetMessagePrefix))));
                 }
 
+                // Patch uCommonMessageWindow.SetLangMessage (postfix to read resolved text)
+                var setLangMessageMethod = AccessTools.Method(typeof(uCommonMessageWindow), "SetLangMessage",
+                    new Type[] { typeof(string), typeof(uCommonMessageWindow.Pos) });
+                if (setLangMessageMethod != null)
+                {
+                    harmony.Patch(setLangMessageMethod, postfix: new HarmonyMethod(AccessTools.Method(typeof(DialogTextPatch), nameof(SetLangMessagePostfix))));
+                }
+
                 // Patch uCommonMessageWindow.SetItemMessage (postfix to read built message)
                 var setItemMessageMethod = AccessTools.Method(typeof(uCommonMessageWindow), "SetItemMessage",
                     new Type[] { typeof(ItemData), typeof(uCommonMessageWindow.Pos), typeof(bool), typeof(bool), typeof(bool), typeof(bool), typeof(bool) });
                 if (setItemMessageMethod != null)
                 {
                     harmony.Patch(setItemMessageMethod, postfix: new HarmonyMethod(AccessTools.Method(typeof(DialogTextPatch), nameof(SetItemMessagePostfix))));
+                }
+
+                // Patch TalkMain.CommonMessageWindow - NPC talk script command that shows
+                // popup messages during NPC conversations (item rewards, notifications, etc.)
+                var talkCommonMsgMethod = AccessTools.Method(typeof(TalkMain), "CommonMessageWindow",
+                    new Type[] { typeof(string), typeof(string), typeof(string), typeof(string), typeof(string), typeof(string) });
+                if (talkCommonMsgMethod != null)
+                {
+                    harmony.Patch(talkCommonMsgMethod, prefix: new HarmonyMethod(AccessTools.Method(typeof(DialogTextPatch), nameof(TalkCommonMessageWindowPrefix))));
+                    DebugLogger.Log("[DialogTextPatch] Patched TalkMain.CommonMessageWindow");
+                }
+                else
+                {
+                    DebugLogger.Warning("[DialogTextPatch] Could not find TalkMain.CommonMessageWindow");
+                }
+
+                // Patch TalkMain.ItemWindow - NPC talk script command that shows
+                // item popup windows during NPC conversations
+                var talkItemWindowMethod = AccessTools.Method(typeof(TalkMain), "ItemWindow",
+                    new Type[] { typeof(string), typeof(string), typeof(string), typeof(string), typeof(string), typeof(string) });
+                if (talkItemWindowMethod != null)
+                {
+                    harmony.Patch(talkItemWindowMethod, prefix: new HarmonyMethod(AccessTools.Method(typeof(DialogTextPatch), nameof(TalkItemWindowPrefix))));
+                    DebugLogger.Log("[DialogTextPatch] Patched TalkMain.ItemWindow");
+                }
+                else
+                {
+                    DebugLogger.Warning("[DialogTextPatch] Could not find TalkMain.ItemWindow");
                 }
 
                 // Patch uDigimonMessagePanel.StartMessage
@@ -195,7 +228,7 @@ namespace DigimonNOAccess
                 _lastCommonMessage = str;
                 _lastCommonMessageTime = DateTime.Now;
 
-                // Skip "Language not found" error - the real text will be caught by CommonMessageMonitor
+                // Skip "Language not found" error - SetLangMessage postfix will catch the resolved text
                 if (str.Contains("ランゲージが見つかりません"))
                     return;
 
@@ -214,12 +247,52 @@ namespace DigimonNOAccess
                     ScreenReader.SayQueued(cleaned);
                 else
                     ScreenReader.Say(cleaned);
-
-                OnCommonMessageIntercepted?.Invoke(str);
             }
             catch (System.Exception ex)
             {
                 DebugLogger.Log($"[DialogTextPatch] Error in SetMessagePrefix: {ex.Message}");
+            }
+        }
+
+        private static void SetLangMessagePostfix(uCommonMessageWindow __instance, string lang_code, uCommonMessageWindow.Pos window_pos)
+        {
+            try
+            {
+                // Skip during game loading
+                if (IsGameLoading())
+                    return;
+
+                // Read the label text that was resolved from the lang code
+                if (__instance == null || __instance.m_label == null)
+                    return;
+
+                string text = __instance.m_label.text;
+                if (string.IsNullOrEmpty(text))
+                    return;
+
+                // Dedup against SetMessage (SetLangMessage may internally call SetMessage)
+                if (text == _lastCommonMessage && (DateTime.Now - _lastCommonMessageTime).TotalMilliseconds < 500)
+                    return;
+
+                _lastCommonMessage = text;
+                _lastCommonMessageTime = DateTime.Now;
+
+                if (IsPlaceholderText(text))
+                    return;
+
+                DebugLogger.Log($"[SetLangMessage] {text} (key: {lang_code})");
+                string cleaned = StripRichTextTags(text);
+                cleaned = TextUtilities.FormatItemMessage(cleaned);
+
+                if (window_pos == uCommonMessageWindow.Pos.Partner01 ||
+                    EducationPanelHandler.ShouldQueueNextMessage())
+                    ScreenReader.SayQueued(cleaned);
+                else
+                    ScreenReader.Say(cleaned);
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[DialogTextPatch] Error in SetLangMessagePostfix: {ex.Message}");
             }
         }
 
@@ -242,17 +315,8 @@ namespace DigimonNOAccess
                 if (IsPlaceholderText(text))
                     return;
 
-                var now = DateTime.Now;
-                // Clear old messages for dedup tracking (used by WasRecentlyAnnounced)
-                if ((now - _recentItemMessagesTime).TotalMilliseconds > 2000)
-                    _recentItemMessages.Clear();
-                _recentItemMessages.Add(StripRichTextTags(text).Trim());
-                _recentItemMessagesTime = now;
-                _lastItemMessageTime = now;
-
-                // Also set last common message for backwards compatibility
                 _lastCommonMessage = text;
-                _lastCommonMessageTime = now;
+                _lastCommonMessageTime = DateTime.Now;
 
                 string cleanText = StripRichTextTags(text);
                 DebugLogger.Log($"[SetItemMessage] {text}");
@@ -270,6 +334,85 @@ namespace DigimonNOAccess
             {
                 DebugLogger.Log($"[DialogTextPatch] Error in SetItemMessagePostfix: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Intercepts TalkMain.CommonMessageWindow coroutine command.
+        /// This fires when NPC talk scripts show popup messages (item rewards, etc.).
+        /// The coroutine stores arg0 and arg1 - arg0 is likely the lang code or text.
+        /// </summary>
+        private static void TalkCommonMessageWindowPrefix(string arg0, string arg1, string arg2, string arg3, string arg4, string arg5)
+        {
+            try
+            {
+                ResolveAndAnnounce(arg0, "TalkCommonMsg");
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[DialogTextPatch] Error in TalkCommonMessageWindowPrefix: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Intercepts TalkMain.ItemWindow coroutine command.
+        /// This fires when NPC talk scripts show item popup windows.
+        /// The coroutine stores only arg0.
+        /// </summary>
+        private static void TalkItemWindowPrefix(string arg0, string arg1, string arg2, string arg3, string arg4, string arg5)
+        {
+            try
+            {
+                ResolveAndAnnounce(arg0, "TalkItemWindow");
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[DialogTextPatch] Error in TalkItemWindowPrefix: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Try to resolve a string as a Language key, then announce it.
+        /// Talk scripts use Language.GetString (separate from Localization).
+        /// Returns the resolved text if successful, null otherwise.
+        /// </summary>
+        private static string ResolveAndAnnounce(string value, string source)
+        {
+            if (string.IsNullOrEmpty(value))
+                return null;
+
+            // Talk scripts use Language.GetString, not Localization.Get
+            string resolved = null;
+            try
+            {
+                resolved = Language.GetString(value);
+            }
+            catch { }
+
+            // Use resolved text if valid and different from key
+            string text = null;
+            if (!string.IsNullOrEmpty(resolved) && resolved != value && !IsPlaceholderText(resolved))
+                text = resolved;
+
+            if (text == null)
+                return null;
+
+            // Dedup against recent common messages
+            if (text == _lastCommonMessage && (DateTime.Now - _lastCommonMessageTime).TotalMilliseconds < 500)
+                return text;
+
+            _lastCommonMessage = text;
+            _lastCommonMessageTime = DateTime.Now;
+
+            string cleaned = StripRichTextTags(text);
+            cleaned = TextUtilities.FormatItemMessage(cleaned);
+
+            if (!string.IsNullOrEmpty(cleaned))
+            {
+                DebugLogger.Log($"[{source}] {cleaned}");
+                ScreenReader.Say(cleaned);
+            }
+
+            return text;
         }
 
         private static void DigimonMessagePrefix(uDigimonMessagePanel __instance, string message, float time)
@@ -388,38 +531,6 @@ namespace DigimonNOAccess
         public static string StripRichTextTags(string text)
         {
             return TextUtilities.StripRichTextTags(text);
-        }
-
-        /// <summary>
-        /// Check if the given text was recently announced by SetMessage or SetItemMessage patches.
-        /// Used by CommonMessageMonitor to avoid double-announcing the same text.
-        /// </summary>
-        public static bool WasRecentlyAnnounced(string text)
-        {
-            if (string.IsNullOrEmpty(text))
-                return false;
-
-            string stripped = StripRichTextTags(text).Trim();
-
-            // Check against all recent item messages
-            if (_recentItemMessages.Count > 0 && (DateTime.Now - _recentItemMessagesTime).TotalMilliseconds < 2000)
-            {
-                foreach (var msg in _recentItemMessages)
-                {
-                    if (stripped == msg)
-                        return true;
-                }
-            }
-
-            // Also check last common message for SetMessage patch
-            if (!string.IsNullOrEmpty(_lastCommonMessage))
-            {
-                string strippedLast = StripRichTextTags(_lastCommonMessage).Trim();
-                if (stripped == strippedLast && (DateTime.Now - _lastCommonMessageTime).TotalMilliseconds < 2000)
-                    return true;
-            }
-
-            return false;
         }
 
         private static bool IsPlaceholderText(string text)

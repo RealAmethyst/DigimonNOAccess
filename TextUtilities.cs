@@ -18,8 +18,8 @@ namespace DigimonNOAccess
         {
             if (string.IsNullOrEmpty(text))
                 return text;
-            // Strip <icon>...</icon> pairs entirely (content is a sprite marker, not readable text)
-            text = Regex.Replace(text, @"<icon>[^<]*</icon>", "");
+            // Replace <icon>...</icon> with readable button names based on active input device
+            text = Regex.Replace(text, @"<icon>([^<]*)</icon>", m => ButtonIconResolver.ResolveIconTag(m.Groups[1].Value));
             // Strip remaining rich text tags
             return Regex.Replace(text, @"<[^>]+>", "");
         }
@@ -33,8 +33,10 @@ namespace DigimonNOAccess
             if (string.IsNullOrEmpty(text))
                 return "";
 
-            // Remove Unity rich text tags
-            string cleaned = Regex.Replace(text, @"<[^>]+>", "");
+            // Replace <icon>...</icon> with readable button names before stripping other tags
+            string cleaned = Regex.Replace(text, @"<icon>([^<]*)</icon>", m => ButtonIconResolver.ResolveIconTag(m.Groups[1].Value));
+            // Remove remaining Unity rich text tags
+            cleaned = Regex.Replace(cleaned, @"<[^>]+>", "");
             // Normalize whitespace
             cleaned = Regex.Replace(cleaned, @"\s+", " ");
 
@@ -81,8 +83,6 @@ namespace DigimonNOAccess
 
         /// <summary>
         /// Check if text is a placeholder (localization keys, placeholder chars, system messages).
-        /// This is a superset of all checks from DialogTextPatch.IsPlaceholderText
-        /// and CommonMessageMonitor.ShouldSkipText.
         /// </summary>
         public static bool IsPlaceholderText(string text)
         {

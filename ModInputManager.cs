@@ -77,6 +77,9 @@ namespace DigimonNOAccess
                 SDLController.Update();
             }
 
+            // Track which input device was last used (for button icon resolution)
+            ButtonIconResolver.UpdateInputDevice();
+
             // Swap frame buffers
             _triggeredLastFrame = _triggeredThisFrame;
             _triggeredThisFrame = new HashSet<string>();

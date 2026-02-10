@@ -90,7 +90,6 @@ namespace DigimonNOAccess
                 new DigiEggHandler(),
                 new GenealogyHandler(),
                 new MessageWindowHandler(),
-                new CommonMessageMonitor(),
                 new TrainingBonusHandler(),
                 new TrainingResultHandler(),
                 new DigiviceTopPanelHandler(),
