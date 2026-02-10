@@ -23,6 +23,7 @@ namespace DigimonNOAccess
         private int _lastTacticsCursorY = -1;
         private int _lastHistoryCursorX = -1;
         private int _lastHistoryCursorY = -1;
+        private bool _lastSelectEvoAfter = false;
 
         // Skill select submenu tracking
         private uPartnerAttackPanel.PartnerAttackState _lastAttackPanelState = uPartnerAttackPanel.PartnerAttackState.None;
@@ -139,6 +140,7 @@ namespace DigimonNOAccess
             _lastTacticsCursorY = -1;
             _lastHistoryCursorX = -1;
             _lastHistoryCursorY = -1;
+            _lastSelectEvoAfter = false;
             _lastAttackPanelState = uPartnerAttackPanel.PartnerAttackState.None;
             _lastSelectSkillX = -1;
             _lastSelectSkillY = -1;
@@ -543,6 +545,7 @@ namespace DigimonNOAccess
             {
                 _lastHistoryCursorX = genealogy.m_CursorX;
                 _lastHistoryCursorY = genealogy.m_CursorY;
+                _lastSelectEvoAfter = genealogy.m_SelectEvoAfter;
             }
             catch { }
 
@@ -1033,18 +1036,15 @@ namespace DigimonNOAccess
             {
                 int currentX = genealogy.m_CursorX;
                 int currentY = genealogy.m_CursorY;
+                bool isEvoAfter = genealogy.m_SelectEvoAfter;
 
-                if ((currentX != _lastHistoryCursorX || currentY != _lastHistoryCursorY) &&
-                    _lastHistoryCursorX >= 0 && _lastHistoryCursorY >= 0)
+                bool cursorMoved = (currentX != _lastHistoryCursorX || currentY != _lastHistoryCursorY ||
+                                    isEvoAfter != _lastSelectEvoAfter) &&
+                                   _lastHistoryCursorX >= 0 && _lastHistoryCursorY >= 0;
+
+                if (cursorMoved)
                 {
-                    // Get full digimon info (name + nature + attribute + description)
                     string digimonInfo = GetHistoryDigimonInfo(genealogy);
-
-                    // X is generation (column), Y is the evolution branch (row)
-                    int generation = currentX + 1;
-                    int maxGen = genealogy.m_CursorX_Max + 1;
-                    int branch = currentY + 1;
-                    int maxBranch = genealogy.m_CursorY_Max + 1;
 
                     var parts = new System.Collections.Generic.List<string>();
 
@@ -1053,21 +1053,39 @@ namespace DigimonNOAccess
                         parts.Add(digimonInfo);
                     }
 
-                    if (maxBranch > 1)
+                    if (isEvoAfter)
                     {
-                        parts.Add($"Generation {generation} of {maxGen}, Branch {branch} of {maxBranch}");
+                        // On an evolution target - show branch position and probability
+                        int branch = currentY + 1;
+                        int maxBranch = genealogy.m_CursorY_Max + 1;
+                        if (maxBranch > 1)
+                            parts.Add($"Evolution {branch} of {maxBranch}");
+
+                        string probability = GetEvolutionProbability(genealogy);
+                        if (!string.IsNullOrEmpty(probability))
+                            parts.Add($"Probability {probability}");
                     }
                     else
                     {
-                        parts.Add($"Generation {generation} of {maxGen}");
+                        // On the history timeline
+                        int generation = currentX + 1;
+                        int maxGen = genealogy.m_CursorX_Max + 1;
+                        int branch = currentY + 1;
+                        int maxBranch = genealogy.m_CursorY_Max + 1;
+
+                        if (maxBranch > 1)
+                            parts.Add($"Generation {generation} of {maxGen}, Branch {branch} of {maxBranch}");
+                        else
+                            parts.Add($"Generation {generation} of {maxGen}");
                     }
 
                     string announcement = string.Join(", ", parts);
                     ScreenReader.Say(announcement);
-                    DebugLogger.Log($"[PartnerPanel] History cursor changed to ({currentX},{currentY}): {digimonInfo}");
+                    DebugLogger.Log($"[PartnerPanel] History cursor changed to ({currentX},{currentY}) evoAfter={isEvoAfter}: {digimonInfo}");
                 }
                 _lastHistoryCursorX = currentX;
                 _lastHistoryCursorY = currentY;
+                _lastSelectEvoAfter = isEvoAfter;
             }
             catch (System.Exception ex)
             {
@@ -1111,67 +1129,170 @@ namespace DigimonNOAccess
         {
             try
             {
+                var genelogyInfo = genealogy?.m_GenelogyInfo;
+
                 // Check if the game itself considers this position unknown
                 try
                 {
-                    var infoUI = genealogy?.m_GenelogyInfo;
-                    if (infoUI?.m_Unknown != null && infoUI.m_Unknown.activeInHierarchy)
+                    if (genelogyInfo?.m_Unknown != null && genelogyInfo.m_Unknown.activeInHierarchy)
                         return "Unknown";
                 }
                 catch { }
 
-                // Only show full info for positions on the actual evolution path
-                if (!IsValidHistoryPosition(genealogy, out string digimonName))
-                    return "Unknown";
+                bool isEvoAfter = genealogy.m_SelectEvoAfter;
 
-                var genelogyInfo = genealogy?.m_GenelogyInfo;
-
-                var parts = new System.Collections.Generic.List<string>();
-
-                if (!string.IsNullOrEmpty(digimonName))
-                    parts.Add(digimonName);
-
-                if (genelogyInfo != null)
+                if (isEvoAfter)
                 {
-                    // Get nature (e.g. "Dark")
-                    var natureText = genelogyInfo.m_Nature;
-                    if (natureText != null)
-                    {
-                        string nature = natureText.text;
-                        if (!string.IsNullOrEmpty(nature) && !nature.Contains("ランゲージ"))
-                            parts.Add($"Nature {TextUtilities.StripRichTextTags(nature)}");
-                    }
-
-                    // Get attribute (e.g. "Virus")
-                    var propertyText = genelogyInfo.m_Property;
-                    if (propertyText != null)
-                    {
-                        string property = propertyText.text;
-                        if (!string.IsNullOrEmpty(property) && !property.Contains("ランゲージ"))
-                            parts.Add($"Attribute {TextUtilities.StripRichTextTags(property)}");
-                    }
-
-                    // Get description
-                    var descText = genelogyInfo.m_Description;
-                    if (descText != null)
-                    {
-                        string desc = descText.text;
-                        if (!string.IsNullOrEmpty(desc) && !desc.Contains("ランゲージ"))
-                        {
-                            string cleanDesc = TextUtilities.StripRichTextTags(desc);
-                            if (!string.IsNullOrEmpty(cleanDesc))
-                                parts.Add(cleanDesc);
-                        }
-                    }
+                    // On an evolution target - read from the Evo info fields
+                    return GetEvoAfterDigimonInfo(genelogyInfo);
                 }
+                else
+                {
+                    // On the history timeline - validate position and read info
+                    if (!IsValidHistoryPosition(genealogy, out string digimonName))
+                        return "Unknown";
 
-                return parts.Count > 0 ? string.Join(", ", parts) : null;
+                    return GetHistoryPositionInfo(genelogyInfo, digimonName);
+                }
             }
             catch (System.Exception ex)
             {
                 DebugLogger.Log($"[PartnerPanel] Error getting history digimon info: {ex.Message}");
                 return null;
             }
+        }
+
+        private string GetHistoryPositionInfo(Il2Cpp.uGenelogyInformationUI genelogyInfo, string digimonName)
+        {
+            var parts = new System.Collections.Generic.List<string>();
+
+            if (!string.IsNullOrEmpty(digimonName))
+                parts.Add(digimonName);
+
+            if (genelogyInfo != null)
+            {
+                string nature = ReadTextSafe(genelogyInfo.m_Nature);
+                if (!string.IsNullOrEmpty(nature))
+                    parts.Add($"Nature {nature}");
+
+                string property = ReadTextSafe(genelogyInfo.m_Property);
+                if (!string.IsNullOrEmpty(property))
+                    parts.Add($"Attribute {property}");
+
+                string desc = ReadTextSafe(genelogyInfo.m_Description);
+                if (!string.IsNullOrEmpty(desc))
+                    parts.Add(desc);
+            }
+
+            return parts.Count > 0 ? string.Join(", ", parts) : null;
+        }
+
+        private string GetEvoAfterDigimonInfo(Il2Cpp.uGenelogyInformationUI genelogyInfo)
+        {
+            var parts = new System.Collections.Generic.List<string>();
+
+            if (genelogyInfo != null)
+            {
+                // Evolution target name
+                string name = ReadTextSafe(genelogyInfo.m_DigimonName_Evo);
+                if (!string.IsNullOrEmpty(name))
+                    parts.Add(name);
+
+                // Nature and attribute for the evo target
+                string nature = ReadTextSafe(genelogyInfo.m_Nature_Evo);
+                if (!string.IsNullOrEmpty(nature))
+                    parts.Add($"Nature {nature}");
+
+                string property = ReadTextSafe(genelogyInfo.m_Property_Evo);
+                if (!string.IsNullOrEmpty(property))
+                    parts.Add($"Attribute {property}");
+
+                // Description (shared field)
+                string desc = ReadTextSafe(genelogyInfo.m_Description);
+                if (!string.IsNullOrEmpty(desc))
+                    parts.Add(desc);
+
+                // Evolution requirements
+                string conditions = GetEvolutionConditions(genelogyInfo);
+                if (!string.IsNullOrEmpty(conditions))
+                    parts.Add(conditions);
+            }
+
+            return parts.Count > 0 ? string.Join(", ", parts) : null;
+        }
+
+        private string GetEvolutionConditions(Il2Cpp.uGenelogyInformationUI genelogyInfo)
+        {
+            try
+            {
+                var titles = genelogyInfo.m_ConditionsTitleText;
+                var values = genelogyInfo.m_ConditionsValueText;
+                var conditionObjects = genelogyInfo.m_ConditionsObject;
+                var clearObjects = genelogyInfo.m_ClearObjects;
+
+                if (titles == null || values == null || conditionObjects == null)
+                    return null;
+
+                var conditions = new System.Collections.Generic.List<string>();
+                int count = System.Math.Min(titles.Length, values.Length);
+                count = System.Math.Min(count, conditionObjects.Length);
+
+                for (int i = 0; i < count; i++)
+                {
+                    // Only read visible conditions
+                    if (conditionObjects[i] == null || !conditionObjects[i].activeInHierarchy)
+                        continue;
+
+                    string title = ReadTextSafe(titles[i]);
+                    string value = ReadTextSafe(values[i]);
+
+                    if (string.IsNullOrEmpty(title) || string.IsNullOrEmpty(value))
+                        continue;
+
+                    bool cleared = clearObjects != null && i < clearObjects.Length &&
+                                   clearObjects[i] != null && clearObjects[i].activeInHierarchy;
+
+                    string status = cleared ? "met" : "not met";
+                    conditions.Add($"{title} {value} ({status})");
+                }
+
+                return conditions.Count > 0 ? "Requirements: " + string.Join(", ", conditions) : null;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[PartnerPanel] Error reading evolution conditions: {ex.Message}");
+                return null;
+            }
+        }
+
+        private string GetEvolutionProbability(Il2Cpp.uHistoryUI genealogy)
+        {
+            try
+            {
+                if (genealogy.m_Fix != null && genealogy.m_Fix.activeInHierarchy)
+                    return "Guaranteed";
+                if (genealogy.m_High != null && genealogy.m_High.activeInHierarchy)
+                    return "High";
+                if (genealogy.m_Mid != null && genealogy.m_Mid.activeInHierarchy)
+                    return "Medium";
+                if (genealogy.m_Low != null && genealogy.m_Low.activeInHierarchy)
+                    return "Low";
+            }
+            catch { }
+            return null;
+        }
+
+        private string ReadTextSafe(UnityEngine.UI.Text textComponent)
+        {
+            try
+            {
+                if (textComponent == null) return null;
+                string text = textComponent.text;
+                if (string.IsNullOrEmpty(text) || text.Contains("ランゲージ"))
+                    return null;
+                return TextUtilities.StripRichTextTags(text);
+            }
+            catch { return null; }
         }
 
         private string GetTabName(uPartnerPanel.State state)
