@@ -17,6 +17,11 @@ namespace DigimonNOAccess
         private uOptionPanel.State _lastPanelState = uOptionPanel.State.NONE;
         private string _lastValue = "";
 
+        // Agree window tracking
+        private uAgreeWindow _agreeWindow;
+        private bool _agreeWasOpen;
+        private uAgreeWindow.CursorIndex _lastAgreeCursor;
+
         /// <summary>
         /// Check if panel exists and is active.
         /// </summary>
@@ -65,6 +70,9 @@ namespace DigimonNOAccess
 
             _lastPanelState = currentPanelState;
             _wasActive = isInMainSetting;
+
+            // Track agree window independently of main settings
+            UpdateAgreeWindow();
         }
 
         private void OnOpen()
@@ -339,6 +347,18 @@ namespace DigimonNOAccess
                             value = info.m_CommandNum.text;
                     }
                 }
+
+                // Fallback: if name is empty, check item type from m_items
+                if (string.IsNullOrEmpty(name) && panel.m_items != null && dataIndex >= 0 && dataIndex < panel.m_items.Count)
+                {
+                    var item = panel.m_items[dataIndex];
+                    if (item != null)
+                    {
+                        var voidItem = item.TryCast<uOptionPanelItemVoid>();
+                        if (voidItem != null)
+                            name = GetSettingStateName(voidItem.m_settingState);
+                    }
+                }
             }
             catch (System.Exception ex)
             {
@@ -346,6 +366,25 @@ namespace DigimonNOAccess
             }
 
             return (name, value);
+        }
+
+        private string GetSettingStateName(uOptionPanel.MainSettingState state)
+        {
+            switch (state)
+            {
+                case uOptionPanel.MainSettingState.OPTION:
+                    return "System Settings";
+                case uOptionPanel.MainSettingState.GRAPHICS:
+                    return "Graphics Settings";
+                case uOptionPanel.MainSettingState.KEYCONFIG:
+                    return "Key Config";
+                case uOptionPanel.MainSettingState.APPLICATION_QUIT:
+                    return "Quit Game";
+                case uOptionPanel.MainSettingState.AGREE:
+                    return "Agreement";
+                default:
+                    return "";
+            }
         }
 
         private (string name, string value) GetSettingsPanelItem(uOptionPanelCommand panel, int dataIndex)
@@ -700,6 +739,18 @@ namespace DigimonNOAccess
         /// </summary>
         public void AnnounceStatus()
         {
+            // Check agree window first
+            if (_agreeWasOpen && _agreeWindow != null)
+            {
+                string header = GetAgreeHeaderText();
+                string yesText = GetAgreeYesText();
+                string noText = GetAgreeNoText();
+                var cursor = _agreeWindow.m_cursorIndex;
+                string currentOption = cursor == uAgreeWindow.CursorIndex.Yes ? yesText : noText;
+                ScreenReader.Say($"{header}. {yesText} or {noText}. Currently on: {currentOption}");
+                return;
+            }
+
             if (!IsOpen())
                 return;
 
@@ -721,6 +772,140 @@ namespace DigimonNOAccess
             }
 
             ScreenReader.Say(announcement);
+        }
+
+        private void UpdateAgreeWindow()
+        {
+            try
+            {
+                _agreeWindow = Object.FindObjectOfType<uAgreeWindow>();
+                bool isOpen = _agreeWindow != null && _agreeWindow.IsOpen;
+
+                if (isOpen && !_agreeWasOpen)
+                    OnAgreeOpen();
+                else if (!isOpen && _agreeWasOpen)
+                    OnAgreeClose();
+                else if (isOpen)
+                    CheckAgreeCursorChange();
+
+                _agreeWasOpen = isOpen;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[OptionsMenu] Error tracking agree window: {ex.Message}");
+            }
+        }
+
+        private void OnAgreeOpen()
+        {
+            _lastAgreeCursor = uAgreeWindow.CursorIndex.Yes;
+
+            string header = GetAgreeHeaderText();
+            string yesText = GetAgreeYesText();
+            string noText = GetAgreeNoText();
+            var cursor = _agreeWindow.m_cursorIndex;
+
+            string currentOption = cursor == uAgreeWindow.CursorIndex.Yes ? yesText : noText;
+            string announcement = !string.IsNullOrEmpty(header)
+                ? $"{header}. {yesText} or {noText}. Currently on: {currentOption}"
+                : $"Agreement. {yesText} or {noText}. Currently on: {currentOption}";
+
+            ScreenReader.Say(announcement);
+            DebugLogger.Log($"[OptionsMenu] Agree window opened: {header}");
+            _lastAgreeCursor = cursor;
+        }
+
+        private void OnAgreeClose()
+        {
+            _agreeWindow = null;
+            DebugLogger.Log("[OptionsMenu] Agree window closed");
+        }
+
+        private void CheckAgreeCursorChange()
+        {
+            if (_agreeWindow == null)
+                return;
+
+            var cursor = _agreeWindow.m_cursorIndex;
+            if (cursor != _lastAgreeCursor)
+            {
+                string text = cursor == uAgreeWindow.CursorIndex.Yes
+                    ? GetAgreeYesText()
+                    : GetAgreeNoText();
+
+                ScreenReader.Say(text);
+                DebugLogger.Log($"[OptionsMenu] Agree cursor: {text}");
+                _lastAgreeCursor = cursor;
+            }
+        }
+
+        private string GetAgreeHeaderText()
+        {
+            try
+            {
+                if (_agreeWindow == null)
+                    return "";
+
+                var header = _agreeWindow.m_Header;
+                if (header != null && header.m_headerText != null)
+                {
+                    string text = header.m_headerText.text;
+                    if (!string.IsNullOrEmpty(text))
+                        return TextUtilities.StripRichTextTags(text);
+                }
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[OptionsMenu] Error reading agree header: {ex.Message}");
+            }
+
+            // Fallback based on window type
+            try
+            {
+                var windowType = _agreeWindow.m_currentWindowType;
+                switch (windowType)
+                {
+                    case uAgreeWindow.AgreeWindowType.Eula:
+                        return "End User License Agreement";
+                    case uAgreeWindow.AgreeWindowType.PP:
+                        return "Privacy Policy";
+                    case uAgreeWindow.AgreeWindowType.KPI:
+                        return "Usage Data Agreement";
+                }
+            }
+            catch { }
+
+            return "Agreement";
+        }
+
+        private string GetAgreeYesText()
+        {
+            try
+            {
+                if (_agreeWindow?.m_yes != null)
+                {
+                    string text = _agreeWindow.m_yes.text;
+                    if (!string.IsNullOrEmpty(text))
+                        return TextUtilities.StripRichTextTags(text);
+                }
+            }
+            catch { }
+            return "Yes";
+        }
+
+        private string GetAgreeNoText()
+        {
+            try
+            {
+                if (_agreeWindow?.m_no != null)
+                {
+                    string text = _agreeWindow.m_no.text;
+                    if (!string.IsNullOrEmpty(text))
+                        return TextUtilities.StripRichTextTags(text);
+                }
+            }
+            catch { }
+            return "No";
         }
 
         private class ItemInfo
