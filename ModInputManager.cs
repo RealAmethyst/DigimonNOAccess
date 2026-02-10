@@ -243,6 +243,15 @@ namespace DigimonNOAccess
             RegisterAction("ShopCheckBits",
                 keyboard: new InputBinding(KeyCode.F10),
                 controller: new InputBinding(ControllerButton.RT, ControllerButton.DPadDown));
+
+            // === Training Menu ===
+            RegisterAction("TrainingP1Info",
+                keyboard: new InputBinding(KeyCode.F3),
+                controller: new InputBinding(ControllerButton.RB, ControllerButton.DPadUp));
+
+            RegisterAction("TrainingP2Info",
+                keyboard: new InputBinding(KeyCode.F4),
+                controller: new InputBinding(ControllerButton.LB, ControllerButton.DPadUp));
         }
 
         private static void RegisterAction(string actionName, InputBinding keyboard, InputBinding controller)
@@ -365,6 +374,10 @@ namespace DigimonNOAccess
                 case ControllerButton.LStickLeft:
                 case ControllerButton.LStickRight:
                     return IsControllerButtonHeldPadManager(button);
+                case ControllerButton.L3:
+                    return SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.LeftStick);
+                case ControllerButton.R3:
+                    return SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.RightStick);
                 default:
                     return false;
             }
@@ -395,9 +408,9 @@ namespace DigimonNOAccess
                 case ControllerButton.RB:
                     return PadManager.IsInput(PadManager.BUTTON.bR);
                 case ControllerButton.LT:
-                    return TriggerInput.IsLeftTriggerHeld();
+                    return IsUnityTriggerHeld(true);
                 case ControllerButton.RT:
-                    return TriggerInput.IsRightTriggerHeld();
+                    return IsUnityTriggerHeld(false);
                 case ControllerButton.Start:
                     return PadManager.IsInput(PadManager.BUTTON.bStart);
                 case ControllerButton.Select:
@@ -418,6 +431,9 @@ namespace DigimonNOAccess
                     return PadManager.IsInput(PadManager.BUTTON.srLeft);
                 case ControllerButton.RStickRight:
                     return PadManager.IsInput(PadManager.BUTTON.srRight);
+                case ControllerButton.L3:
+                case ControllerButton.R3:
+                    return false;  // Game has no L3/R3 flags, SDL3 only
                 default:
                     return false;
             }
@@ -480,6 +496,10 @@ namespace DigimonNOAccess
                 case ControllerButton.LStickLeft:
                 case ControllerButton.LStickRight:
                     return IsControllerButtonTriggeredPadManager(button);
+                case ControllerButton.L3:
+                    return SDLController.IsButtonTriggered(SDLController.SDL_GameControllerButton.LeftStick);
+                case ControllerButton.R3:
+                    return SDLController.IsButtonTriggered(SDLController.SDL_GameControllerButton.RightStick);
                 default:
                     return false;
             }
@@ -532,9 +552,68 @@ namespace DigimonNOAccess
                     return PadManager.IsTrigger(PadManager.BUTTON.srLeft);
                 case ControllerButton.RStickRight:
                     return PadManager.IsTrigger(PadManager.BUTTON.srRight);
+                case ControllerButton.L3:
+                case ControllerButton.R3:
+                    return false;  // Game has no L3/R3 flags, SDL3 only
                 default:
                     return false;
             }
+        }
+
+        // Unity trigger axis names to try (for PadManager fallback when SDL3 is unavailable)
+        private static readonly string[] LeftTriggerAxes = { "Axis 9", "Axis 3", "JoystickAxis9", "JoystickAxis3" };
+        private static readonly string[] RightTriggerAxes = { "Axis 10", "Axis 3", "JoystickAxis10", "JoystickAxis3" };
+        private static string _workingLeftAxis = null;
+        private static string _workingRightAxis = null;
+        private const float UnityTriggerThreshold = 0.3f;
+
+        /// <summary>
+        /// Check if a trigger is held using Unity's Input system (PadManager fallback).
+        /// </summary>
+        private static bool IsUnityTriggerHeld(bool isLeft)
+        {
+            // Try cached axis first
+            string cachedAxis = isLeft ? _workingLeftAxis : _workingRightAxis;
+            if (cachedAxis != null)
+            {
+                try
+                {
+                    return Mathf.Abs(Input.GetAxisRaw(cachedAxis)) > UnityTriggerThreshold;
+                }
+                catch
+                {
+                    if (isLeft) _workingLeftAxis = null;
+                    else _workingRightAxis = null;
+                }
+            }
+
+            // Try to find a working axis
+            string[] axesToTry = isLeft ? LeftTriggerAxes : RightTriggerAxes;
+            foreach (var axisName in axesToTry)
+            {
+                try
+                {
+                    float value = Mathf.Abs(Input.GetAxisRaw(axisName));
+                    if (value > 0.01f)
+                    {
+                        if (isLeft) _workingLeftAxis = axisName;
+                        else _workingRightAxis = axisName;
+                    }
+                    if (value > UnityTriggerThreshold) return true;
+                }
+                catch { }
+            }
+
+            // Fallback: try joystick button approach
+            try
+            {
+                int buttonIndex = isLeft ? 4 : 5;
+                if (Input.GetKey((KeyCode)(KeyCode.JoystickButton0 + buttonIndex)))
+                    return true;
+            }
+            catch { }
+
+            return false;
         }
 
         /// <summary>
@@ -644,6 +723,7 @@ namespace DigimonNOAccess
                 ControllerButton.LT, ControllerButton.RT,
                 ControllerButton.RStickUp, ControllerButton.RStickDown,
                 ControllerButton.RStickLeft, ControllerButton.RStickRight,
+                ControllerButton.L3, ControllerButton.R3,
                 ControllerButton.None
             };
 
@@ -679,6 +759,7 @@ namespace DigimonNOAccess
 ;   Buttons: A, B, X, Y, LB, RB, LT, RT, Start, Select
 ;   D-Pad: DPadUp, DPadDown, DPadLeft, DPadRight
 ;   Sticks: LStickUp, LStickDown, RStickUp, RStickDown, etc.
+;   Stick press: L3, R3 (mod-only, game doesn't use these)
 ;   Combos: LB+DPadUp, RT+A, RB+DPadDown, etc.
 ;
 ; IMPORTANT: Controller bindings using game buttons (A, B, X, Y, D-Pad,
@@ -727,6 +808,11 @@ NavToEvent = P
 ; Toggle auto-walk (when enabled, pathfinding also walks the player)
 ToggleAutoWalk = Shift+P
 
+; === Training Menu ===
+; Announce stats or bonus for each partner (reads whichever tab is active)
+TrainingP1Info = F3
+TrainingP2Info = F4
+
 ; === Shop/Trade Menu ===
 ; Announce current bits (only works when shop or trade panel is open)
 ShopCheckBits = F10
@@ -768,6 +854,11 @@ NavNextEvent = None
 NavToEvent = None
 ; Toggle auto-walk (when enabled, pathfinding also walks the player)
 ToggleAutoWalk = None
+
+; === Training Menu ===
+; Announce stats or bonus for each partner (reads whichever tab is active)
+TrainingP1Info = RB+DPadUp
+TrainingP2Info = LB+DPadUp
 
 ; === Shop/Trade Menu ===
 ; Announce current bits (only works when shop or trade panel is open)
@@ -846,7 +937,11 @@ ShopCheckBits = RT+DPadDown
         RStickUp,
         RStickDown,
         RStickLeft,
-        RStickRight
+        RStickRight,
+
+        // Stick press buttons (L3/R3) - mod-only, game doesn't use these
+        L3,     // Left stick press
+        R3      // Right stick press
     }
 
     /// <summary>

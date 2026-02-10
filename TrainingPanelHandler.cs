@@ -59,6 +59,7 @@ namespace DigimonNOAccess
                 CheckStateChange();
                 CheckCursorChanges();
                 CheckTabChange();
+                CheckHotkeys();
             }
 
             _wasActive = isActive;
@@ -224,6 +225,122 @@ namespace DigimonNOAccess
                 ScreenReader.Say(tabName);
                 DebugLogger.Log($"[TrainingPanel] Tab changed to: {tabName}");
                 _lastBonusTabShowing = bonusShowing;
+            }
+        }
+
+        private void CheckHotkeys()
+        {
+            if (_panel == null) return;
+            if (_panel.m_state != uTrainingPanelCommand.State.Main) return;
+
+            bool onBonusTab = IsBonusTabShowing();
+
+            if (ModInputManager.IsActionTriggered("TrainingP1Info"))
+            {
+                if (onBonusTab) AnnounceBonus(0);
+                else AnnounceStats(0);
+            }
+
+            if (ModInputManager.IsActionTriggered("TrainingP2Info"))
+            {
+                if (onBonusTab) AnnounceBonus(1);
+                else AnnounceStats(1);
+            }
+        }
+
+        private void AnnounceStats(int partnerIndex)
+        {
+            try
+            {
+                var infos = _panel?.m_trainingInformations;
+                if (infos == null || partnerIndex >= infos.Length) return;
+
+                var info = infos[partnerIndex];
+                if (info == null) return;
+
+                string name = GetPartnerName(partnerIndex);
+                var parts = new System.Collections.Generic.List<string>();
+
+                string hp = info._refStatus_Hp_Value?.text;
+                if (!string.IsNullOrEmpty(hp)) parts.Add($"HP {hp}");
+
+                string mp = info._refStatus_Mp_Value?.text;
+                if (!string.IsNullOrEmpty(mp)) parts.Add($"MP {mp}");
+
+                string atk = info._refStatus_Attack_Value?.text;
+                if (!string.IsNullOrEmpty(atk)) parts.Add($"Strength {atk}");
+
+                string def = info._refStatus_Defence_Value?.text;
+                if (!string.IsNullOrEmpty(def)) parts.Add($"Stamina {def}");
+
+                string wis = info._refStatus_Wisdom_Value?.text;
+                if (!string.IsNullOrEmpty(wis)) parts.Add($"Wisdom {wis}");
+
+                string spd = info._refStatus_Speed_Value?.text;
+                if (!string.IsNullOrEmpty(spd)) parts.Add($"Speed {spd}");
+
+                string wt = info._refStatus_Weight_Value?.text;
+                if (!string.IsNullOrEmpty(wt)) parts.Add($"Weight {wt}");
+
+                var tirednessSlider = info._refStatus_Tiredness_Tiredness_Plus;
+                if (tirednessSlider != null)
+                {
+                    int tirednessPercent = (int)(tirednessSlider.value * 100);
+                    parts.Add($"Tiredness {tirednessPercent}%");
+                }
+
+                if (parts.Count > 0)
+                {
+                    string announcement = $"{name} stats: {string.Join(", ", parts)}";
+                    ScreenReader.Say(announcement);
+                }
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[TrainingPanel] Error reading stats for partner {partnerIndex}: {ex.Message}");
+            }
+        }
+
+        private void AnnounceBonus(int partnerIndex)
+        {
+            try
+            {
+                var infos = _panel?.m_trainingInformations;
+                if (infos == null || partnerIndex >= infos.Length) return;
+
+                var info = infos[partnerIndex];
+                if (info == null) return;
+
+                string name = GetPartnerName(partnerIndex);
+                var bonusTexts = info._refTextValue_Bonus;
+
+                if (bonusTexts == null || bonusTexts.Length == 0)
+                {
+                    ScreenReader.Say($"{name}: No bonuses");
+                    return;
+                }
+
+                var parts = new System.Collections.Generic.List<string>();
+                for (int i = 0; i < bonusTexts.Length; i++)
+                {
+                    var text = bonusTexts[i];
+                    if (text != null && !string.IsNullOrEmpty(text.text))
+                        parts.Add(text.text);
+                }
+
+                if (parts.Count > 0)
+                {
+                    string announcement = $"{name} bonuses: {string.Join(", ", parts)}";
+                    ScreenReader.Say(announcement);
+                }
+                else
+                {
+                    ScreenReader.Say($"{name}: No bonuses");
+                }
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[TrainingPanel] Error reading bonus for partner {partnerIndex}: {ex.Message}");
             }
         }
 

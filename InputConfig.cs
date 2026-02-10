@@ -169,6 +169,14 @@ namespace DigimonNOAccess
             { "RSDown", ControllerButton.RStickDown },
             { "RSLeft", ControllerButton.RStickLeft },
             { "RSRight", ControllerButton.RStickRight },
+
+            // Stick press buttons (L3/R3)
+            { "L3", ControllerButton.L3 },
+            { "R3", ControllerButton.R3 },
+            { "LeftStickPress", ControllerButton.L3 },
+            { "RightStickPress", ControllerButton.R3 },
+            { "LSB", ControllerButton.L3 },
+            { "RSB", ControllerButton.R3 },
         };
 
         /// <summary>

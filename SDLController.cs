@@ -229,6 +229,7 @@ namespace DigimonNOAccess
                     {
                         // Controller disconnected
                         DebugLogger.Log($"[SDL3Controller] Controller disconnected: {_controllerName}");
+                        ScreenReader.Say($"Controller disconnected: {_controllerName}");
                         SDL_CloseGamepad(_gamepad);
                         _gamepad = IntPtr.Zero;
                         _controllerName = "";

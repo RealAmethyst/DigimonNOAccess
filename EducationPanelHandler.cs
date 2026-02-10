@@ -46,6 +46,9 @@ namespace DigimonNOAccess
                 return false;
             }
 
+            // Second message queued — pair complete, stop queuing further messages
+            _inEducationCompletion = false;
+            _educationHasFirstMessage = false;
             return true;
         }
 
