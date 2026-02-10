@@ -22,6 +22,33 @@ namespace DigimonNOAccess
         private bool _commandMenuAnnounced;
         private bool _lastCursorObjActive;
 
+        // Education completion state - used by SetMessagePrefix to queue second partner messages
+        private static bool _inEducationCompletion;
+        private static bool _educationHasFirstMessage;
+
+        /// <summary>
+        /// True when the education panel is in its completion sequence (after Praise/Scold selection).
+        /// </summary>
+        public static bool IsInEducationCompletion => _inEducationCompletion;
+
+        /// <summary>
+        /// Returns true if a subsequent education completion message should be queued.
+        /// Called by SetMessagePrefix to decide Say vs SayQueued.
+        /// </summary>
+        public static bool ShouldQueueNextMessage()
+        {
+            if (!_inEducationCompletion)
+                return false;
+
+            if (!_educationHasFirstMessage)
+            {
+                _educationHasFirstMessage = true;
+                return false;
+            }
+
+            return true;
+        }
+
         public bool IsOpen()
         {
             _educationPanel = GetEducationPanel();
@@ -38,8 +65,8 @@ namespace DigimonNOAccess
                 return false;
             }
 
-            // Only handle Main state - emotion message + choices
-            // Education state = post-selection, notification handled by SetMessage/CommonMessageMonitor
+            // Only handle Main state for IsOpen() - emotion message + choices
+            // Education state is monitored by MonitorEducationCompletion() for message queuing
             if (_educationPanel.m_state != uCarePanel.State.Main)
                 return false;
 
@@ -81,6 +108,9 @@ namespace DigimonNOAccess
                 OnUpdate();
 
             _wasActive = isActive;
+
+            // Track education completion state for message queuing
+            MonitorEducationCompletion();
         }
 
         private void OnOpen()
@@ -117,6 +147,52 @@ namespace DigimonNOAccess
             _lastEmotionMessage = null;
             _commandMenuAnnounced = false;
             _lastCursorObjActive = false;
+        }
+
+        /// <summary>
+        /// Tracks the education panel's state independently of IsOpen() (which only handles Main).
+        /// When state enters Education (post Praise/Scold), sets a flag so SetMessagePrefix
+        /// queues the second partner's message instead of interrupting the first.
+        /// The flag stays active through post-Education states (Message, Wait, Close) since
+        /// the stat SetMessage calls arrive after the state leaves Education.
+        /// Only clears when the panel fully closes or returns to None/Main.
+        /// </summary>
+        private void MonitorEducationCompletion()
+        {
+            try
+            {
+                var panel = GetEducationPanel();
+                if (panel == null || panel.gameObject == null || !panel.gameObject.activeInHierarchy)
+                {
+                    if (_inEducationCompletion)
+                    {
+                        _inEducationCompletion = false;
+                        _educationHasFirstMessage = false;
+                        DebugLogger.Log("[Education] Completion ended (panel closed)");
+                    }
+                    return;
+                }
+
+                var state = panel.m_state;
+
+                if (state == uCarePanel.State.Education && !_inEducationCompletion)
+                {
+                    _inEducationCompletion = true;
+                    _educationHasFirstMessage = false;
+                    DebugLogger.Log("[Education] Entered completion state");
+                }
+                else if (_inEducationCompletion &&
+                         (state == uCarePanel.State.None || state == uCarePanel.State.Main))
+                {
+                    _inEducationCompletion = false;
+                    _educationHasFirstMessage = false;
+                    DebugLogger.Log("[Education] Completion ended (returned to idle)");
+                }
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[Education] Error monitoring completion: {ex.Message}");
+            }
         }
 
         private void OnUpdate()

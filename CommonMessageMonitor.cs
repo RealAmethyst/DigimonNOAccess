@@ -156,6 +156,13 @@ namespace DigimonNOAccess
                     return;
                 }
 
+                // Skip during education completion - SetMessage patch handles these with proper queuing
+                if (EducationPanelHandler.IsInEducationCompletion)
+                {
+                    DebugLogger.Log($"[CommonMessageMonitor] Skipping during education completion: {text}");
+                    return;
+                }
+
                 // Skip stale text that was already announced by this monitor
                 // (prevents re-announcing old "X received" text after returning from battles)
                 string cleanText = DialogTextPatch.StripRichTextTags(text).Trim();
