@@ -527,6 +527,10 @@ namespace DigimonNOAccess
                 if (GameStateService.IsInDeathRecovery())
                     return false;
 
+                // Check if player is sleeping (care > sleep action)
+                if (GameStateService.IsPlayerSleeping())
+                    return false;
+
                 // Check player action state (catches death recovery, events, etc.)
                 if (GameStateService.IsPlayerInNonControllableState(_playerCtrl))
                     return false;

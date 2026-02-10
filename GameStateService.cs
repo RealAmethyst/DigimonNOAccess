@@ -144,6 +144,23 @@ namespace DigimonNOAccess
         }
 
         /// <summary>
+        /// Check if the player is sleeping (Care > Sleep action).
+        /// MainGameComponent.m_CurStep transitions to STEP.Sleep during the
+        /// sleep animation and stat recovery sequence (after the care panel closes).
+        /// </summary>
+        public static bool IsPlayerSleeping()
+        {
+            try
+            {
+                var mgc = MainGameComponent.m_instance;
+                if (mgc != null && mgc.m_CurStep == Il2CppMainGame.STEP.Sleep)
+                    return true;
+            }
+            catch { }
+            return false;
+        }
+
+        /// <summary>
         /// Check if the player is in an event/cutscene action state.
         /// </summary>
         public static bool IsInEvent()

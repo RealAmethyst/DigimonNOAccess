@@ -163,6 +163,13 @@ namespace DigimonNOAccess
                     return;
                 }
 
+                // Skip during sleep - SetMessage patch handles recovery messages with partner queuing
+                if (GameStateService.IsPlayerSleeping())
+                {
+                    DebugLogger.Log($"[CommonMessageMonitor] Skipping during sleep: {text}");
+                    return;
+                }
+
                 // Skip stale text that was already announced by this monitor
                 // (prevents re-announcing old "X received" text after returning from battles)
                 string cleanText = DialogTextPatch.StripRichTextTags(text).Trim();
