@@ -31,6 +31,7 @@ namespace DigimonNOAccess
             NPCs,
             Items,
             Materials,
+            KeyItems,
             Transitions,
             Enemies,
             Facilities
@@ -44,6 +45,8 @@ namespace DigimonNOAccess
             public GameObject Target;
             public EventCategory Category;
             public float DistanceToPlayer;
+            /// <summary>Completion flag set ID for quest items (from form 5 SSetFlagSetData). Checked via saved scenario flags.</summary>
+            public uint FlagSetId;
         }
 
         // Category order for cycling (only non-empty categories are used)
@@ -51,6 +54,7 @@ namespace DigimonNOAccess
             EventCategory.NPCs,
             EventCategory.Items,
             EventCategory.Materials,
+            EventCategory.KeyItems,
             EventCategory.Transitions,
             EventCategory.Enemies,
             EventCategory.Facilities
@@ -102,6 +106,10 @@ namespace DigimonNOAccess
 
         // Track NPC GameObjects that are actually facilities (to exclude from NPC list)
         private HashSet<GameObject> _facilityNpcObjects = new HashSet<GameObject>();
+
+        // Cache for resolved quest item data: cmdBlock -> (item name, item ID, flag set ID)
+        private static Dictionary<string, (string name, uint itemId, uint flagSetId)> _questItemCache = new Dictionary<string, (string, uint, uint)>();
+
 
         // Track field state to rescan after evolution/events
         private bool _wasInField = false;
@@ -208,6 +216,7 @@ namespace DigimonNOAccess
                         $"{_events[EventCategory.NPCs].Count} NPCs, " +
                         $"{_events[EventCategory.Items].Count} items, " +
                         $"{_events[EventCategory.Materials].Count} materials, " +
+                        $"{_events[EventCategory.KeyItems].Count} key items, " +
                         $"{_events[EventCategory.Transitions].Count} transitions, " +
                         $"{_events[EventCategory.Enemies].Count} enemies, " +
                         $"{_events[EventCategory.Facilities].Count} facilities");
@@ -282,12 +291,14 @@ namespace DigimonNOAccess
                     _events[EventCategory.NPCs] = new List<NavigationEvent>();
                     _events[EventCategory.Items] = new List<NavigationEvent>();
                     _events[EventCategory.Materials] = new List<NavigationEvent>();
+                    _events[EventCategory.KeyItems] = new List<NavigationEvent>();
                     _events[EventCategory.Transitions] = new List<NavigationEvent>();
                     _events[EventCategory.Enemies] = new List<NavigationEvent>();
                     _events[EventCategory.Facilities] = new List<NavigationEvent>();
                     _activeCategories.Clear();
                     _knownTargets.Clear();
                     _facilityNpcObjects.Clear();
+                    _questItemCache.Clear();
                     _itemsLoadComplete = false;
                     _npcsLoadComplete = false;
                     _enemiesLoadComplete = false;
@@ -515,7 +526,7 @@ namespace DigimonNOAccess
                         if (_knownTargets.Contains(point.gameObject))
                             continue;
 
-                        var category = point.isMaterial ? EventCategory.Materials : EventCategory.Items;
+                        var category = GetItemCategory(point);
                         string name = GetItemName(point);
                         float dist = Vector3.Distance(playerPos, point.transform.position);
                         _events[category].Add(new NavigationEvent
@@ -623,7 +634,7 @@ namespace DigimonNOAccess
                         }
                         // Picked-up items/materials: enableItemPickPoint becomes false after pickup.
                         // Don't check activeInHierarchy - game deactivates distant items for performance.
-                        if (e.Category == EventCategory.Items || e.Category == EventCategory.Materials)
+                        if (e.Category == EventCategory.Items || e.Category == EventCategory.Materials || e.Category == EventCategory.KeyItems)
                         {
                             var pickPoint = e.Target.GetComponent<ItemPickPointBase>();
                             if (pickPoint != null && !pickPoint.enableItemPickPoint)
@@ -663,6 +674,7 @@ namespace DigimonNOAccess
             _events[EventCategory.NPCs] = new List<NavigationEvent>();
             _events[EventCategory.Items] = new List<NavigationEvent>();
             _events[EventCategory.Materials] = new List<NavigationEvent>();
+            _events[EventCategory.KeyItems] = new List<NavigationEvent>();
             _events[EventCategory.Transitions] = new List<NavigationEvent>();
             _events[EventCategory.Enemies] = new List<NavigationEvent>();
             _events[EventCategory.Facilities] = new List<NavigationEvent>();
@@ -708,6 +720,9 @@ namespace DigimonNOAccess
 
             ScanTransitions(playerPos);
 
+            // Quest items use the Item MonoBehaviour and spawn based on scenario flags
+            ScanQuestItems(playerPos);
+
             // Enemies load asynchronously via coroutines - only scan once the game confirms loading is done
             if (!_enemiesLoadComplete)
             {
@@ -745,6 +760,7 @@ namespace DigimonNOAccess
             DebugLogger.Log($"[NavList] Built lists: {_events[EventCategory.NPCs].Count} NPCs, " +
                 $"{_events[EventCategory.Items].Count} items, " +
                 $"{_events[EventCategory.Materials].Count} materials, " +
+                $"{_events[EventCategory.KeyItems].Count} key items, " +
                 $"{_events[EventCategory.Transitions].Count} transitions, " +
                 $"{_events[EventCategory.Enemies].Count} enemies, " +
                 $"{_events[EventCategory.Facilities].Count} facilities");
@@ -777,10 +793,29 @@ namespace DigimonNOAccess
 
             var items = _events.ContainsKey(EventCategory.Items) ? _events[EventCategory.Items] : null;
             var materials = _events.ContainsKey(EventCategory.Materials) ? _events[EventCategory.Materials] : null;
+            var keyItems = _events.ContainsKey(EventCategory.KeyItems) ? _events[EventCategory.KeyItems] : null;
             items?.RemoveAll(e => removePickedUp(e));
             materials?.RemoveAll(e => removePickedUp(e));
 
-            // Check for new items/materials that may have loaded since the last scan
+            // Key items (EventTrigger pickups) - remove if destroyed, inactive, or consumed
+            // Uses scenario completion flags from form 5 (SSetFlagSetData) which persist in save data
+            keyItems?.RemoveAll(e =>
+            {
+                if (e.Target == null || !e.Target.activeInHierarchy)
+                    return true;
+                if (e.FlagSetId != 0 && IsQuestFlagSet(e.FlagSetId))
+                    return true;
+                try
+                {
+                    var pickPoint = e.Target.GetComponent<ItemPickPointBase>();
+                    if (pickPoint != null && !pickPoint.enableItemPickPoint)
+                        return true;
+                }
+                catch { }
+                return false;
+            });
+
+            // Check for new items/materials/key items that may have loaded since the last scan
             if (!_itemsLoadComplete)
             {
                 try
@@ -804,6 +839,9 @@ namespace DigimonNOAccess
                 if (materials != null)
                     foreach (var e in materials)
                         if (e.Target != null) existingTargets.Add(e.Target);
+                if (keyItems != null)
+                    foreach (var e in keyItems)
+                        if (e.Target != null) existingTargets.Add(e.Target);
 
                 foreach (var point in itemManager.m_itemPickPoints)
                 {
@@ -814,8 +852,10 @@ namespace DigimonNOAccess
                     if (existingTargets.Contains(point.gameObject))
                         continue;
 
-                    var category = point.isMaterial ? EventCategory.Materials : EventCategory.Items;
-                    var targetList = point.isMaterial ? materials : items;
+                    var category = GetItemCategory(point);
+                    var targetList = category == EventCategory.Materials ? materials
+                                  : category == EventCategory.KeyItems ? keyItems
+                                  : items;
                     if (targetList == null) continue;
 
                     string name = GetItemName(point);
@@ -829,6 +869,59 @@ namespace DigimonNOAccess
                         DistanceToPlayer = dist
                     });
                 }
+            }
+
+            // Check for new quest pickup triggers that may have been activated
+            if (keyItems != null)
+            {
+                try
+                {
+                    var existingQuestTargets = new HashSet<GameObject>();
+                    foreach (var e in keyItems)
+                        if (e.Target != null) existingQuestTargets.Add(e.Target);
+
+                    var placementLookup = BuildPlacementLookup();
+                    var eventTriggers = Resources.FindObjectsOfTypeAll<EventTriggerScript>();
+                    foreach (var et in eventTriggers)
+                    {
+                        if (et == null || et.gameObject == null || !et.gameObject.activeInHierarchy)
+                            continue;
+                        if (et.gameObject.GetComponent<NpcCtrl>() != null)
+                            continue;
+                        if (et.gameObject.GetComponent<EnemyCtrl>() != null)
+                            continue;
+                        if (existingQuestTargets.Contains(et.gameObject))
+                            continue;
+
+                        string cmdBlock = null;
+                        ParameterPlacementNpc placement = null;
+                        if (placementLookup.TryGetValue(et.m_EventParamId, out placement))
+                            cmdBlock = placement.m_CmdBlock;
+                        if (string.IsNullOrEmpty(cmdBlock) || !cmdBlock.StartsWith("PICK_"))
+                            continue;
+
+                        var questInfo = ResolveQuestItem(cmdBlock);
+                        string name = questInfo.name ?? "Quest Pickup";
+                        uint itemId = questInfo.itemId;
+                        uint flagSetId = questInfo.flagSetId;
+
+                        // Skip items already consumed (checked via saved scenario flags)
+                        if (flagSetId != 0 && IsQuestFlagSet(flagSetId))
+                            continue;
+
+                        float dist = Vector3.Distance(playerPos, et.transform.position);
+                        keyItems.Add(new NavigationEvent
+                        {
+                            Name = name,
+                            Position = et.transform.position,
+                            Target = et.gameObject,
+                            Category = EventCategory.KeyItems,
+                            DistanceToPlayer = dist,
+                            FlagSetId = flagSetId
+                        });
+                    }
+                }
+                catch { }
             }
 
             // Update distances (only for active objects, keep cached position for inactive)
@@ -846,6 +939,7 @@ namespace DigimonNOAccess
             };
             updateDistances(items);
             updateDistances(materials);
+            updateDistances(keyItems);
 
             // Refresh enemies - only remove if destroyed (null).
             // Don't remove inactive: the game deactivates distant objects for performance.
@@ -1070,7 +1164,7 @@ namespace DigimonNOAccess
                     if (!point.enableItemPickPoint)
                         continue;
 
-                    var category = point.isMaterial ? EventCategory.Materials : EventCategory.Items;
+                    var category = GetItemCategory(point);
                     string name = GetItemName(point);
                     float dist = Vector3.Distance(playerPos, point.transform.position);
 
@@ -1084,12 +1178,243 @@ namespace DigimonNOAccess
                     });
                 }
 
-                DebugLogger.Log($"[NavList] ScanItems complete: {_events[EventCategory.Items].Count} items, {_events[EventCategory.Materials].Count} materials found");
+                DebugLogger.Log($"[NavList] ScanItems complete: {_events[EventCategory.Items].Count} items, {_events[EventCategory.Materials].Count} materials, {_events[EventCategory.KeyItems].Count} key items found");
             }
             catch (Exception ex)
             {
                 DebugLogger.Log($"[NavList] ScanItems error: {ex.Message}");
             }
+        }
+
+        private void ScanQuestItems(Vector3 playerPos)
+        {
+            try
+            {
+                // Quest items are standalone EventTriggerScript objects with PICK_ command blocks.
+                // They are invisible trigger zones placed by the scenario system for quest pickups.
+                // Must use FindObjectsOfTypeAll because standalone EventTriggers aren't found by FindObjectsOfType.
+                var eventTriggers = Resources.FindObjectsOfTypeAll<EventTriggerScript>();
+                var placementLookup = BuildPlacementLookup();
+
+                foreach (var et in eventTriggers)
+                {
+                    if (et == null || et.gameObject == null || !et.gameObject.activeInHierarchy)
+                        continue;
+
+                    // Skip NPC and enemy triggers - only want standalone pickup triggers
+                    if (et.gameObject.GetComponent<NpcCtrl>() != null)
+                        continue;
+                    if (et.gameObject.GetComponent<EnemyCtrl>() != null)
+                        continue;
+
+                    // Verify this is a PICK_ trigger via placement data
+                    string cmdBlock = null;
+                    if (placementLookup.TryGetValue(et.m_EventParamId, out var placement))
+                        cmdBlock = placement.m_CmdBlock;
+
+                    if (string.IsNullOrEmpty(cmdBlock) || !cmdBlock.StartsWith("PICK_"))
+                        continue;
+
+                    var questInfo = ResolveQuestItem(placement.m_CmdBlock);
+                    string name = questInfo.name ?? "Quest Pickup";
+                    uint itemId = questInfo.itemId;
+                    uint flagSetId = questInfo.flagSetId;
+
+                    // Skip items already consumed (checked via saved scenario flags)
+                    if (flagSetId != 0 && IsQuestFlagSet(flagSetId))
+                        continue;
+
+                    float dist = Vector3.Distance(playerPos, et.transform.position);
+
+                    _events[EventCategory.KeyItems].Add(new NavigationEvent
+                    {
+                        Name = name,
+                        Position = et.transform.position,
+                        Target = et.gameObject,
+                        Category = EventCategory.KeyItems,
+                        DistanceToPlayer = dist,
+                        FlagSetId = flagSetId
+                    });
+                }
+
+                DebugLogger.Log($"[NavList] ScanQuestItems: {_events[EventCategory.KeyItems].Count} active quest items");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[NavList] ScanQuestItems error: {ex.Message}");
+            }
+        }
+
+        private Dictionary<uint, ParameterPlacementNpc> BuildPlacementLookup()
+        {
+            var lookup = new Dictionary<uint, ParameterPlacementNpc>();
+            try
+            {
+                var etMgr = MainGameManager.m_instance?.eventTriggerMgr;
+                if (etMgr == null) return lookup;
+
+                var placementData = etMgr.m_CsvbPlacementData;
+                if (placementData == null) return lookup;
+
+                var allPlacements = placementData.GetParams();
+                foreach (var p in allPlacements)
+                {
+                    if (p != null)
+                        lookup[p.id] = p;
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[NavList] BuildPlacementLookup error: {ex.Message}");
+            }
+            return lookup;
+        }
+
+        /// <summary>
+        /// Resolves quest item name and item ID from a PICK_ command block.
+        /// Returns cached result if available, otherwise parses the scenario script CSVB data.
+        /// </summary>
+        private (string name, uint itemId, uint flagSetId) ResolveQuestItem(string cmdBlock)
+        {
+            if (string.IsNullOrEmpty(cmdBlock))
+                return (null, 0, 0);
+
+            if (_questItemCache.TryGetValue(cmdBlock, out var cached))
+                return cached;
+
+            var result = ParseQuestItemFromScenarioData(cmdBlock);
+            _questItemCache[cmdBlock] = result;
+            if (result.name != null)
+                DebugLogger.Log($"[NavList] Resolved '{cmdBlock}' -> {result.name}, completionFlag=0x{result.flagSetId:X8}");
+            return result;
+        }
+
+        /// <summary>
+        /// Checks if a quest item's flag set has been triggered in saved scenario progress data.
+        /// This is the game's persistent completion flag - survives save/reload.
+        /// </summary>
+        private static bool IsQuestFlagSet(uint flagSetId)
+        {
+            try
+            {
+                var progressData = StorageData.m_ScenarioProgressData;
+                if (progressData == null) return false;
+                return progressData.IsOnFlagSetAnd(flagSetId, true);
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// Reads the scenario script's CSVB data to find item IDs in PICK_ command blocks.
+        /// Form 89 records are SStartPickItemCountData: m_ItemId (offset 0), m_Quota (offset 4), m_FlagSetId (offset 8).
+        /// Falls back to scanning all records for valid item IDs if no form 89 record is found.
+        /// </summary>
+        private (string name, uint itemId, uint flagSetId) ParseQuestItemFromScenarioData(string cmdBlock)
+        {
+            try
+            {
+                var ss = MainGameManager.m_instance?.m_SS;
+                if (ss == null) return (null, 0, 0);
+
+                var scriptBase = ss.Cast<CScenarioScriptBase>();
+                if (scriptBase == null) return (null, 0, 0);
+
+                var csvbInfoArr = scriptBase.m_CsvbInfo;
+                if (csvbInfoArr == null) return (null, 0, 0);
+
+                for (int i = 0; i < csvbInfoArr.Length; i++)
+                {
+                    var info = csvbInfoArr[i];
+                    if (info?.m_BlockNames == null || info.m_Csvb == null) continue;
+                    if (!info.m_BlockNames.ContainsKey(cmdBlock)) continue;
+
+                    int blockIdx = info.m_BlockNames[cmdBlock];
+                    var csvb = info.m_Csvb;
+                    int numRecords = csvb.GetNumRecord(blockIdx);
+                    var binary = csvb.m_CsvbBinary;
+                    if (binary == null || numRecords == 0) continue;
+
+                    // Scan all records to find:
+                    // - Form 89 (SStartPickItemCountData): item ID at offset 0
+                    // - Form 5 (SSetFlagSetData): completion flag set ID at offset 0
+                    //   This is the REAL scenario flag that persists in save data.
+                    //   (Form 89's m_FlagSetId is only used by CQuestItemCounter, not by the flag system.)
+                    uint foundItemId = 0;
+                    uint completionFlagSetId = 0;
+                    string foundName = null;
+                    for (int r = 0; r < numRecords; r++)
+                    {
+                        var accessInfo = new CCsvbVForm.SCsvbVRecAccessInfo();
+                        if (!csvb.GetVRecAccessInfo(r, blockIdx, ref accessInfo)) continue;
+
+                        uint dataPos = csvb.GetVRecDataPos(accessInfo);
+                        int maxBytes = (int)((uint)binary.Length - dataPos);
+
+                        if (accessInfo.m_formIdx == 89 && maxBytes >= 12)
+                        {
+                            foundItemId = ReadUInt32(binary, dataPos);
+                            try
+                            {
+                                var itemData = ParameterItemData.GetParam(foundItemId);
+                                if (itemData != null)
+                                    foundName = itemData.GetName();
+                            }
+                            catch { }
+                        }
+                        else if (accessInfo.m_formIdx == 5 && maxBytes >= 8 && completionFlagSetId == 0)
+                        {
+                            // SSetFlagSetData: m_FlagSetId (offset 0), m_Val (offset 4)
+                            uint flagId = ReadUInt32(binary, dataPos);
+                            uint val = ReadUInt32(binary, dataPos + 4);
+                            if (flagId != 0 && val == 1)
+                                completionFlagSetId = flagId;
+                        }
+                    }
+                    if (foundName != null)
+                        return (foundName, foundItemId, completionFlagSetId);
+
+                    // Fallback: scan all records for any valid item ID
+                    for (int r = 0; r < numRecords; r++)
+                    {
+                        var accessInfo = new CCsvbVForm.SCsvbVRecAccessInfo();
+                        if (!csvb.GetVRecAccessInfo(r, blockIdx, ref accessInfo)) continue;
+
+                        uint dataPos = csvb.GetVRecDataPos(accessInfo);
+                        int scanBytes = System.Math.Min(32, (int)((uint)binary.Length - dataPos));
+
+                        for (int off = 0; off + 4 <= scanBytes; off += 4)
+                        {
+                            uint candidateId = ReadUInt32(binary, dataPos + (uint)off);
+                            if (candidateId == 0 || candidateId == 0xFFFFFFFF || candidateId < 0x1000)
+                                continue;
+                            try
+                            {
+                                var itemData = ParameterItemData.GetParam(candidateId);
+                                if (itemData != null)
+                                {
+                                    string name = itemData.GetName();
+                                    if (!string.IsNullOrEmpty(name))
+                                        return (name, candidateId, 0);
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[NavList] ScenarioData error: {ex.Message}");
+            }
+            return (null, 0, 0);
+        }
+
+        private static uint ReadUInt32(Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<byte> data, uint offset)
+        {
+            return (uint)(data[(int)offset]
+                | (data[(int)offset + 1] << 8)
+                | (data[(int)offset + 2] << 16)
+                | (data[(int)offset + 3] << 24));
         }
 
         private void ScanTransitions(Vector3 playerPos)
@@ -1439,6 +1764,29 @@ namespace DigimonNOAccess
             return "Unknown NPC";
         }
 
+        private EventCategory GetItemCategory(ItemPickPointBase point)
+        {
+            if (point.isMaterial)
+                return EventCategory.Materials;
+
+            try
+            {
+                uint itemId = point.itemId;
+                if (itemId != 0)
+                {
+                    var itemData = ParameterItemData.GetParam(itemId);
+                    if (itemData != null && itemData.IsKindKeyItem())
+                        return EventCategory.KeyItems;
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[NavList] GetItemCategory error: {ex.Message}");
+            }
+
+            return EventCategory.Items;
+        }
+
         private string GetItemName(ItemPickPointBase point)
         {
             try
@@ -1462,6 +1810,7 @@ namespace DigimonNOAccess
 
             return point.isMaterial ? "Unknown Material" : "Unknown Item";
         }
+
 
         private string GetEnemyName(EnemyCtrl enemy)
         {
@@ -2037,6 +2386,23 @@ namespace DigimonNOAccess
                     playerPos.x, playerPos.y, playerPos.z,
                     playerForward.x, playerForward.z);
 
+                // Key items: stop pathfinding when player enters the trigger zone.
+                // The game's MapTriggerScript.isStay/isEnter tracks whether the player
+                // is inside the trigger volume. This ensures the event will actually fire.
+                if (_pathfindingCategory == EventCategory.KeyItems && _pathfindingTarget != null)
+                {
+                    try
+                    {
+                        var trigger = _pathfindingTarget.GetComponent<MapTriggerScript>();
+                        if (trigger != null && (trigger.isStay || trigger.isEnter))
+                        {
+                            StopPathfinding("Destination reached");
+                            return;
+                        }
+                    }
+                    catch { }
+                }
+
                 // Distance-based arrival for NPCs and Enemies.
                 // Transitions need to walk into the zone trigger (map change stops pathfinding).
                 // Facilities need to walk right up to the NPC trigger.
@@ -2044,7 +2410,8 @@ namespace DigimonNOAccess
                 // All three rely on stuck detection below instead.
                 if (_pathfindingCategory != EventCategory.Transitions
                     && _pathfindingCategory != EventCategory.Facilities
-                    && _pathfindingCategory != EventCategory.Items)
+                    && _pathfindingCategory != EventCategory.Items
+                    && _pathfindingCategory != EventCategory.KeyItems)
                 {
                     float distToTarget = Vector3.Distance(playerPos, _pathfindingRawDestination);
                     bool atPathEnd = _isAutoWalking && _autoWalkCorners != null && _autoWalkCorners.Length > 0
@@ -2589,6 +2956,7 @@ namespace DigimonNOAccess
                 case EventCategory.NPCs: return "NPCs";
                 case EventCategory.Items: return "Items";
                 case EventCategory.Materials: return "Materials";
+                case EventCategory.KeyItems: return "Key Items";
                 case EventCategory.Transitions: return "Transitions";
                 case EventCategory.Enemies: return "Enemies";
                 case EventCategory.Facilities: return "Facilities";
