@@ -545,29 +545,86 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[NavList] Rescan Items error: {ex.Message}");
             }
 
-            // Scan for new transitions
+            // Scan for new transitions using AreaChangeParent hierarchy
             try
             {
-                var mapTriggers = UnityEngine.Object.FindObjectsOfType<MapTriggerScript>();
-                foreach (var trigger in mapTriggers)
+                string sourcePrefix = GetAreaChangePrefix();
+                var parents = UnityEngine.Object.FindObjectsOfType<AreaChangeParent>();
+                AreaChangeParent currentParent = null;
+                foreach (var p in parents)
                 {
-                    if (trigger == null || trigger.gameObject == null || !trigger.gameObject.activeInHierarchy)
-                        continue;
-                    if (trigger.enterID != MapTriggerManager.EVENT.MapChange)
-                        continue;
-                    if (_knownTargets.Contains(trigger.gameObject))
-                        continue;
-
-                    string name = GetTransitionName(trigger);
-                    float dist = Vector3.Distance(playerPos, trigger.transform.position);
-                    _events[EventCategory.Transitions].Add(new NavigationEvent
+                    if (p != null && p.gameObject != null && p.gameObject.name == sourcePrefix)
                     {
-                        Name = name, Position = trigger.transform.position,
-                        Target = trigger.gameObject, Category = EventCategory.Transitions,
-                        DistanceToPlayer = dist
-                    });
-                    _knownTargets.Add(trigger.gameObject);
-                    newCount++;
+                        currentParent = p;
+                        break;
+                    }
+                }
+
+                if (currentParent != null)
+                {
+                    var childAcis = currentParent.GetComponentsInChildren<AreaChangeInfo>();
+                    foreach (var aci in childAcis)
+                    {
+                        if (aci == null || aci.gameObject == null || !aci.gameObject.activeInHierarchy)
+                            continue;
+                        if (_knownTargets.Contains(aci.gameObject))
+                            continue;
+
+                        var dest = aci.m_Destination;
+                        if (dest == null) continue;
+
+                        if (dest.m_MapNo == _lastMapNo && dest.m_AreaNo == _lastAreaNo)
+                            continue;
+
+                        string name = GetTransitionNameFromAreaChange(aci);
+                        float dist = Vector3.Distance(playerPos, aci.transform.position);
+                        _events[EventCategory.Transitions].Add(new NavigationEvent
+                        {
+                            Name = name, Position = aci.transform.position,
+                            Target = aci.gameObject, Category = EventCategory.Transitions,
+                            DistanceToPlayer = dist
+                        });
+                        _knownTargets.Add(aci.gameObject);
+                        newCount++;
+                    }
+                }
+                else
+                {
+                    // Fallback: scene + name prefix filtering
+                    var mgm = MainGameManager.m_instance;
+                    string currentScene = mgm?.mapSceneName;
+
+                    var areaChangeInfos = UnityEngine.Object.FindObjectsOfType<AreaChangeInfo>();
+                    foreach (var aci in areaChangeInfos)
+                    {
+                        if (aci == null || aci.gameObject == null || !aci.gameObject.activeInHierarchy)
+                            continue;
+                        if (_knownTargets.Contains(aci.gameObject))
+                            continue;
+
+                        var dest = aci.m_Destination;
+                        if (dest == null) continue;
+
+                        if (!string.IsNullOrEmpty(currentScene) && !aci.gameObject.scene.name.StartsWith(currentScene))
+                            continue;
+
+                        if (!aci.gameObject.name.StartsWith(sourcePrefix))
+                            continue;
+
+                        if (dest.m_MapNo == _lastMapNo && dest.m_AreaNo == _lastAreaNo)
+                            continue;
+
+                        string name = GetTransitionNameFromAreaChange(aci);
+                        float dist = Vector3.Distance(playerPos, aci.transform.position);
+                        _events[EventCategory.Transitions].Add(new NavigationEvent
+                        {
+                            Name = name, Position = aci.transform.position,
+                            Target = aci.gameObject, Category = EventCategory.Transitions,
+                            DistanceToPlayer = dist
+                        });
+                        _knownTargets.Add(aci.gameObject);
+                        newCount++;
+                    }
                 }
             }
             catch (Exception ex)
@@ -941,13 +998,14 @@ namespace DigimonNOAccess
             updateDistances(materials);
             updateDistances(keyItems);
 
-            // Refresh enemies - only remove if destroyed (null).
-            // Don't remove inactive: the game deactivates distant objects for performance.
+            // Refresh enemies - remove destroyed and defeated.
             var enemies = _events.ContainsKey(EventCategory.Enemies) ? _events[EventCategory.Enemies] : null;
             if (enemies != null)
             {
-                int beforeCount = enemies.Count;
                 enemies.RemoveAll(e => e.Target == null);
+
+                // Remove defeated enemies: deactivated via SetDisp(false) after defeat.
+                enemies.RemoveAll(e => e.Target != null && !e.Target.activeInHierarchy);
 
                 // Check for new enemies that may have spawned (only if enemy data loaded)
                 if (!_enemiesLoadComplete)
@@ -1044,6 +1102,10 @@ namespace DigimonNOAccess
                     }
                 }
             }
+
+            // Re-sort all categories by distance (closest first)
+            foreach (var kvp in _events)
+                kvp.Value.Sort((a, b) => a.DistanceToPlayer.CompareTo(b.DistanceToPlayer));
 
             UpdateActiveCategories();
 
@@ -1417,36 +1479,151 @@ namespace DigimonNOAccess
                 | (data[(int)offset + 3] << 24));
         }
 
+        /// <summary>
+        /// Build the source map prefix for AreaChangeInfo/AreaChangeParent object names.
+        /// Game names transitions as AC{mapNo:02d}{areaNo:02d}_{dest}, and groups
+        /// them under AreaChangeParent objects named AC{mapNo:02d}{areaNo:02d}.
+        /// </summary>
+        private string GetAreaChangePrefix()
+        {
+            return $"AC{_lastMapNo:D2}{_lastAreaNo:D2}";
+        }
+
         private void ScanTransitions(Vector3 playerPos)
         {
             try
             {
-                var mapTriggers = UnityEngine.Object.FindObjectsOfType<MapTriggerScript>();
-                foreach (var trigger in mapTriggers)
+                string sourcePrefix = GetAreaChangePrefix();
+
+                // Find the AreaChangeParent container for the current map.
+                // The game organizes transitions under per-map AreaChangeParent objects
+                // named AC{mapNo:02d}{areaNo:02d} (e.g., "AC0201" for Vast Plateau).
+                var parents = UnityEngine.Object.FindObjectsOfType<AreaChangeParent>();
+                AreaChangeParent currentParent = null;
+                foreach (var p in parents)
                 {
-                    if (trigger == null || trigger.gameObject == null || !trigger.gameObject.activeInHierarchy)
-                        continue;
-
-                    if (trigger.enterID != MapTriggerManager.EVENT.MapChange)
-                        continue;
-
-                    string name = GetTransitionName(trigger);
-                    float dist = Vector3.Distance(playerPos, trigger.transform.position);
-
-                    _events[EventCategory.Transitions].Add(new NavigationEvent
+                    if (p != null && p.gameObject != null && p.gameObject.name == sourcePrefix)
                     {
-                        Name = name,
-                        Position = trigger.transform.position,
-                        Target = trigger.gameObject,
-                        Category = EventCategory.Transitions,
-                        DistanceToPlayer = dist
-                    });
+                        currentParent = p;
+                        break;
+                    }
+                }
+
+                if (currentParent != null)
+                {
+                    // Get transitions from the AreaChangeParent's children
+                    var childAcis = currentParent.GetComponentsInChildren<AreaChangeInfo>();
+                    foreach (var aci in childAcis)
+                    {
+                        if (aci == null || aci.gameObject == null || !aci.gameObject.activeInHierarchy)
+                            continue;
+
+                        var dest = aci.m_Destination;
+                        if (dest == null) continue;
+
+                        // Skip entrances TO the current map
+                        if (dest.m_MapNo == _lastMapNo && dest.m_AreaNo == _lastAreaNo)
+                            continue;
+
+                        string name = GetTransitionNameFromAreaChange(aci);
+                        float dist = Vector3.Distance(playerPos, aci.transform.position);
+
+                        _events[EventCategory.Transitions].Add(new NavigationEvent
+                        {
+                            Name = name,
+                            Position = aci.transform.position,
+                            Target = aci.gameObject,
+                            Category = EventCategory.Transitions,
+                            DistanceToPlayer = dist
+                        });
+                    }
+                    DebugLogger.Log($"[NavList] ScanTransitions: found parent '{sourcePrefix}' with {_events[EventCategory.Transitions].Count} transitions");
+                }
+                else
+                {
+                    // Fallback: use scene + name prefix filtering
+                    DebugLogger.Log($"[NavList] ScanTransitions: no AreaChangeParent '{sourcePrefix}' found, using fallback");
+                    var mgm = MainGameManager.m_instance;
+                    string currentScene = mgm?.mapSceneName;
+
+                    var areaChangeInfos = UnityEngine.Object.FindObjectsOfType<AreaChangeInfo>();
+                    foreach (var aci in areaChangeInfos)
+                    {
+                        if (aci == null || aci.gameObject == null || !aci.gameObject.activeInHierarchy)
+                            continue;
+
+                        var dest = aci.m_Destination;
+                        if (dest == null) continue;
+
+                        if (!string.IsNullOrEmpty(currentScene) && !aci.gameObject.scene.name.StartsWith(currentScene))
+                            continue;
+
+                        if (!aci.gameObject.name.StartsWith(sourcePrefix))
+                            continue;
+
+                        if (dest.m_MapNo == _lastMapNo && dest.m_AreaNo == _lastAreaNo)
+                            continue;
+
+                        string name = GetTransitionNameFromAreaChange(aci);
+                        float dist = Vector3.Distance(playerPos, aci.transform.position);
+
+                        _events[EventCategory.Transitions].Add(new NavigationEvent
+                        {
+                            Name = name,
+                            Position = aci.transform.position,
+                            Target = aci.gameObject,
+                            Category = EventCategory.Transitions,
+                            DistanceToPlayer = dist
+                        });
+                    }
                 }
             }
             catch (Exception ex)
             {
                 DebugLogger.Log($"[NavList] ScanTransitions error: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Get transition name from AreaChangeInfo destination data.
+        /// </summary>
+        private string GetTransitionNameFromAreaChange(AreaChangeInfo aci)
+        {
+            try
+            {
+                var dest = aci.m_Destination;
+                if (dest != null)
+                {
+                    try
+                    {
+                        string areaName = ParameterAreaName.GetAreaName((AppInfo.MAP)dest.m_MapNo, (uint)dest.m_AreaNo);
+                        if (!string.IsNullOrEmpty(areaName) && !areaName.Contains("not found"))
+                            return areaName;
+                    }
+                    catch { }
+
+                    try
+                    {
+                        string mapName = ParameterMapName.GetMapName((AppInfo.MAP)dest.m_MapNo);
+                        if (!string.IsNullOrEmpty(mapName) && !mapName.Contains("not found"))
+                            return mapName;
+                    }
+                    catch { }
+
+                    return $"Area {dest.m_MapNo}-{dest.m_AreaNo}";
+                }
+            }
+            catch { }
+
+            try
+            {
+                string objName = aci.gameObject.name;
+                if (!string.IsNullOrEmpty(objName))
+                    return $"Transition ({objName})";
+            }
+            catch { }
+
+            return "Unknown Transition";
         }
 
         private void ScanEnemies(Vector3 playerPos)
@@ -2011,82 +2188,6 @@ namespace DigimonNOAccess
             return GetFacilityName(facilityType);
         }
 
-        private string GetTransitionName(MapTriggerScript trigger)
-        {
-            try
-            {
-                // Try to get AreaChangeInfo from the same GameObject
-                var areaChangeInfo = trigger.GetComponent<AreaChangeInfo>();
-                if (areaChangeInfo != null && areaChangeInfo.m_Destination != null)
-                {
-                    var dest = areaChangeInfo.m_Destination;
-                    int destMapNo = dest.m_MapNo;
-                    int destAreaNo = dest.m_AreaNo;
-
-                    // Try area name first (more specific)
-                    try
-                    {
-                        string areaName = ParameterAreaName.GetAreaName((AppInfo.MAP)destMapNo, (uint)destAreaNo);
-                        if (!string.IsNullOrEmpty(areaName) && !areaName.Contains("not found"))
-                            return areaName;
-                    }
-                    catch { }
-
-                    // Fall back to map name
-                    try
-                    {
-                        string mapName = ParameterMapName.GetMapName((AppInfo.MAP)destMapNo);
-                        if (!string.IsNullOrEmpty(mapName) && !mapName.Contains("not found"))
-                            return mapName;
-                    }
-                    catch { }
-
-                    return $"Area {destMapNo}-{destAreaNo}";
-                }
-
-                // Try parent GameObject for AreaChangeInfo
-                if (trigger.transform.parent != null)
-                {
-                    var parentAreaInfo = trigger.transform.parent.GetComponent<AreaChangeInfo>();
-                    if (parentAreaInfo != null && parentAreaInfo.m_Destination != null)
-                    {
-                        var dest = parentAreaInfo.m_Destination;
-                        try
-                        {
-                            string areaName = ParameterAreaName.GetAreaName((AppInfo.MAP)dest.m_MapNo, (uint)dest.m_AreaNo);
-                            if (!string.IsNullOrEmpty(areaName) && !areaName.Contains("not found"))
-                                return areaName;
-                        }
-                        catch { }
-
-                        try
-                        {
-                            string mapName = ParameterMapName.GetMapName((AppInfo.MAP)dest.m_MapNo);
-                            if (!string.IsNullOrEmpty(mapName) && !mapName.Contains("not found"))
-                                return mapName;
-                        }
-                        catch { }
-
-                        return $"Area {dest.m_MapNo}-{dest.m_AreaNo}";
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Log($"[NavList] GetTransitionName error: {ex.Message}");
-            }
-
-            // Fallback: use GameObject name which often contains area info
-            try
-            {
-                string objName = trigger.gameObject.name;
-                if (!string.IsNullOrEmpty(objName))
-                    return $"Transition ({objName})";
-            }
-            catch { }
-
-            return "Unknown Transition";
-        }
 
         #endregion
 
@@ -2360,14 +2461,21 @@ namespace DigimonNOAccess
             try
             {
                 // Check if target was destroyed (null = truly gone).
-                // Don't check activeInHierarchy: the game deactivates distant objects for performance,
-                // but we can still pathfind to their cached position.
+                // Don't check activeInHierarchy for most categories: the game deactivates
+                // distant objects for performance, but we can still pathfind to their cached position.
                 // For transitions, target destroyed = map unloaded = we arrived.
+                // Exception: enemies are deactivated when defeated, so stop pathfinding to them.
                 if (_pathfindingTarget == null)
                 {
                     string msg = _pathfindingCategory == EventCategory.Transitions
                         ? "Destination reached" : "Target lost";
                     StopPathfinding(msg);
+                    return;
+                }
+
+                if (_pathfindingCategory == EventCategory.Enemies && !_pathfindingTarget.activeInHierarchy)
+                {
+                    StopPathfinding("Target defeated");
                     return;
                 }
 

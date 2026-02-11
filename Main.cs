@@ -54,7 +54,8 @@ namespace DigimonNOAccess
             // Initialize Harmony patches for immediate text interception
             _harmony = new HarmonyLib.Harmony("com.digimonoaccess.patches");
             DialogTextPatch.Apply(_harmony);
-            LoggerInstance.Msg("Dialog text patches applied");
+            BattleDamagePopPatch.Apply(_harmony);
+            LoggerInstance.Msg("Dialog and battle patches applied");
 
             // Apply gamepad input injection patch for PlayStation controller support
             // Apply if SDL3 is available (even if controller not connected yet)
@@ -118,6 +119,7 @@ namespace DigimonNOAccess
                 new BattleTacticsHandler(),
                 new BattleResultHandler(),
                 new BattleHudHandler(),
+                new BattleMonitorHandler(),
                 new ItemPickPanelHandler(),
                 _audioNavigationHandler,
                 new FieldHudHandler(),
@@ -215,6 +217,7 @@ namespace DigimonNOAccess
         {
             LoggerInstance.Msg("DigimonNOAccess shutdown");
             _audioNavigationHandler?.Cleanup();
+            BattleAudioCues.Shutdown();
             SDLController.Shutdown();
             ScreenReader.Shutdown();
         }

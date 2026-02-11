@@ -10,14 +10,17 @@ namespace DigimonNOAccess
     /// Keyboard:
     ///   F3 = Partner 1 full status
     ///   F4 = Partner 2 full status
-    ///   F6 = Partner 1 HP/MP
-    ///   F7 = Partner 2 HP/MP
+    ///   F6 = Enemy 1 info
+    ///   F7 = Enemy 2 info
+    ///   F11 = Enemy 3 info
+    ///   F12 = Order Power
     ///
     /// Controller (via SDL3):
-    ///   RStickUp = Partner 1 HP/MP
-    ///   RStickDown = Partner 2 HP/MP
-    ///   RStickLeft = Partner 1 Order
-    ///   RStickRight = Partner 2 Order
+    ///   RStickUp = Enemy 1 info
+    ///   RStickDown = Enemy 2 info
+    ///   RStickLeft = Enemy 3 info
+    ///   RStickRight = Order Power
+    ///   RT+DPadLeft = Last SP charge warning
     /// </summary>
     public class BattleHudHandler : IAccessibilityHandler
     {
@@ -116,49 +119,49 @@ namespace DigimonNOAccess
 
         private void HandleKeyboardInput()
         {
-            // Use configurable input system for all battle inputs
-            // Each action checks both keyboard and controller bindings automatically
-
             // Partner 1 full status (F3 or controller binding)
             if (ModInputManager.IsActionTriggered("Partner1Status"))
             {
-                DebugLogger.Log("[BattleHudHandler] Partner1Status triggered in battle");
                 AnnouncePartnerFullStatus(0);
             }
 
             // Partner 2 full status (F4 or controller binding)
             if (ModInputManager.IsActionTriggered("Partner2Status"))
             {
-                DebugLogger.Log("[BattleHudHandler] Partner2Status triggered in battle");
                 AnnouncePartnerFullStatus(1);
             }
 
-            // Partner 1 HP/MP only (F6 or RStickUp)
-            if (ModInputManager.IsActionTriggered("BattlePartner1HP"))
+            // Per-enemy info (F6/F7/F11 or RStick directions)
+            if (ModInputManager.IsActionTriggered("BattleEnemy1"))
             {
-                DebugLogger.Log("[BattleHudHandler] BattlePartner1HP triggered");
-                AnnouncePartnerHpMp(0);
+                string info = BattleMonitorHandler.GetEnemyInfoByIndex(0);
+                ScreenReader.Say(info);
             }
 
-            // Partner 2 HP/MP only (F7 or RStickDown)
-            if (ModInputManager.IsActionTriggered("BattlePartner2HP"))
+            if (ModInputManager.IsActionTriggered("BattleEnemy2"))
             {
-                DebugLogger.Log("[BattleHudHandler] BattlePartner2HP triggered");
-                AnnouncePartnerHpMp(1);
+                string info = BattleMonitorHandler.GetEnemyInfoByIndex(1);
+                ScreenReader.Say(info);
             }
 
-            // Partner 1 Order (RStickLeft)
-            if (ModInputManager.IsActionTriggered("BattlePartner1Order"))
+            if (ModInputManager.IsActionTriggered("BattleEnemy3"))
             {
-                DebugLogger.Log("[BattleHudHandler] BattlePartner1Order triggered");
-                AnnouncePartnerOrder(0);
+                string info = BattleMonitorHandler.GetEnemyInfoByIndex(2);
+                ScreenReader.Say(info);
             }
 
-            // Partner 2 Order (RStickRight)
-            if (ModInputManager.IsActionTriggered("BattlePartner2Order"))
+            // Order Power (F12 or RStickRight)
+            if (ModInputManager.IsActionTriggered("BattleOrderPower"))
             {
-                DebugLogger.Log("[BattleHudHandler] BattlePartner2Order triggered");
-                AnnouncePartnerOrder(1);
+                string info = BattleMonitorHandler.GetOrderPower();
+                ScreenReader.Say(info);
+            }
+
+            // SP charge details (RT+DPadLeft)
+            if (ModInputManager.IsActionTriggered("BattleSPDetails"))
+            {
+                string info = BattleMonitorHandler.GetLastSPChargeInfo();
+                ScreenReader.Say(info);
             }
         }
 
@@ -201,121 +204,6 @@ namespace DigimonNOAccess
             }
 
             return null;
-        }
-
-        private void AnnouncePartnerHpMp(int partnerIndex)
-        {
-            DebugLogger.Log($"[BattleHudHandler] AnnouncePartnerHpMp called for partner {partnerIndex}");
-
-            var panel = GetDigimonPanel(partnerIndex);
-            if (panel == null)
-            {
-                DebugLogger.Log($"[BattleHudHandler] Panel is null for partner {partnerIndex}");
-                ScreenReader.Say(PartnerUtilities.GetPartnerNotAvailableMessage(partnerIndex));
-                return;
-            }
-
-            // Get HP and MP - try multiple sources
-            int hp = 0;
-            int mp = 0;
-            string hpSource = "unknown";
-            string mpSource = "unknown";
-
-            // Method 1: Try m_now_hp/m_now_mp (integer fields from base class)
-            try
-            {
-                hp = panel.m_now_hp;
-                mp = panel.m_now_mp;
-                hpSource = "m_now_hp";
-                mpSource = "m_now_mp";
-                DebugLogger.Log($"[BattleHudHandler] From m_now fields: HP={hp}, MP={mp}");
-            }
-            catch (System.Exception ex)
-            {
-                DebugLogger.Log($"[BattleHudHandler] Failed to read m_now fields: {ex.Message}");
-            }
-
-            // Method 2: Try text fields if integers failed or were 0
-            if (hp == 0 || mp == 0)
-            {
-                try
-                {
-                    var hpTextField = panel.m_hpText;
-                    var mpTextField = panel.m_mpText;
-
-                    if (hpTextField != null && !string.IsNullOrEmpty(hpTextField.text))
-                    {
-                        if (int.TryParse(hpTextField.text, out int parsedHp))
-                        {
-                            hp = parsedHp;
-                            hpSource = "m_hpText";
-                        }
-                    }
-                    if (mpTextField != null && !string.IsNullOrEmpty(mpTextField.text))
-                    {
-                        if (int.TryParse(mpTextField.text, out int parsedMp))
-                        {
-                            mp = parsedMp;
-                            mpSource = "m_mpText";
-                        }
-                    }
-                    DebugLogger.Log($"[BattleHudHandler] From text fields: HP={hp} ({hpSource}), MP={mp} ({mpSource})");
-                }
-                catch (System.Exception ex)
-                {
-                    DebugLogger.Log($"[BattleHudHandler] Failed to read text fields: {ex.Message}");
-                }
-            }
-
-            // Method 3: Try PartnerCtrl reference
-            if (hp == 0 || mp == 0)
-            {
-                try
-                {
-                    var partner = panel.m_partner;
-                    if (partner != null)
-                    {
-                        DebugLogger.Log($"[BattleHudHandler] Trying PartnerCtrl reference");
-                        // PartnerCtrl extends DigimonCtrl which has Hp property
-                        hp = partner.Hp;
-                        hpSource = "PartnerCtrl.Hp";
-                        DebugLogger.Log($"[BattleHudHandler] From PartnerCtrl: HP={hp}");
-                    }
-                }
-                catch (System.Exception ex)
-                {
-                    DebugLogger.Log($"[BattleHudHandler] Failed to read from PartnerCtrl: {ex.Message}");
-                }
-            }
-
-            string partnerLabel = PartnerUtilities.GetPartnerLabel(partnerIndex);
-            DebugLogger.Log($"[BattleHudHandler] Final values: HP={hp}, MP={mp}");
-            ScreenReader.Say($"{partnerLabel}: HP {hp}, MP {mp}");
-        }
-
-        private void AnnouncePartnerOrder(int partnerIndex)
-        {
-            var panel = GetDigimonPanel(partnerIndex);
-            if (panel == null)
-            {
-                ScreenReader.Say(PartnerUtilities.GetPartnerNotAvailableMessage(partnerIndex));
-                return;
-            }
-
-            string order = "None";
-            try
-            {
-                order = panel.m_orderLabel?.text ?? "None";
-                if (string.IsNullOrWhiteSpace(order))
-                    order = "None";
-            }
-            catch (System.Exception ex)
-            {
-                DebugLogger.Log($"[BattleHudHandler] Error getting partner order: {ex.Message}");
-            }
-
-            string partnerLabel = PartnerUtilities.GetPartnerLabel(partnerIndex);
-            ScreenReader.Say($"{partnerLabel} current order: {order}");
         }
 
         private void AnnouncePartnerFullStatus(int partnerIndex)

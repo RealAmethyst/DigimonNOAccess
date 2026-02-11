@@ -239,11 +239,11 @@ namespace DigimonNOAccess
                 string cleaned = StripRichTextTags(str);
                 cleaned = TextUtilities.FormatItemMessage(cleaned);
 
-                // Partner01 (second partner) messages queue after Partner00 (first partner)
-                // so both are heard (e.g. sleep stat recovery for each partner)
-                // Education completion also queues subsequent messages for both partners
-                if (window_pos == uCommonMessageWindow.Pos.Partner01 ||
-                    EducationPanelHandler.ShouldQueueNextMessage())
+                // Always call ShouldQueueNextMessage() to consume the education state machine,
+                // even when Partner01 already triggers queueing (avoids short-circuit leaving
+                // stale state that incorrectly queues the next unrelated message).
+                bool educationQueue = EducationPanelHandler.ShouldQueueNextMessage();
+                if (window_pos == uCommonMessageWindow.Pos.Partner01 || educationQueue)
                     ScreenReader.SayQueued(cleaned);
                 else
                     ScreenReader.Say(cleaned);
@@ -284,8 +284,8 @@ namespace DigimonNOAccess
                 string cleaned = StripRichTextTags(text);
                 cleaned = TextUtilities.FormatItemMessage(cleaned);
 
-                if (window_pos == uCommonMessageWindow.Pos.Partner01 ||
-                    EducationPanelHandler.ShouldQueueNextMessage())
+                bool educationQueue = EducationPanelHandler.ShouldQueueNextMessage();
+                if (window_pos == uCommonMessageWindow.Pos.Partner01 || educationQueue)
                     ScreenReader.SayQueued(cleaned);
                 else
                     ScreenReader.Say(cleaned);
@@ -321,11 +321,8 @@ namespace DigimonNOAccess
                 string cleanText = StripRichTextTags(text);
                 DebugLogger.Log($"[SetItemMessage] {text}");
 
-                // Partner01 (second partner) messages queue after Partner00 (first partner)
-                // so both are heard (e.g. using items on both partners)
-                // Education completion also queues subsequent messages for both partners
-                if (pos == uCommonMessageWindow.Pos.Partner01 ||
-                    EducationPanelHandler.ShouldQueueNextMessage())
+                bool educationQueue = EducationPanelHandler.ShouldQueueNextMessage();
+                if (pos == uCommonMessageWindow.Pos.Partner01 || educationQueue)
                     ScreenReader.SayQueued(cleanText);
                 else
                     ScreenReader.Say(cleanText);

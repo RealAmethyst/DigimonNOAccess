@@ -20,6 +20,7 @@ namespace DigimonNOAccess
 
         private string _lastAnnouncedZone = "";
         private string _lastSeenText = "";
+        private int _lastAnnouncedMapNo = -1;
         private float _lastCheckTime = 0f;
         private const float CheckInterval = 0.1f; // Check 10 times per second
 
@@ -92,6 +93,30 @@ namespace DigimonNOAccess
                     if (currentText != _lastAnnouncedZone)
                     {
                         _lastAnnouncedZone = currentText;
+
+                        // Announce region name (e.g. "Niah Plains") when it changes
+                        try
+                        {
+                            var mgm = MainGameManager.m_instance;
+                            if (mgm != null)
+                            {
+                                int mapNo = mgm.mapNo;
+                                if (mapNo != _lastAnnouncedMapNo)
+                                {
+                                    _lastAnnouncedMapNo = mapNo;
+                                    string regionName = ParameterMapName.GetMapName((AppInfo.MAP)mapNo);
+                                    if (!string.IsNullOrEmpty(regionName) && !regionName.Contains("not found"))
+                                    {
+                                        ScreenReader.Say(regionName);
+                                        ScreenReader.SayQueued(currentText);
+                                        DebugLogger.Log($"[ZonePanel] Entered region: {regionName}, zone: {currentText}");
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                        catch { }
+
                         ScreenReader.Say(currentText);
                         DebugLogger.Log($"[ZonePanel] Entered zone: {currentText}");
                     }

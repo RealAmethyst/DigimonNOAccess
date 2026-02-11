@@ -196,22 +196,27 @@ namespace DigimonNOAccess
                 keyboard: null,
                 controller: new InputBinding(ControllerButton.LB, ControllerButton.DPadLeft));
 
-            // === Battle - Partner Status ===
-            RegisterAction("BattlePartner1HP",
+            // === Battle - Per-Enemy Info ===
+            RegisterAction("BattleEnemy1",
                 keyboard: new InputBinding(KeyCode.F6),
                 controller: new InputBinding(ControllerButton.RStickUp));
 
-            RegisterAction("BattlePartner2HP",
+            RegisterAction("BattleEnemy2",
                 keyboard: new InputBinding(KeyCode.F7),
                 controller: new InputBinding(ControllerButton.RStickDown));
 
-            RegisterAction("BattlePartner1Order",
-                keyboard: null,
+            RegisterAction("BattleEnemy3",
+                keyboard: new InputBinding(KeyCode.F11),
                 controller: new InputBinding(ControllerButton.RStickLeft));
 
-            RegisterAction("BattlePartner2Order",
-                keyboard: null,
+            // === Battle - Order Power & SP Details ===
+            RegisterAction("BattleOrderPower",
+                keyboard: new InputBinding(KeyCode.F12),
                 controller: new InputBinding(ControllerButton.RStickRight));
+
+            RegisterAction("BattleSPDetails",
+                keyboard: null,
+                controller: new InputBinding(ControllerButton.RT, ControllerButton.DPadLeft));
 
             // === Navigation List ===
             RegisterAction("NavNextCategory",
@@ -792,11 +797,15 @@ Partner2Effects = None
 Partner2Mood = None
 Partner2Info = None
 
-; === Battle Partner Status ===
-BattlePartner1HP = F6
-BattlePartner2HP = F7
-BattlePartner1Order = None
-BattlePartner2Order = None
+; === Battle Enemy Info (per-enemy) ===
+BattleEnemy1 = F6
+BattleEnemy2 = F7
+BattleEnemy3 = F11
+
+; === Battle Order Power & SP Details ===
+BattleOrderPower = F12
+; SP charge details (controller only by default)
+BattleSPDetails = None
 
 ; === Navigation List ===
 ; Cycle through categories (NPCs, Items, Transitions, Enemies)
@@ -839,11 +848,15 @@ Partner2Effects = LT+DPadRight
 Partner2Mood = LT+DPadDown
 Partner2Info = LT+DPadLeft
 
-; === Battle Partner Status ===
-BattlePartner1HP = LT+DPadUp
-BattlePartner2HP = LT+DPadDown
-BattlePartner1Order = LT+DPadLeft
-BattlePartner2Order = LT+DPadRight
+; === Battle Enemy Info (per-enemy) ===
+BattleEnemy1 = RStickUp
+BattleEnemy2 = RStickDown
+BattleEnemy3 = RStickLeft
+
+; === Battle Order Power & SP Details ===
+BattleOrderPower = RStickRight
+; Announce last SP charge warning details (which enemy is charging)
+BattleSPDetails = RT+DPadLeft
 
 ; === Navigation List ===
 ; Cycle through categories (NPCs, Items, Transitions, Enemies)
