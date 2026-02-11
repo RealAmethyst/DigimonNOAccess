@@ -495,6 +495,38 @@ namespace DigimonNOAccess
         }
 
         /// <summary>
+        /// Check if we're currently in a tutorial or event-scripted sequence.
+        /// Checks MainGameManager.eventScene which holds a TalkMain reference
+        /// that persists during event-triggered battles (tutorials, story events).
+        /// Falls back to MainGameComponent.m_tutorialScene for non-battle tutorial phases.
+        /// </summary>
+        public static bool IsInTutorial()
+        {
+            try
+            {
+                // Primary: MainGameManager.eventScene persists during event-triggered battles
+                var mgm = MainGameManager.m_instance;
+                if (mgm != null)
+                {
+                    var evtScene = mgm.eventScene;
+                    if (evtScene != null)
+                        return true;
+                }
+
+                // Fallback: m_tutorialScene on MainGameComponent (set during non-battle tutorial phases)
+                var mgc = MainGameComponent.m_instance;
+                if (mgc != null)
+                {
+                    var tutScene = mgc.m_tutorialScene;
+                    if (tutScene != null)
+                        return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        /// <summary>
         /// Check if the player is in the field and has basic control (not in battle,
         /// not in a non-controllable action state). Used by FieldHudHandler for
         /// determining when to respond to status queries.

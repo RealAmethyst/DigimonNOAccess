@@ -34,7 +34,8 @@ namespace DigimonNOAccess
             var battlePanel = uBattlePanel.m_instance;
             if (battlePanel == null || !battlePanel.m_enabled)
             {
-                ResetState();
+                if (_wasActive)
+                    ResetState();
                 return;
             }
 
@@ -46,13 +47,16 @@ namespace DigimonNOAccess
                 return;
             }
 
-            if (cmdPanel.m_selectMode == uBattlePanelCommand.SelectMode.None)
+            // Use the base UI class's open state (UiDispBase.m_isOpend) to detect
+            // when the ring is actually visible, not just initialized in background.
+            if (!cmdPanel.m_isOpend)
             {
                 if (_wasActive)
                     ResetState();
                 return;
             }
 
+            // Ring is open and visible
             _cachedCmdPanel = cmdPanel;
 
             if (!_wasActive)
@@ -93,10 +97,13 @@ namespace DigimonNOAccess
             if (includePartner)
             {
                 string partnerName = GetPartnerName(partner);
-                ScreenReader.Say($"{partnerName}: {cmdInfo}");
+                string msg = $"{partnerName}: {cmdInfo}";
+                DebugLogger.Log($"[OrderRing] {msg}");
+                ScreenReader.Say(msg);
             }
             else
             {
+                DebugLogger.Log($"[OrderRing] {cmdInfo}");
                 ScreenReader.Say(cmdInfo);
             }
         }

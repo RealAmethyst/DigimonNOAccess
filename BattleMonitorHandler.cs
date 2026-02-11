@@ -24,6 +24,7 @@ namespace DigimonNOAccess
 
         // State tracking
         private bool _wasBattleActive = false;
+        private bool _enemyCountAnnounced = false;
 
         // SP attack tracking per enemy (up to 20 enemies max)
         private const int MaxEnemies = 20;
@@ -46,15 +47,14 @@ namespace DigimonNOAccess
 
         public void Update()
         {
-            var battlePanel = uBattlePanel.m_instance;
-            bool battleActive = battlePanel != null && battlePanel.m_enabled;
+            // Detect battle via m_CurStep (fires earlier than uBattlePanel.m_enabled).
+            var mgc = MainGameComponent.m_instance;
+            bool inBattleStep = mgc != null && mgc.m_CurStep == Il2CppMainGame.STEP.Battle;
 
-            if (!battleActive)
+            if (!inBattleStep)
             {
                 if (_wasBattleActive)
-                {
                     ResetState();
-                }
                 return;
             }
 
@@ -63,8 +63,20 @@ namespace DigimonNOAccess
                 _wasBattleActive = true;
                 BattleAudioCues.Initialize();
                 DebugLogger.Log("[BattleMonitor] Battle started, monitoring active");
-                AnnounceBattleStart(battlePanel);
             }
+
+            // Poll for enemy count each frame until announced.
+            // m_enemy_hps becomes available before m_enabled, giving us an early
+            // announcement window that fires before tutorial/event messages.
+            if (!_enemyCountAnnounced)
+            {
+                TryAnnounceEnemyCount();
+            }
+
+            // Ongoing monitoring requires the battle panel to be fully enabled.
+            var battlePanel = uBattlePanel.m_instance;
+            if (battlePanel == null || !battlePanel.m_enabled)
+                return;
 
             try
             {
@@ -182,14 +194,20 @@ namespace DigimonNOAccess
         }
 
         /// <summary>
-        /// Announce the number of enemies when battle starts.
+        /// Poll for battle enemy HP bars each frame. Once active bars are found,
+        /// announce the count and stop polling. This fires as soon as the battle
+        /// panel's m_enemy_hps array is populated (before m_enabled becomes true),
+        /// giving us an early announcement before tutorial/event messages appear.
         /// </summary>
-        private void AnnounceBattleStart(uBattlePanel battlePanel)
+        private void TryAnnounceEnemyCount()
         {
             try
             {
+                var battlePanel = uBattlePanel.m_instance;
+                if (battlePanel == null) return;
+
                 var enemyBars = battlePanel.m_enemy_hps;
-                if (enemyBars == null) return;
+                if (enemyBars == null || enemyBars.Length == 0) return;
 
                 int count = 0;
                 for (int i = 0; i < enemyBars.Length; i++)
@@ -201,8 +219,9 @@ namespace DigimonNOAccess
 
                 if (count > 0)
                 {
+                    _enemyCountAnnounced = true;
                     string msg = count == 1 ? "1 enemy" : $"{count} enemies";
-                    ScreenReader.Say(msg);
+                    ScreenReader.SayQueued(msg);
                     DebugLogger.Log($"[BattleMonitor] Battle start: {msg}");
                 }
             }
@@ -477,6 +496,7 @@ namespace DigimonNOAccess
         private void ResetState()
         {
             _wasBattleActive = false;
+            _enemyCountAnnounced = false;
             _lastSPChargeInfo = "";
             _cheerWasOnCooldown = null;
 

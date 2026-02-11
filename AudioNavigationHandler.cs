@@ -515,6 +515,12 @@ namespace DigimonNOAccess
         {
             try
             {
+                // Only play navigation sounds when the game is in field mode
+                // This prevents sounds during name entry (Digitama step), title screen, etc.
+                var mgc = MainGameComponent.m_instance;
+                if (mgc == null || mgc.m_CurStep != Il2CppMainGame.STEP.Field)
+                    return false;
+
                 // Check if game is paused
                 if (GameStateService.IsGamePaused())
                     return false;

@@ -44,6 +44,8 @@ namespace DigimonNOAccess
             { "\u25A1", "Square" },
             { "L", "L" },
             { "R", "R" },
+            { "LS", "Left Stick" },
+            { "RS", "Right Stick" },
         };
 
         // Xbox controller display names
@@ -55,6 +57,8 @@ namespace DigimonNOAccess
             { "\u25A1", "X" },
             { "L", "LB" },
             { "R", "RB" },
+            { "LS", "Left Stick" },
+            { "RS", "Right Stick" },
         };
 
         // Cached keyboard key names (symbol → readable key name)
@@ -124,6 +128,15 @@ namespace DigimonNOAccess
             // Try cached first
             if (_cachedKeyboardNames != null && _cachedKeyboardNames.TryGetValue(symbol, out string cached))
                 return cached;
+
+            // Analog sticks have no keyboard equivalent - use generic name
+            // Fall through to _psNames which has "Left Stick" / "Right Stick"
+            if (symbol == "LS" || symbol == "RS")
+            {
+                if (_psNames.TryGetValue(symbol, out string stickName))
+                    return stickName;
+                return symbol;
+            }
 
             // Look up from game's key config
             if (!_symbolToConfigKind.TryGetValue(symbol, out var configKind))
