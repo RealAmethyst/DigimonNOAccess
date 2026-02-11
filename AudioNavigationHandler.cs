@@ -515,34 +515,15 @@ namespace DigimonNOAccess
         {
             try
             {
-                // Only play navigation sounds when the game is in field mode
-                // This prevents sounds during name entry (Digitama step), title screen, etc.
-                var mgc = MainGameComponent.m_instance;
-                if (mgc == null || mgc.m_CurStep != Il2CppMainGame.STEP.Field)
+                // The player's actionState is the game's own check for whether
+                // the player can move. Idle = walking around, everything else
+                // (Event, Battle, Care, Dead, etc.) = not in control.
+                if (_playerCtrl == null) return false;
+                if (_playerCtrl.actionState != UnitCtrlBase.ActionState.ActionState_Idle)
                     return false;
 
-                // Check if game is paused
+                // Pause is a system-level freeze that doesn't change actionState
                 if (GameStateService.IsGamePaused())
-                    return false;
-
-                // Check if in any battle phase (includes tutorial battles, battle dialogs, result screen)
-                if (GameStateService.IsInBattlePhase())
-                    return false;
-
-                // Check if in death recovery (after losing battle)
-                if (GameStateService.IsInDeathRecovery())
-                    return false;
-
-                // Check if player is sleeping (care > sleep action)
-                if (GameStateService.IsPlayerSleeping())
-                    return false;
-
-                // Check player action state (catches death recovery, events, etc.)
-                if (GameStateService.IsPlayerInNonControllableState(_playerCtrl))
-                    return false;
-
-                // Check if any menu is open that blocks player control
-                if (IsMenuOpen())
                     return false;
 
                 return true;
