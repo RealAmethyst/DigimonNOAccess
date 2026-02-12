@@ -193,6 +193,18 @@ namespace DigimonNOAccess
             // all items when briefly leaving the field (e.g. item pickup dialog).
             if (!_wasInField && _listBuilt && (currentTime - _leftFieldTime > 2f))
             {
+                // Check if we just won a battle - remove defeated enemy immediately
+                // instead of waiting for the game to deactivate it via _UpdateEnemyActiveSetting
+                var defeatedObj = GameStateService.GetLastDefeatedEnemyObject();
+                if (defeatedObj != null && _events.ContainsKey(EventCategory.Enemies))
+                {
+                    _events[EventCategory.Enemies].RemoveAll(e => e.Target == defeatedObj);
+                    DebugLogger.Log("[NavList] Removed defeated enemy from list (battle win)");
+
+                    if (_isPathfinding && _pathfindingTarget == defeatedObj)
+                        StopPathfinding("Target defeated");
+                }
+
                 _isRescanning = true;
                 _mapChangeTime = currentTime;
                 _nextRescanTime = currentTime + InitialScanDelay;

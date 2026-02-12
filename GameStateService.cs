@@ -495,6 +495,34 @@ namespace DigimonNOAccess
         }
 
         /// <summary>
+        /// Returns the defeated enemy's GameObject if the last battle was won.
+        /// Uses MainGameBattle.m_lastEnemy which is set during battle and persists
+        /// after returning to the field. Returns null if not a win or unavailable.
+        /// </summary>
+        public static GameObject GetLastDefeatedEnemyObject()
+        {
+            try
+            {
+                var mgc = MainGameComponent.m_instance;
+                if (mgc == null || mgc.battleResult != MainGameComponent.BATTLE_RESULT.Win)
+                    return null;
+
+                var stepProc = mgc.m_StepProc;
+                if (stepProc == null || stepProc.Length <= 1)
+                    return null;
+
+                var battleIF = stepProc[1]; // Index 1 = Battle
+                if (battleIF == null)
+                    return null;
+
+                var battle = battleIF.TryCast<MainGameBattle>();
+                var lastEnemy = battle?.m_lastEnemy;
+                return lastEnemy?.gameObject;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
         /// Check if we're currently in a tutorial or event-scripted sequence.
         /// Checks MainGameManager.eventScene which holds a TalkMain reference
         /// that persists during event-triggered battles (tutorials, story events).

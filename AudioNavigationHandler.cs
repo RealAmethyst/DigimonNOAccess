@@ -2,6 +2,7 @@ using Il2Cpp;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
 using UnityEngine;
@@ -11,8 +12,8 @@ namespace DigimonNOAccess
 {
     /// <summary>
     /// Provides always-on audio navigation for blind players.
-    /// Continuously tracks nearest objects with positional audio.
-    /// No toggle keys, no speech - just audio cues.
+    /// Plays simultaneous positional audio for each object type in range
+    /// (items, NPCs, enemies, transitions). No toggle keys, no speech - just audio cues.
     /// </summary>
     public class AudioNavigationHandler : IAccessibilityHandler
     {
@@ -39,7 +40,6 @@ namespace DigimonNOAccess
         private const float NpcRange = 120f;
         private const float EnemyRange = 150f;
         private const float TransitionRange = 80f;
-        private const float PartnerRange = 200f;
 
         // Tracking settings
         private const float TrackingUpdateInterval = 0.5f;
@@ -54,10 +54,9 @@ namespace DigimonNOAccess
         private EnemyManager _enemyManager;
         private float _lastSearchTime = 0f;
 
-        // NAudio positional audio system
-        private PositionalAudio _positionalAudio;
-        private GameObject _trackedTarget;
-        private string _trackedTargetType;
+        // Per-type positional audio: each sound type gets its own audio instance and target
+        private Dictionary<PositionalAudio.SoundType, PositionalAudio> _audioByType = new Dictionary<PositionalAudio.SoundType, PositionalAudio>();
+        private Dictionary<PositionalAudio.SoundType, GameObject> _targetByType = new Dictionary<PositionalAudio.SoundType, GameObject>();
 
         // Wall detection configuration
         private const float WallDetectionDistance = 2f;
@@ -74,6 +73,10 @@ namespace DigimonNOAccess
         // Sound file path
         private string _soundsPath;
 
+        // Early enemy defeat detection
+        private bool _wasInControl;
+        private GameObject _defeatedEnemyObject;
+
         // Cooldown after training result to allow evolution detection
         private const float PostTrainingCooldown = 0.5f;
         private float _lastTrainingResultSeenTime = 0f;
@@ -84,8 +87,6 @@ namespace DigimonNOAccess
 
             try
             {
-                _positionalAudio = new PositionalAudio();
-
                 // Set up sounds path for wall detection
                 string modPath = Path.GetDirectoryName(typeof(AudioNavigationHandler).Assembly.Location);
                 _soundsPath = Path.Combine(Path.GetDirectoryName(modPath), "sounds");
@@ -114,11 +115,7 @@ namespace DigimonNOAccess
             // When suspended (pathfinding beacon active), stop all audio and skip updates
             if (Suspended)
             {
-                if (_positionalAudio != null && _positionalAudio.IsPlaying)
-                {
-                    _positionalAudio.Stop();
-                    _trackedTarget = null;
-                }
+                StopAllAudio();
                 ResetWallStates();
                 return;
             }
@@ -143,15 +140,24 @@ namespace DigimonNOAccess
         private void UpdatePositionalAudioTracking()
         {
             // Stop if player is not in control
-            if (!IsPlayerInControl())
+            bool inControl = IsPlayerInControl();
+            if (!inControl)
             {
-                if (_positionalAudio != null && _positionalAudio.IsPlaying)
-                {
-                    _positionalAudio.Stop();
-                    _trackedTarget = null;
-                }
+                _wasInControl = false;
+                StopAllAudio();
                 return;
             }
+
+            // On return to control, check if we won a battle and mark the defeated enemy
+            if (!_wasInControl)
+            {
+                _wasInControl = true;
+                _defeatedEnemyObject = GameStateService.GetLastDefeatedEnemyObject();
+            }
+
+            // Clear defeated enemy once the game catches up and deactivates it
+            if (_defeatedEnemyObject != null && !_defeatedEnemyObject.activeInHierarchy)
+                _defeatedEnemyObject = null;
 
             if (_playerCtrl == null) return;
 
@@ -166,64 +172,75 @@ namespace DigimonNOAccess
                 {
                     _lastTrackingScan = currentTime;
 
-                    var (newTarget, newType, newSoundType, newDist) = FindNearestTarget(playerPos);
+                    var targets = FindTargetsInRange(playerPos);
 
-                    if (newTarget != null)
+                    // Stop audio for types no longer in range
+                    foreach (var type in _audioByType.Keys.ToList())
                     {
-                        // Start or switch tracking
-                        if (_trackedTarget != newTarget)
+                        if (!targets.ContainsKey(type))
                         {
-                            _trackedTarget = newTarget;
-                            _trackedTargetType = newType;
+                            _audioByType[type].Stop();
+                            _targetByType.Remove(type);
+                        }
+                    }
 
-                            if (_positionalAudio.IsPlaying)
+                    // Start or update audio for each type in range
+                    foreach (var kvp in targets)
+                    {
+                        var type = kvp.Key;
+                        var (target, dist) = kvp.Value;
+
+                        // Create audio instance for this type if needed
+                        if (!_audioByType.ContainsKey(type))
+                            _audioByType[type] = new PositionalAudio();
+
+                        var audio = _audioByType[type];
+
+                        if (!_targetByType.ContainsKey(type) || _targetByType[type] != target)
+                        {
+                            // New or changed target for this type
+                            _targetByType[type] = target;
+
+                            if (audio.IsPlaying)
                             {
-                                _positionalAudio.ChangeSoundType(newSoundType, newDist + 10f);
+                                audio.ChangeSoundType(type, dist + 10f);
                             }
                             else
                             {
-                                _positionalAudio.UpdatePlayerPosition(
+                                audio.UpdatePlayerPosition(
                                     playerPos.x, playerPos.y, playerPos.z,
-                                    playerForward.x, playerForward.z
-                                );
-                                Vector3 targetPos = newTarget.transform.position;
-                                _positionalAudio.UpdateTargetPosition(targetPos.x, targetPos.y, targetPos.z);
-                                _positionalAudio.StartTracking(newSoundType, newDist + 10f);
+                                    playerForward.x, playerForward.z);
+                                Vector3 targetPos = target.transform.position;
+                                audio.UpdateTargetPosition(targetPos.x, targetPos.y, targetPos.z);
+                                audio.StartTracking(type, dist + 10f);
                             }
                         }
                     }
-                    else if (_positionalAudio.IsPlaying)
-                    {
-                        // No targets - stop
-                        _positionalAudio.Stop();
-                        _trackedTarget = null;
-                    }
                 }
 
-                // Update positions if tracking
-                if (_trackedTarget != null && _positionalAudio.IsPlaying)
+                // Update positions for all active tracks
+                foreach (var kvp in _targetByType)
                 {
-                    if (!_trackedTarget.activeInHierarchy)
+                    var type = kvp.Key;
+                    var target = kvp.Value;
+
+                    if (target == null || !target.activeInHierarchy)
                     {
-                        _trackedTarget = null;
-                        return;
+                        if (_audioByType.ContainsKey(type))
+                            _audioByType[type].Stop();
+                        continue;
                     }
 
-                    _positionalAudio.UpdatePlayerPosition(
+                    if (!_audioByType.ContainsKey(type) || !_audioByType[type].IsPlaying)
+                        continue;
+
+                    var audio = _audioByType[type];
+                    audio.UpdatePlayerPosition(
                         playerPos.x, playerPos.y, playerPos.z,
-                        playerForward.x, playerForward.z
-                    );
+                        playerForward.x, playerForward.z);
 
-                    Vector3 targetPos = _trackedTarget.transform.position;
-                    _positionalAudio.UpdateTargetPosition(targetPos.x, targetPos.y, targetPos.z);
-
-                    // Check if reached target
-                    float dist = _positionalAudio.GetCurrentDistance();
-                    if (dist < 3f)
-                    {
-                        _trackedTarget = null;
-                        // Will find new target on next scan
-                    }
+                    Vector3 tPos = target.transform.position;
+                    audio.UpdateTargetPosition(tPos.x, tPos.y, tPos.z);
                 }
             }
             catch (Exception ex)
@@ -232,12 +249,13 @@ namespace DigimonNOAccess
             }
         }
 
-        private (GameObject target, string type, PositionalAudio.SoundType soundType, float distance) FindNearestTarget(Vector3 playerPos)
+        /// <summary>
+        /// Find the closest target of each sound type within range.
+        /// Returns one target per type - all types play simultaneously.
+        /// </summary>
+        private Dictionary<PositionalAudio.SoundType, (GameObject target, float distance)> FindTargetsInRange(Vector3 playerPos)
         {
-            GameObject bestTarget = null;
-            float bestDist = float.MaxValue;
-            string bestType = "";
-            PositionalAudio.SoundType bestSoundType = PositionalAudio.SoundType.Item;
+            var results = new Dictionary<PositionalAudio.SoundType, (GameObject, float)>();
 
             // Items
             try
@@ -245,6 +263,9 @@ namespace DigimonNOAccess
                 var itemManager = ItemPickPointManager.m_instance;
                 if (itemManager != null && itemManager.m_itemPickPoints != null)
                 {
+                    GameObject best = null;
+                    float bestDist = float.MaxValue;
+
                     foreach (var point in itemManager.m_itemPickPoints)
                     {
                         if (point == null || point.gameObject == null || !point.gameObject.activeInHierarchy)
@@ -254,11 +275,12 @@ namespace DigimonNOAccess
                         if (dist < ItemRange && dist < bestDist && dist > 1f)
                         {
                             bestDist = dist;
-                            bestTarget = point.gameObject;
-                            bestType = "Item";
-                            bestSoundType = PositionalAudio.SoundType.Item;
+                            best = point.gameObject;
                         }
                     }
+
+                    if (best != null)
+                        results[PositionalAudio.SoundType.Item] = (best, bestDist);
                 }
             }
             catch { }
@@ -267,6 +289,9 @@ namespace DigimonNOAccess
             try
             {
                 var mapTriggers = UnityEngine.Object.FindObjectsOfType<MapTriggerScript>();
+                GameObject best = null;
+                float bestDist = float.MaxValue;
+
                 foreach (var trigger in mapTriggers)
                 {
                     if (trigger == null || trigger.gameObject == null || !trigger.gameObject.activeInHierarchy)
@@ -279,11 +304,12 @@ namespace DigimonNOAccess
                     if (dist < TransitionRange && dist < bestDist && dist > 1f)
                     {
                         bestDist = dist;
-                        bestTarget = trigger.gameObject;
-                        bestType = "Transition";
-                        bestSoundType = PositionalAudio.SoundType.Transition;
+                        best = trigger.gameObject;
                     }
                 }
+
+                if (best != null)
+                    results[PositionalAudio.SoundType.Transition] = (best, bestDist);
             }
             catch { }
 
@@ -292,20 +318,26 @@ namespace DigimonNOAccess
             {
                 if (_enemyManager != null && _enemyManager.m_EnemyCtrlArray != null)
                 {
+                    GameObject best = null;
+                    float bestDist = float.MaxValue;
+
                     foreach (var enemy in _enemyManager.m_EnemyCtrlArray)
                     {
                         if (enemy == null || enemy.gameObject == null || !enemy.gameObject.activeInHierarchy)
+                            continue;
+                        if (enemy.gameObject == _defeatedEnemyObject)
                             continue;
 
                         float dist = Vector3.Distance(playerPos, enemy.transform.position);
                         if (dist < EnemyRange && dist < bestDist && dist > 1f)
                         {
                             bestDist = dist;
-                            bestTarget = enemy.gameObject;
-                            bestType = "Enemy";
-                            bestSoundType = PositionalAudio.SoundType.Enemy;
+                            best = enemy.gameObject;
                         }
                     }
+
+                    if (best != null)
+                        results[PositionalAudio.SoundType.Enemy] = (best, bestDist);
                 }
             }
             catch { }
@@ -315,6 +347,9 @@ namespace DigimonNOAccess
             {
                 if (_npcManager != null && _npcManager.m_NpcCtrlArray != null)
                 {
+                    GameObject best = null;
+                    float bestDist = float.MaxValue;
+
                     foreach (var npc in _npcManager.m_NpcCtrlArray)
                     {
                         if (npc == null || npc.gameObject == null || !npc.gameObject.activeInHierarchy)
@@ -324,40 +359,27 @@ namespace DigimonNOAccess
                         if (dist < NpcRange && dist < bestDist && dist > 1f)
                         {
                             bestDist = dist;
-                            bestTarget = npc.gameObject;
-                            bestType = "NPC";
-                            bestSoundType = PositionalAudio.SoundType.NPC;
+                            best = npc.gameObject;
                         }
                     }
+
+                    if (best != null)
+                        results[PositionalAudio.SoundType.NPC] = (best, bestDist);
                 }
             }
             catch { }
 
-            // Partners (fallback)
-            if (bestTarget == null)
+            return results;
+        }
+
+        private void StopAllAudio()
+        {
+            foreach (var audio in _audioByType.Values)
             {
-                try
-                {
-                    var partnerCtrls = UnityEngine.Object.FindObjectsOfType<PartnerCtrl>();
-                    foreach (var partner in partnerCtrls)
-                    {
-                        if (partner == null || partner.gameObject == null || !partner.gameObject.activeInHierarchy)
-                            continue;
-
-                        float dist = Vector3.Distance(playerPos, partner.transform.position);
-                        if (dist < PartnerRange && dist < bestDist && dist > 1f)
-                        {
-                            bestDist = dist;
-                            bestTarget = partner.gameObject;
-                            bestType = "Partner";
-                            bestSoundType = PositionalAudio.SoundType.NPC;
-                        }
-                    }
-                }
-                catch { }
+                if (audio.IsPlaying)
+                    audio.Stop();
             }
-
-            return (bestTarget, bestType, bestSoundType, bestDist);
+            _targetByType.Clear();
         }
 
         #region Wall Detection
@@ -447,7 +469,7 @@ namespace DigimonNOAccess
             {
                 // Fallback to raycast if NavMesh fails
                 return !Physics.Raycast(
-                    _playerCtrl.transform.position + Vector3.up * 0.5f,
+                    _playerCtrl.transform.position + UnityEngine.Vector3.up * 0.5f,
                     (position - _playerCtrl.transform.position).normalized,
                     WallDetectionDistance
                 );
@@ -564,17 +586,12 @@ namespace DigimonNOAccess
         {
             _initialized = false;
 
-            if (_positionalAudio != null)
+            foreach (var audio in _audioByType.Values)
             {
-                try
-                {
-                    _positionalAudio.Dispose();
-                }
-                catch { }
-                _positionalAudio = null;
+                try { audio.Dispose(); } catch { }
             }
-
-            _trackedTarget = null;
+            _audioByType.Clear();
+            _targetByType.Clear();
         }
     }
 }
