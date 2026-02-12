@@ -131,7 +131,7 @@ namespace DigimonNOAccess
         private Vector3[] _autoWalkCorners;
         private int _autoWalkCornerIndex;
         private const float CornerReachDistance = 1.5f;
-        private const float FinalApproachDistance = 1.0f;
+        private const float FinalApproachDistance = 0.1f;
 
         // Stuck detection: if player hasn't moved while auto-walking, they've arrived
         private Vector3 _autoWalkCheckPosition;
@@ -240,7 +240,7 @@ namespace DigimonNOAccess
 
         /// <summary>
         /// Check if the player is in the field (not in battle, not in menus, not in events).
-        /// Delegates to GameStateService.IsPlayerInField() with additional evolution check.
+        /// Uses the player's actionState as the game's own movement check.
         /// </summary>
         private bool IsPlayerInField()
         {
@@ -248,7 +248,13 @@ namespace DigimonNOAccess
             if (_evolutionActive)
                 return false;
 
-            return GameStateService.IsPlayerInField(_playerCtrl);
+            if (_playerCtrl == null) return false;
+            if (_playerCtrl.actionState != UnitCtrlBase.ActionState.ActionState_Idle)
+                return false;
+            if (GameStateService.IsGamePaused())
+                return false;
+
+            return true;
         }
 
         /// <summary>
@@ -2511,13 +2517,11 @@ namespace DigimonNOAccess
                     catch { }
                 }
 
-                // Distance-based arrival for NPCs and Enemies.
+                // Distance-based arrival for NPCs, Enemies, and Facilities.
                 // Transitions need to walk into the zone trigger (map change stops pathfinding).
-                // Facilities need to walk right up to the NPC trigger.
                 // Items need close proximity to trigger the pickup prompt.
-                // All three rely on stuck detection below instead.
+                // Both rely on stuck detection below instead.
                 if (_pathfindingCategory != EventCategory.Transitions
-                    && _pathfindingCategory != EventCategory.Facilities
                     && _pathfindingCategory != EventCategory.Items
                     && _pathfindingCategory != EventCategory.KeyItems)
                 {
@@ -2720,6 +2724,9 @@ namespace DigimonNOAccess
         /// </summary>
         private void StopPathfinding(string announcement)
         {
+            var category = _pathfindingCategory;
+            var rawDest = _pathfindingRawDestination;
+
             _isPathfinding = false;
             _pathfindingTarget = null;
 
@@ -2731,6 +2738,25 @@ namespace DigimonNOAccess
             }
 
             AudioNavigationHandler.Suspended = false;
+
+            // Turn player to face the target so the correct one gets interacted with
+            if ((category == EventCategory.NPCs || category == EventCategory.Facilities) && _playerCtrl != null)
+            {
+                try
+                {
+                    Vector3 playerPos = _playerCtrl.transform.position;
+                    Vector3 lookDir = rawDest - playerPos;
+                    lookDir.y = 0;
+                    if (lookDir.sqrMagnitude > 0.001f)
+                    {
+                        _playerCtrl.transform.rotation = Quaternion.LookRotation(lookDir);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Log($"[NavList] Face target error: {ex.Message}");
+                }
+            }
 
             if (!string.IsNullOrEmpty(announcement))
             {
