@@ -495,31 +495,21 @@ namespace DigimonNOAccess
         }
 
         /// <summary>
-        /// Returns the defeated enemy's GameObject if the last battle was won.
-        /// Uses MainGameBattle.m_lastEnemy which is set during battle and persists
-        /// after returning to the field. Returns null if not a win or unavailable.
+        /// Check if an EnemyCtrl is alive and valid (not null, active, not in death state).
+        /// Uses the game's own actionState to detect defeated enemies immediately,
+        /// even before their GameObject is deactivated.
         /// </summary>
-        public static GameObject GetLastDefeatedEnemyObject()
+        public static bool IsEnemyAlive(EnemyCtrl enemy)
         {
+            if (enemy == null || enemy.gameObject == null || !enemy.gameObject.activeInHierarchy)
+                return false;
             try
             {
-                var mgc = MainGameComponent.m_instance;
-                if (mgc == null || mgc.battleResult != MainGameComponent.BATTLE_RESULT.Win)
-                    return null;
-
-                var stepProc = mgc.m_StepProc;
-                if (stepProc == null || stepProc.Length <= 1)
-                    return null;
-
-                var battleIF = stepProc[1]; // Index 1 = Battle
-                if (battleIF == null)
-                    return null;
-
-                var battle = battleIF.TryCast<MainGameBattle>();
-                var lastEnemy = battle?.m_lastEnemy;
-                return lastEnemy?.gameObject;
+                var state = enemy.actionState;
+                return state != UnitCtrlBase.ActionState.ActionState_Dead &&
+                       state != UnitCtrlBase.ActionState.ActionState_DeadGataway;
             }
-            catch { return null; }
+            catch { return false; }
         }
 
         /// <summary>

@@ -37,6 +37,12 @@ namespace DigimonNOAccess
             // Initialize debug file logger
             DebugLogger.Initialize();
 
+            // Initialize Steam Audio HRTF (before any PositionalAudio instances are created)
+            SteamAudioManager.Initialize();
+
+            // Initialize shared audio output (single WaveOutEvent for all positional audio)
+            AudioOutputMixer.Initialize();
+
             // Initialize the input manager with config
             ModInputManager.Initialize(_modFolderPath);
             LoggerInstance.Msg($"Input manager initialized, config at: {_modFolderPath}");
@@ -68,6 +74,9 @@ namespace DigimonNOAccess
             {
                 LoggerInstance.Msg("SDL3 not available - using game's default input (Xbox controllers via Steam)");
             }
+
+            // Force field camera to look horizontally (improves audio navigation accuracy)
+            CameraPatch.Apply(_harmony);
 
             // Create special handlers that need direct references
             _evolutionHandler = new EvolutionHandler();
@@ -181,6 +190,12 @@ namespace DigimonNOAccess
                 ScreenReader.Say($"Read voiced text: {state}");
             }
 
+            if (ModInputManager.IsActionTriggered("CompassDirection"))
+            {
+                string direction = _audioNavigationHandler?.GetCameraCompassDirection() ?? "unknown";
+                ScreenReader.Say($"Facing {direction}");
+            }
+
             // F8 = Reload hotkey config (always F8, not configurable)
             if (Input.GetKeyDown(KeyCode.F8))
             {
@@ -217,6 +232,8 @@ namespace DigimonNOAccess
         {
             LoggerInstance.Msg("DigimonNOAccess shutdown");
             _audioNavigationHandler?.Cleanup();
+            AudioOutputMixer.Shutdown();
+            SteamAudioManager.Shutdown();
             BattleAudioCues.Shutdown();
             SDLController.Shutdown();
             ScreenReader.Shutdown();

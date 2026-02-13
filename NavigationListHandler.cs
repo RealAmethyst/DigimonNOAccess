@@ -193,18 +193,6 @@ namespace DigimonNOAccess
             // all items when briefly leaving the field (e.g. item pickup dialog).
             if (!_wasInField && _listBuilt && (currentTime - _leftFieldTime > 2f))
             {
-                // Check if we just won a battle - remove defeated enemy immediately
-                // instead of waiting for the game to deactivate it via _UpdateEnemyActiveSetting
-                var defeatedObj = GameStateService.GetLastDefeatedEnemyObject();
-                if (defeatedObj != null && _events.ContainsKey(EventCategory.Enemies))
-                {
-                    _events[EventCategory.Enemies].RemoveAll(e => e.Target == defeatedObj);
-                    DebugLogger.Log("[NavList] Removed defeated enemy from list (battle win)");
-
-                    if (_isPathfinding && _pathfindingTarget == defeatedObj)
-                        StopPathfinding("Target defeated");
-                }
-
                 _isRescanning = true;
                 _mapChangeTime = currentTime;
                 _nextRescanTime = currentTime + InitialScanDelay;
@@ -262,6 +250,8 @@ namespace DigimonNOAccess
 
             if (_playerCtrl == null) return false;
             if (_playerCtrl.actionState != UnitCtrlBase.ActionState.ActionState_Idle)
+                return false;
+            if (GameStateService.IsInBattlePhase())
                 return false;
             if (GameStateService.IsGamePaused())
                 return false;
@@ -670,7 +660,7 @@ namespace DigimonNOAccess
                 {
                     foreach (var enemy in _enemyManager.m_EnemyCtrlArray)
                     {
-                        if (enemy == null || enemy.gameObject == null || !enemy.gameObject.activeInHierarchy)
+                        if (!GameStateService.IsEnemyAlive(enemy))
                             continue;
                         if (_knownTargets.Contains(enemy.gameObject))
                             continue;
@@ -693,8 +683,8 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[NavList] Rescan Enemies error: {ex.Message}");
             }
 
-            // Remove destroyed objects and picked-up items during rescan.
-            // Don't remove inactive non-item objects - the game deactivates distant objects for performance.
+            // Remove destroyed objects, picked-up items, and defeated enemies during rescan.
+            // Don't remove inactive non-item/non-enemy objects - the game deactivates distant objects for performance.
             foreach (var cat in AllCategories)
             {
                 if (_events.ContainsKey(cat))
@@ -703,12 +693,9 @@ namespace DigimonNOAccess
                     {
                         // Destroyed object
                         if (e.Target == null)
-                        {
-                            // Note: can't remove null from HashSet, but that's fine
                             return true;
-                        }
+
                         // Picked-up items/materials: enableItemPickPoint becomes false after pickup.
-                        // Don't check activeInHierarchy - game deactivates distant items for performance.
                         if (e.Category == EventCategory.Items || e.Category == EventCategory.Materials || e.Category == EventCategory.KeyItems)
                         {
                             var pickPoint = e.Target.GetComponent<ItemPickPointBase>();
@@ -718,6 +705,14 @@ namespace DigimonNOAccess
                                 return true;
                             }
                         }
+
+                        // Defeated/inactive enemies: check actionState for dead/dying
+                        if (e.Category == EventCategory.Enemies && !e.Target.activeInHierarchy)
+                        {
+                            _knownTargets.Remove(e.Target);
+                            return true;
+                        }
+
                         return false;
                     });
                 }
@@ -1047,7 +1042,7 @@ namespace DigimonNOAccess
 
                     foreach (var enemy in _enemyManager.m_EnemyCtrlArray)
                     {
-                        if (enemy == null || enemy.gameObject == null || !enemy.gameObject.activeInHierarchy)
+                        if (!GameStateService.IsEnemyAlive(enemy))
                             continue;
                         if (existingTargets.Contains(enemy.gameObject))
                             continue;
@@ -1065,14 +1060,24 @@ namespace DigimonNOAccess
                     }
                 }
 
-                // Update distances for remaining (only active objects, keep cached for inactive)
+                // Remove defeated/inactive enemies
+                enemies.RemoveAll(e =>
+                {
+                    if (e.Target == null || !e.Target.activeInHierarchy)
+                    {
+                        _knownTargets.Remove(e.Target);
+                        if (_isPathfinding && _pathfindingTarget == e.Target)
+                            StopPathfinding("Target defeated");
+                        return true;
+                    }
+                    return false;
+                });
+
+                // Update distances for remaining active enemies
                 foreach (var e in enemies)
                 {
-                    if (e.Target != null && e.Target.activeInHierarchy)
-                    {
-                        e.Position = e.Target.transform.position;
-                        e.DistanceToPlayer = Vector3.Distance(playerPos, e.Position);
-                    }
+                    e.Position = e.Target.transform.position;
+                    e.DistanceToPlayer = Vector3.Distance(playerPos, e.Position);
                 }
             }
 
@@ -1653,7 +1658,7 @@ namespace DigimonNOAccess
 
                 foreach (var enemy in _enemyManager.m_EnemyCtrlArray)
                 {
-                    if (enemy == null || enemy.gameObject == null || !enemy.gameObject.activeInHierarchy)
+                    if (!GameStateService.IsEnemyAlive(enemy))
                         continue;
 
                     string name = GetEnemyName(enemy);

@@ -4,35 +4,17 @@ using UnityEngine;
 namespace DigimonNOAccess
 {
     /// <summary>
-    /// Handles field HUD status announcements via controller combos or keyboard.
-    /// Also monitors contextual prompts like fishing notifications.
+    /// Handles field HUD status announcements via hotkey.
+    /// One key per partner, announces all relevant info.
     ///
-    /// Controller layout:
-    /// Hold RB + D-pad = Partner 1 info
-    /// Hold LB + D-pad = Partner 2 info
-    ///
-    /// D-pad directions:
-    /// D-Up = HP and MP
-    /// D-Right = Status effects (Injury, Disease, etc.)
-    /// D-Down = Current mood/condition
-    /// D-Left = Name and basic info
-    ///
-    /// Keyboard fallback:
-    /// F3 = Partner 1 full status
-    /// F4 = Partner 2 full status
+    /// Keyboard: F3 = Partner 1, F4 = Partner 2
+    /// Controller: RB+DPadUp = Partner 1, LB+DPadUp = Partner 2
     /// </summary>
     public class FieldHudHandler : IAccessibilityHandler
     {
         public int Priority => 997;
 
-        /// <summary>
-        /// Background handler - never owns the status announce.
-        /// </summary>
         public bool IsOpen() => false;
-
-        /// <summary>
-        /// Background handler - never announces status.
-        /// </summary>
         public void AnnounceStatus() { }
 
         // Fishing prompt tracking
@@ -41,191 +23,93 @@ namespace DigimonNOAccess
 
         public void Update()
         {
-            // Check if field panel is available
             var fieldPanel = uFieldPanel.m_instance;
             if (fieldPanel == null || !fieldPanel.m_enabled)
                 return;
 
-            // Always check fishing prompts (they can appear during various states)
             UpdateFishingPrompt(fieldPanel);
 
-            // Check if we're in a state where we should respond (not in menus, battles, etc.)
-            if (!IsPlayerInFieldControl())
+            if (!GameStateService.IsPlayerInFieldControl())
                 return;
 
-            // Handle keyboard input
-            HandleKeyboardInput(fieldPanel);
-
-            // Handle controller input
-            HandleControllerInput(fieldPanel);
-        }
-
-        private bool IsPlayerInFieldControl()
-        {
-            return GameStateService.IsPlayerInFieldControl();
-        }
-
-        private void HandleKeyboardInput(uFieldPanel fieldPanel)
-        {
-            // Use configurable input system
             if (ModInputManager.IsActionTriggered("Partner1Status"))
-            {
-                AnnouncePartnerFullStatus(fieldPanel, 0);
-            }
+                AnnouncePartnerStatus(0);
 
             if (ModInputManager.IsActionTriggered("Partner2Status"))
-            {
-                AnnouncePartnerFullStatus(fieldPanel, 1);
-            }
+                AnnouncePartnerStatus(1);
         }
 
-        private void HandleControllerInput(uFieldPanel fieldPanel)
-        {
-            // Partner 1 controller inputs (RB + D-Pad by default)
-            // Note: Partner1Status is handled in keyboard section (both keyboard and controller bindings)
-            if (ModInputManager.IsActionTriggered("Partner1Effects"))
-            {
-                AnnouncePartnerStatusEffects(fieldPanel, 0);
-            }
-            else if (ModInputManager.IsActionTriggered("Partner1Mood"))
-            {
-                AnnouncePartnerMood(fieldPanel, 0);
-            }
-            else if (ModInputManager.IsActionTriggered("Partner1Info"))
-            {
-                AnnouncePartnerName(fieldPanel, 0);
-            }
-
-            // Partner 2 controller inputs (LB + D-Pad by default)
-            // Note: Partner2Status is handled in keyboard section (both keyboard and controller bindings)
-            if (ModInputManager.IsActionTriggered("Partner2Effects"))
-            {
-                AnnouncePartnerStatusEffects(fieldPanel, 1);
-            }
-            else if (ModInputManager.IsActionTriggered("Partner2Mood"))
-            {
-                AnnouncePartnerMood(fieldPanel, 1);
-            }
-            else if (ModInputManager.IsActionTriggered("Partner2Info"))
-            {
-                AnnouncePartnerName(fieldPanel, 1);
-            }
-        }
-
-        private void AnnouncePartnerName(uFieldPanel fieldPanel, int partnerIndex)
-        {
-            var panel = GetDigimonPanel(fieldPanel, partnerIndex);
-            if (panel == null)
-            {
-                ScreenReader.Say(PartnerUtilities.GetPartnerNotAvailableMessage(partnerIndex));
-                return;
-            }
-
-            string name = panel.m_digimon_name?.text ?? "Unknown";
-            string partnerLabel = PartnerUtilities.GetPartnerLabel(partnerIndex);
-            ScreenReader.Say($"{partnerLabel}: {name}");
-        }
-
-        private void AnnouncePartnerHpMp(uFieldPanel fieldPanel, int partnerIndex)
-        {
-            var panel = GetDigimonPanel(fieldPanel, partnerIndex);
-            if (panel == null)
-            {
-                ScreenReader.Say(PartnerUtilities.GetPartnerNotAvailableMessage(partnerIndex));
-                return;
-            }
-
-            string name = panel.m_digimon_name?.text ?? "Partner";
-
-            // Try to get HP/MP from text fields first, fall back to numeric values
-            string hpText = panel.m_hpText?.text ?? panel.m_now_hp.ToString();
-            string mpText = panel.m_mpText?.text ?? panel.m_now_mp.ToString();
-
-            ScreenReader.Say($"{name}: HP {hpText}, MP {mpText}");
-        }
-
-        private void AnnouncePartnerStatusEffects(uFieldPanel fieldPanel, int partnerIndex)
-        {
-            var panel = GetDigimonPanel(fieldPanel, partnerIndex);
-            if (panel == null)
-            {
-                ScreenReader.Say(PartnerUtilities.GetPartnerNotAvailableMessage(partnerIndex));
-                return;
-            }
-
-            string name = panel.m_digimon_name?.text ?? "Partner";
-            var statusEffect = panel.m_statusEffect;
-
-            string statusText = PartnerUtilities.GetStatusEffectText(statusEffect);
-
-            ScreenReader.Say($"{name}: {statusText}");
-        }
-
-        private void AnnouncePartnerMood(uFieldPanel fieldPanel, int partnerIndex)
-        {
-            var panel = GetDigimonPanel(fieldPanel, partnerIndex);
-            if (panel == null)
-            {
-                ScreenReader.Say(PartnerUtilities.GetPartnerNotAvailableMessage(partnerIndex));
-                return;
-            }
-
-            string name = panel.m_digimon_name?.text ?? "Partner";
-
-            // Get status effect from the panel
-            var statusEffect = panel.m_statusEffect;
-            string moodText = PartnerUtilities.GetStatusEffectText(statusEffect, "Feeling fine", "Has condition");
-
-            ScreenReader.Say($"{name}: {moodText}");
-        }
-
-        private void AnnouncePartnerFullStatus(uFieldPanel fieldPanel, int partnerIndex)
-        {
-            var panel = GetDigimonPanel(fieldPanel, partnerIndex);
-            if (panel == null)
-            {
-                ScreenReader.Say(PartnerUtilities.GetPartnerNotAvailableMessage(partnerIndex));
-                return;
-            }
-
-            string name = panel.m_digimon_name?.text ?? "Partner";
-            string hpText = panel.m_hpText?.text ?? panel.m_now_hp.ToString();
-            string mpText = panel.m_mpText?.text ?? panel.m_now_mp.ToString();
-
-            var statusEffect = panel.m_statusEffect;
-            string statusText = PartnerUtilities.GetStatusEffectText(statusEffect, "Healthy", "");
-
-            string announcement = $"{name}: HP {hpText}, MP {mpText}";
-            if (!string.IsNullOrEmpty(statusText) && statusText != "Healthy")
-            {
-                announcement += $", {statusText}";
-            }
-
-            ScreenReader.Say(announcement);
-        }
-
-        private uFieldDigimonPanel GetDigimonPanel(uFieldPanel fieldPanel, int index)
+        private void AnnouncePartnerStatus(int partnerIndex)
         {
             try
             {
-                var panels = fieldPanel.m_digimon_panels;
-                if (panels != null && index < panels.Length)
+                var partnerNo = partnerIndex == 0
+                    ? AppInfo.PARTNER_NO.Right
+                    : AppInfo.PARTNER_NO.Left;
+
+                var mgr = MainGameManager.Ref;
+                if (mgr == null)
                 {
-                    return panels[index];
+                    ScreenReader.Say(PartnerUtilities.GetPartnerNotAvailableMessage(partnerIndex));
+                    return;
                 }
+
+                var ss = mgr.scenarioScript;
+                if (ss == null)
+                {
+                    ScreenReader.Say(PartnerUtilities.GetPartnerNotAvailableMessage(partnerIndex));
+                    return;
+                }
+
+                // Get name from PartnerCtrl
+                var partnerCtrl = MainGameManager.GetPartnerCtrl(partnerIndex);
+                string name = partnerCtrl?.Name ?? PartnerUtilities.GetPartnerLabel(partnerIndex);
+
+                // Read all stats from CScenarioScript (live game data)
+                uint hp = ss._GetPartnerHp(partnerNo);
+                uint hpMax = ss._GetPartnerHpMax(partnerNo);
+                uint mp = ss._GetPartnerMp(partnerNo);
+                uint mpMax = ss._GetPartnerMpMax(partnerNo);
+
+                var sb = new System.Text.StringBuilder();
+                sb.Append($"{name}, HP {hp} of {hpMax}, MP {mp} of {mpMax}");
+
+                // Status effect from PartnerCtrl
+                if (partnerCtrl != null)
+                {
+                    string statusText = PartnerUtilities.GetStatusEffectText(partnerCtrl.FSEffect, "", "");
+                    if (!string.IsNullOrEmpty(statusText))
+                        sb.Append($", {statusText}");
+                }
+
+                // Care stats
+                uint mood = ss._GetPartnerMood(partnerNo);
+                sb.Append($", Mood {mood}");
+
+                uint discipline = ss._GetPartnerUpbringing(partnerNo);
+                sb.Append($", Discipline {discipline}");
+
+                uint tiredness = ss._GetPartnerFatigue(partnerNo);
+                sb.Append($", Tiredness {tiredness}");
+
+                uint curse = ss._GetPartnerCurse(partnerNo);
+                sb.Append($", Curse {curse}");
+
+                uint weight = ss._GetPartnerWeight(partnerNo);
+                sb.Append($", Weight {weight}");
+
+                uint age = ss._GetPartnerAge(partnerNo);
+                sb.Append($", Age {age}");
+
+                ScreenReader.Say(sb.ToString());
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[FieldHudHandler] Error in GetDigimonPanel: {ex.Message}");
+                DebugLogger.Log($"[FieldHud] Partner status error: {ex.Message}");
+                ScreenReader.Say(PartnerUtilities.GetPartnerNotAvailableMessage(partnerIndex));
             }
-
-            return null;
         }
 
-        /// <summary>
-        /// Check and announce fishing prompts when they appear.
-        /// Fishing prompts appear on uFieldPanel.m_fishing_ok panel with text in m_fishing_ok_text.
-        /// </summary>
         private void UpdateFishingPrompt(uFieldPanel fieldPanel)
         {
             try
@@ -235,8 +119,7 @@ namespace DigimonNOAccess
 
                 if (isActive && !_wasFishingPromptActive)
                 {
-                    // Fishing prompt just appeared
-                    string text = GetFishingPromptText(fieldPanel);
+                    string text = fieldPanel.m_fishing_ok_text?.text?.Trim();
                     if (!string.IsNullOrEmpty(text))
                     {
                         ScreenReader.Say(text);
@@ -245,8 +128,7 @@ namespace DigimonNOAccess
                 }
                 else if (isActive && _wasFishingPromptActive)
                 {
-                    // Check for text changes while prompt is visible
-                    string text = GetFishingPromptText(fieldPanel);
+                    string text = fieldPanel.m_fishing_ok_text?.text?.Trim();
                     if (!string.IsNullOrEmpty(text) && text != _lastFishingText)
                     {
                         ScreenReader.Say(text);
@@ -255,7 +137,6 @@ namespace DigimonNOAccess
                 }
                 else if (!isActive && _wasFishingPromptActive)
                 {
-                    // Prompt closed
                     _lastFishingText = "";
                 }
 
@@ -263,36 +144,14 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[FieldHudHandler] Error in UpdateFishingPrompt: {ex.Message}");
+                DebugLogger.Log($"[FieldHud] Fishing prompt error: {ex.Message}");
             }
-        }
-
-        private string GetFishingPromptText(uFieldPanel fieldPanel)
-        {
-            try
-            {
-                var textComponent = fieldPanel.m_fishing_ok_text;
-                if (textComponent != null)
-                {
-                    string text = textComponent.text;
-                    if (!string.IsNullOrEmpty(text))
-                    {
-                        return text.Trim();
-                    }
-                }
-            }
-            catch (System.Exception ex)
-            {
-                DebugLogger.Log($"[FieldHudHandler] Error in GetFishingPromptText: {ex.Message}");
-            }
-
-            return "";
         }
 
         public bool IsActive()
         {
             var fieldPanel = uFieldPanel.m_instance;
-            return fieldPanel != null && fieldPanel.m_enabled && IsPlayerInFieldControl();
+            return fieldPanel != null && fieldPanel.m_enabled && GameStateService.IsPlayerInFieldControl();
         }
     }
 }

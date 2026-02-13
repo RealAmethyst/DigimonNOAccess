@@ -162,39 +162,14 @@ namespace DigimonNOAccess
                 keyboard: new InputBinding(KeyCode.F5),
                 controller: null);
 
-            // === Field - Partner 1 Status ===
+            // === Field - Partner Status ===
             RegisterAction("Partner1Status",
                 keyboard: new InputBinding(KeyCode.F3),
                 controller: new InputBinding(ControllerButton.RB, ControllerButton.DPadUp));
 
-            RegisterAction("Partner1Effects",
-                keyboard: null,
-                controller: new InputBinding(ControllerButton.RB, ControllerButton.DPadRight));
-
-            RegisterAction("Partner1Mood",
-                keyboard: null,
-                controller: new InputBinding(ControllerButton.RB, ControllerButton.DPadDown));
-
-            RegisterAction("Partner1Info",
-                keyboard: null,
-                controller: new InputBinding(ControllerButton.RB, ControllerButton.DPadLeft));
-
-            // === Field - Partner 2 Status ===
             RegisterAction("Partner2Status",
                 keyboard: new InputBinding(KeyCode.F4),
                 controller: new InputBinding(ControllerButton.LB, ControllerButton.DPadUp));
-
-            RegisterAction("Partner2Effects",
-                keyboard: null,
-                controller: new InputBinding(ControllerButton.LB, ControllerButton.DPadRight));
-
-            RegisterAction("Partner2Mood",
-                keyboard: null,
-                controller: new InputBinding(ControllerButton.LB, ControllerButton.DPadDown));
-
-            RegisterAction("Partner2Info",
-                keyboard: null,
-                controller: new InputBinding(ControllerButton.LB, ControllerButton.DPadLeft));
 
             // === Battle - Per-Enemy Info ===
             RegisterAction("BattleEnemy1",
@@ -246,6 +221,11 @@ namespace DigimonNOAccess
             RegisterAction("ToggleAutoWalk",
                 keyboard: new InputBinding(KeyCode.P, false, false, true),
                 controller: null);
+
+            // === Compass Direction ===
+            RegisterAction("CompassDirection",
+                keyboard: new InputBinding(KeyCode.C),
+                controller: new InputBinding(ControllerButton.R3));
 
             // === Shop/Trade Menu ===
             RegisterAction("ShopCheckBits",
@@ -787,15 +767,13 @@ RepeatLast = F1
 AnnounceStatus = F2
 ToggleVoicedText = F5
 
+; === Compass Direction ===
+; Announce which compass direction the camera is facing
+CompassDirection = C
+
 ; === Field Partner Status ===
 Partner1Status = F3
 Partner2Status = F4
-Partner1Effects = None
-Partner1Mood = None
-Partner1Info = None
-Partner2Effects = None
-Partner2Mood = None
-Partner2Info = None
 
 ; === Battle Enemy Info (per-enemy) ===
 BattleEnemy1 = F6
@@ -835,18 +813,13 @@ RepeatLast = None
 AnnounceStatus = None
 ToggleVoicedText = None
 
-; === Field Partner Status ===
-; Partner 1
-Partner1Status = RT+DPadUp
-Partner1Effects = RT+DPadRight
-Partner1Mood = RT+DPadDown
-Partner1Info = RT+DPadLeft
+; === Compass Direction ===
+; Announce which compass direction the camera is facing
+CompassDirection = R3
 
-; Partner 2
+; === Field Partner Status ===
+Partner1Status = RT+DPadUp
 Partner2Status = LT+DPadUp
-Partner2Effects = LT+DPadRight
-Partner2Mood = LT+DPadDown
-Partner2Info = LT+DPadLeft
 
 ; === Battle Enemy Info (per-enemy) ===
 BattleEnemy1 = RStickUp

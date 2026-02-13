@@ -2,11 +2,7 @@ using Il2Cpp;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using NAudio.Wave;
-using NAudio.Wave.SampleProviders;
 using UnityEngine;
-using UnityEngine.AI;
 
 namespace DigimonNOAccess
 {
@@ -36,10 +32,28 @@ namespace DigimonNOAccess
         public void AnnounceStatus() { }
 
         // Detection ranges (in Unity units - roughly 1 unit = 1 step)
-        private const float ItemRange = 100f;
-        private const float NpcRange = 120f;
-        private const float EnemyRange = 150f;
-        private const float TransitionRange = 80f;
+        private const float ItemRange = 80f;
+        private const float NpcRange = 80f;
+        private const float EnemyRange = 100f;
+        private const float TransitionRange = 60f;
+        private const float FacilityRange = 80f;
+
+        // Max simultaneous sounds per type (nearest N only, rest are silent)
+        private const int MaxItemSounds = 3;
+        private const int MaxNpcSounds = 3;
+        private const int MaxEnemySounds = 3;
+        private const int MaxTransitionSounds = 2;
+        private const int MaxFacilitySounds = 2;
+
+        // Volume levels (base)
+        private const float NearestVolume = 0.8f;
+        private const float BackgroundVolume = 0.15f;
+
+        // Per-type volume multipliers (applied on top of nearest/background)
+        // Enemy and NPC: -4dB (~0.63x), Transition: +2dB (~1.26x)
+        private const float EnemyVolumeMultiplier = 0.63f;
+        private const float NpcVolumeMultiplier = 0.63f;
+        private const float TransitionVolumeMultiplier = 1.26f;
 
         // Tracking settings
         private const float TrackingUpdateInterval = 0.5f;
@@ -54,28 +68,25 @@ namespace DigimonNOAccess
         private EnemyManager _enemyManager;
         private float _lastSearchTime = 0f;
 
-        // Per-type positional audio: each sound type gets its own audio instance and target
-        private Dictionary<PositionalAudio.SoundType, PositionalAudio> _audioByType = new Dictionary<PositionalAudio.SoundType, PositionalAudio>();
-        private Dictionary<PositionalAudio.SoundType, GameObject> _targetByType = new Dictionary<PositionalAudio.SoundType, GameObject>();
+        // Per-target positional audio: every target in range gets its own audio
+        private Dictionary<GameObject, (PositionalAudio audio, PositionalAudio.SoundType type)> _navAudio = new Dictionary<GameObject, (PositionalAudio, PositionalAudio.SoundType)>();
 
-        // Wall detection configuration
-        private const float WallDetectionDistance = 2f;
-        private const float WallCheckInterval = 0.3f;
-        private const float NavMeshSampleRadius = 0.5f;
-        private float _lastWallCheckTime = 0f;
-
-        // Wall states (to avoid repeating sounds)
-        private bool _wallAhead = false;
-        private bool _wallBehind = false;
-        private bool _wallLeft = false;
-        private bool _wallRight = false;
+        // Compass direction (north angle per area, used for direction announcements)
+        private float _currentNorthAngle = 0f;
 
         // Sound file path
         private string _soundsPath;
+        private bool _facilityWavExists = false;
 
-        // Early enemy defeat detection
+        // Track control state for refresh on return
         private bool _wasInControl;
-        private GameObject _defeatedEnemyObject;
+
+        // Map/area change detection for immediate rescan
+        private int _lastMapNo = -1;
+        private int _lastAreaNo = -1;
+
+        // Camera mode tracking for diagnostic logging
+        private int _lastLoggedCameraMode = -99;
 
         // Cooldown after training result to allow evolution detection
         private const float PostTrainingCooldown = 0.5f;
@@ -96,8 +107,13 @@ namespace DigimonNOAccess
                     _soundsPath = Path.Combine(modPath, "sounds");
                 }
 
+                // Check if facility.wav exists (no tone fallback for this type)
+                _facilityWavExists = File.Exists(Path.Combine(_soundsPath, "facility.wav"));
+                if (_facilityWavExists)
+                    DebugLogger.Log("[AudioNav] facility.wav found - facility/fishing/toilet audio enabled");
+
                 _initialized = true;
-                DebugLogger.Log("[AudioNav] Initialized - always-on mode with wall detection");
+                DebugLogger.Log("[AudioNav] Initialized - always-on audio navigation");
             }
             catch (Exception ex)
             {
@@ -110,14 +126,6 @@ namespace DigimonNOAccess
             if (!_initialized)
             {
                 Initialize();
-            }
-
-            // When suspended (pathfinding beacon active), stop all audio and skip updates
-            if (Suspended)
-            {
-                StopAllAudio();
-                ResetWallStates();
-                return;
             }
 
             // Find managers periodically
@@ -133,8 +141,8 @@ namespace DigimonNOAccess
             // Update object tracking
             UpdatePositionalAudioTracking();
 
-            // Update wall detection
-            UpdateWallDetection();
+            // Drive environmental audio simulation (occlusion)
+            UpdateEnvironmentSimulation();
         }
 
         private void UpdatePositionalAudioTracking()
@@ -148,99 +156,187 @@ namespace DigimonNOAccess
                 return;
             }
 
-            // On return to control, check if we won a battle and mark the defeated enemy
+            // On return to control, refresh managers and force rescan.
+            // This handles map/area transitions where old references became stale.
             if (!_wasInControl)
             {
                 _wasInControl = true;
-                _defeatedEnemyObject = GameStateService.GetLastDefeatedEnemyObject();
-            }
 
-            // Clear defeated enemy once the game catches up and deactivates it
-            if (_defeatedEnemyObject != null && !_defeatedEnemyObject.activeInHierarchy)
-                _defeatedEnemyObject = null;
+                // Force immediate manager refresh so FindAllTargetsInRange uses valid references
+                _playerCtrl = UnityEngine.Object.FindObjectOfType<PlayerCtrl>();
+                _npcManager = UnityEngine.Object.FindObjectOfType<NpcManager>();
+                _enemyManager = UnityEngine.Object.FindObjectOfType<EnemyManager>();
+                _lastSearchTime = Time.time;
+                _lastTrackingScan = 0f; // Force immediate rescan
+            }
 
             if (_playerCtrl == null) return;
 
             try
             {
                 Vector3 playerPos = _playerCtrl.transform.position;
-                Vector3 playerForward = _playerCtrl.transform.forward;
+
+                // Use full camera orientation for audio (matching the game's AudioListener).
+                // Includes pitch and zoom so HRTF matches what the player perceives.
+                GetCameraVectors(out Vector3 camFwd, out Vector3 camUp);
                 float currentTime = Time.time;
+
+                // Detect map/area change and force immediate rescan
+                var mgm = MainGameManager.m_instance;
+                if (mgm != null)
+                {
+                    int mapNo = mgm.mapNo;
+                    int areaNo = mgm.areaNo;
+                    if (mapNo != _lastMapNo || areaNo != _lastAreaNo)
+                    {
+                        if (_lastMapNo >= 0)
+                        {
+                            StopAllAudio();
+                            DebugLogger.Log($"[AudioNav] Area changed ({_lastMapNo}/{_lastAreaNo} -> {mapNo}/{areaNo}), refreshing managers");
+
+                            // Force immediate manager refresh for the new scene
+                            _playerCtrl = UnityEngine.Object.FindObjectOfType<PlayerCtrl>();
+                            _npcManager = UnityEngine.Object.FindObjectOfType<NpcManager>();
+                            _enemyManager = UnityEngine.Object.FindObjectOfType<EnemyManager>();
+                            _lastSearchTime = Time.time;
+                        }
+                        _lastMapNo = mapNo;
+                        _lastAreaNo = areaNo;
+                        _lastTrackingScan = 0f; // Force immediate rescan
+
+                        // Update north angle for compass direction announcements
+                        _currentNorthAngle = GetNorthAngle(mapNo, areaNo);
+                    }
+                }
 
                 // Rescan for targets periodically
                 if (currentTime - _lastTrackingScan >= TrackingUpdateInterval)
                 {
                     _lastTrackingScan = currentTime;
 
-                    var targets = FindTargetsInRange(playerPos);
+                    var targets = FindAllTargetsInRange(playerPos);
+                    var currentTargets = new HashSet<GameObject>();
 
-                    // Stop audio for types no longer in range
-                    foreach (var type in _audioByType.Keys.ToList())
+                    foreach (var (target, type, dist) in targets)
                     {
-                        if (!targets.ContainsKey(type))
+                        currentTargets.Add(target);
+
+                        if (!_navAudio.ContainsKey(target))
                         {
-                            _audioByType[type].Stop();
-                            _targetByType.Remove(type);
+                            // New target - create audio and start tracking
+                            var audio = new PositionalAudio();
+                            audio.UpdatePlayerPosition(
+                                playerPos.x, playerPos.y, playerPos.z,
+                                camFwd.x, camFwd.y, camFwd.z,
+                                camUp.x, camUp.y, camUp.z);
+                            Vector3 targetPos = target.transform.position;
+                            audio.UpdateTargetPosition(targetPos.x, targetPos.y, targetPos.z);
+                            audio.StartTracking(type, dist + 10f);
+                            _navAudio[target] = (audio, type);
                         }
                     }
 
-                    // Start or update audio for each type in range
-                    foreach (var kvp in targets)
+                    // Remove targets no longer in range
+                    var toRemove = new List<GameObject>();
+                    foreach (var kvp in _navAudio)
                     {
-                        var type = kvp.Key;
-                        var (target, dist) = kvp.Value;
+                        if (!currentTargets.Contains(kvp.Key))
+                            toRemove.Add(kvp.Key);
+                    }
+                    foreach (var obj in toRemove)
+                    {
+                        _navAudio[obj].audio.Dispose();
+                        _navAudio.Remove(obj);
+                    }
+                }
 
-                        // Create audio instance for this type if needed
-                        if (!_audioByType.ContainsKey(type))
-                            _audioByType[type] = new PositionalAudio();
+                // Update positions and collect distance info per type
+                var toClean = new List<GameObject>();
+                var distByType = new Dictionary<PositionalAudio.SoundType, List<(GameObject obj, float dist)>>();
 
-                        var audio = _audioByType[type];
+                foreach (var kvp in _navAudio)
+                {
+                    var target = kvp.Key;
+                    var (audio, type) = kvp.Value;
 
-                        if (!_targetByType.ContainsKey(type) || _targetByType[type] != target)
+                    if (target == null || !target.activeInHierarchy)
+                    {
+                        audio.Stop();
+                        toClean.Add(target);
+                        continue;
+                    }
+
+                    if (!audio.IsPlaying) continue;
+
+                    audio.UpdatePlayerPosition(
+                        playerPos.x, playerPos.y, playerPos.z,
+                        camFwd.x, camFwd.y, camFwd.z,
+                        camUp.x, camUp.y, camUp.z);
+
+                    Vector3 tPos = target.transform.position;
+                    audio.UpdateTargetPosition(tPos.x, tPos.y, tPos.z);
+
+                    float dist = Vector3.Distance(playerPos, tPos);
+                    if (!distByType.ContainsKey(type))
+                        distByType[type] = new List<(GameObject, float)>();
+                    distByType[type].Add((target, dist));
+                }
+
+                // For each type: sort by distance, keep nearest N audible, silence the rest
+                foreach (var kv in distByType)
+                {
+                    var type = kv.Key;
+                    var list = kv.Value;
+                    list.Sort((a, b) => a.dist.CompareTo(b.dist));
+
+                    int maxSounds = type switch
+                    {
+                        PositionalAudio.SoundType.Item => MaxItemSounds,
+                        PositionalAudio.SoundType.NPC => MaxNpcSounds,
+                        PositionalAudio.SoundType.Enemy => MaxEnemySounds,
+                        PositionalAudio.SoundType.Transition => MaxTransitionSounds,
+                        PositionalAudio.SoundType.Facility => MaxFacilitySounds,
+                        _ => 3
+                    };
+
+                    // Per-type volume multiplier
+                    float typeMultiplier = type switch
+                    {
+                        PositionalAudio.SoundType.Enemy => EnemyVolumeMultiplier,
+                        PositionalAudio.SoundType.NPC => NpcVolumeMultiplier,
+                        PositionalAudio.SoundType.Transition => TransitionVolumeMultiplier,
+                        _ => 1.0f
+                    };
+
+                    for (int i = 0; i < list.Count; i++)
+                    {
+                        var audio = _navAudio[list[i].obj].audio;
+                        if (i >= maxSounds)
                         {
-                            // New or changed target for this type
-                            _targetByType[type] = target;
-
-                            if (audio.IsPlaying)
-                            {
-                                audio.ChangeSoundType(type, dist + 10f);
-                            }
-                            else
-                            {
-                                audio.UpdatePlayerPosition(
-                                    playerPos.x, playerPos.y, playerPos.z,
-                                    playerForward.x, playerForward.z);
-                                Vector3 targetPos = target.transform.position;
-                                audio.UpdateTargetPosition(targetPos.x, targetPos.y, targetPos.z);
-                                audio.StartTracking(type, dist + 10f);
-                            }
+                            // Beyond limit - silence
+                            audio.SetMaxVolume(0f);
+                        }
+                        else if (i == 0)
+                        {
+                            // Nearest of this type - full volume with type scaling
+                            audio.SetMaxVolume(NearestVolume * typeMultiplier);
+                        }
+                        else
+                        {
+                            // Other audible sources - reduced volume with type scaling
+                            audio.SetMaxVolume(BackgroundVolume * typeMultiplier);
                         }
                     }
                 }
 
-                // Update positions for all active tracks
-                foreach (var kvp in _targetByType)
+                // Clean up dead targets found during position updates
+                foreach (var obj in toClean)
                 {
-                    var type = kvp.Key;
-                    var target = kvp.Value;
-
-                    if (target == null || !target.activeInHierarchy)
+                    if (_navAudio.ContainsKey(obj))
                     {
-                        if (_audioByType.ContainsKey(type))
-                            _audioByType[type].Stop();
-                        continue;
+                        _navAudio[obj].audio.Dispose();
+                        _navAudio.Remove(obj);
                     }
-
-                    if (!_audioByType.ContainsKey(type) || !_audioByType[type].IsPlaying)
-                        continue;
-
-                    var audio = _audioByType[type];
-                    audio.UpdatePlayerPosition(
-                        playerPos.x, playerPos.y, playerPos.z,
-                        playerForward.x, playerForward.z);
-
-                    Vector3 tPos = target.transform.position;
-                    audio.UpdateTargetPosition(tPos.x, tPos.y, tPos.z);
                 }
             }
             catch (Exception ex)
@@ -250,12 +346,12 @@ namespace DigimonNOAccess
         }
 
         /// <summary>
-        /// Find the closest target of each sound type within range.
-        /// Returns one target per type - all types play simultaneously.
+        /// Find all targets of every sound type within range.
+        /// Each target gets its own positional audio so you hear everything around you.
         /// </summary>
-        private Dictionary<PositionalAudio.SoundType, (GameObject target, float distance)> FindTargetsInRange(Vector3 playerPos)
+        private List<(GameObject target, PositionalAudio.SoundType type, float distance)> FindAllTargetsInRange(Vector3 playerPos)
         {
-            var results = new Dictionary<PositionalAudio.SoundType, (GameObject, float)>();
+            var results = new List<(GameObject, PositionalAudio.SoundType, float)>();
 
             // Items
             try
@@ -263,53 +359,43 @@ namespace DigimonNOAccess
                 var itemManager = ItemPickPointManager.m_instance;
                 if (itemManager != null && itemManager.m_itemPickPoints != null)
                 {
-                    GameObject best = null;
-                    float bestDist = float.MaxValue;
-
                     foreach (var point in itemManager.m_itemPickPoints)
                     {
                         if (point == null || point.gameObject == null || !point.gameObject.activeInHierarchy)
                             continue;
 
                         float dist = Vector3.Distance(playerPos, point.transform.position);
-                        if (dist < ItemRange && dist < bestDist && dist > 1f)
-                        {
-                            bestDist = dist;
-                            best = point.gameObject;
-                        }
+                        if (dist < ItemRange && dist > 1f)
+                            results.Add((point.gameObject, PositionalAudio.SoundType.Item, dist));
                     }
-
-                    if (best != null)
-                        results[PositionalAudio.SoundType.Item] = (best, bestDist);
                 }
             }
             catch { }
 
-            // Transitions
+            // Transitions + Fishing spots + Toilets (all are MapTriggerScript subtypes)
             try
             {
                 var mapTriggers = UnityEngine.Object.FindObjectsOfType<MapTriggerScript>();
-                GameObject best = null;
-                float bestDist = float.MaxValue;
-
                 foreach (var trigger in mapTriggers)
                 {
                     if (trigger == null || trigger.gameObject == null || !trigger.gameObject.activeInHierarchy)
                         continue;
 
-                    if (trigger.enterID != MapTriggerManager.EVENT.MapChange)
-                        continue;
-
-                    float dist = Vector3.Distance(playerPos, trigger.transform.position);
-                    if (dist < TransitionRange && dist < bestDist && dist > 1f)
+                    if (trigger.enterID == MapTriggerManager.EVENT.MapChange)
                     {
-                        bestDist = dist;
-                        best = trigger.gameObject;
+                        float dist = Vector3.Distance(playerPos, trigger.transform.position);
+                        if (dist < TransitionRange && dist > 1f)
+                            results.Add((trigger.gameObject, PositionalAudio.SoundType.Transition, dist));
+                    }
+                    else if (_facilityWavExists &&
+                             (trigger.enterID == MapTriggerManager.EVENT.Fishing ||
+                              trigger.enterID == MapTriggerManager.EVENT.Toilet))
+                    {
+                        float dist = Vector3.Distance(playerPos, trigger.transform.position);
+                        if (dist < FacilityRange && dist > 1f)
+                            results.Add((trigger.gameObject, PositionalAudio.SoundType.Facility, dist));
                     }
                 }
-
-                if (best != null)
-                    results[PositionalAudio.SoundType.Transition] = (best, bestDist);
             }
             catch { }
 
@@ -318,26 +404,15 @@ namespace DigimonNOAccess
             {
                 if (_enemyManager != null && _enemyManager.m_EnemyCtrlArray != null)
                 {
-                    GameObject best = null;
-                    float bestDist = float.MaxValue;
-
                     foreach (var enemy in _enemyManager.m_EnemyCtrlArray)
                     {
-                        if (enemy == null || enemy.gameObject == null || !enemy.gameObject.activeInHierarchy)
-                            continue;
-                        if (enemy.gameObject == _defeatedEnemyObject)
+                        if (!GameStateService.IsEnemyAlive(enemy))
                             continue;
 
                         float dist = Vector3.Distance(playerPos, enemy.transform.position);
-                        if (dist < EnemyRange && dist < bestDist && dist > 1f)
-                        {
-                            bestDist = dist;
-                            best = enemy.gameObject;
-                        }
+                        if (dist < EnemyRange && dist > 1f)
+                            results.Add((enemy.gameObject, PositionalAudio.SoundType.Enemy, dist));
                     }
-
-                    if (best != null)
-                        results[PositionalAudio.SoundType.Enemy] = (best, bestDist);
                 }
             }
             catch { }
@@ -347,205 +422,191 @@ namespace DigimonNOAccess
             {
                 if (_npcManager != null && _npcManager.m_NpcCtrlArray != null)
                 {
-                    GameObject best = null;
-                    float bestDist = float.MaxValue;
-
                     foreach (var npc in _npcManager.m_NpcCtrlArray)
                     {
                         if (npc == null || npc.gameObject == null || !npc.gameObject.activeInHierarchy)
                             continue;
 
                         float dist = Vector3.Distance(playerPos, npc.transform.position);
-                        if (dist < NpcRange && dist < bestDist && dist > 1f)
-                        {
-                            bestDist = dist;
-                            best = npc.gameObject;
-                        }
+                        if (dist < NpcRange && dist > 1f)
+                            results.Add((npc.gameObject, PositionalAudio.SoundType.NPC, dist));
                     }
-
-                    if (best != null)
-                        results[PositionalAudio.SoundType.NPC] = (best, bestDist);
                 }
             }
             catch { }
+
+            // Facilities (training, shops, restaurants, storage, etc.)
+            if (_facilityWavExists)
+            {
+                try
+                {
+                    var mgm = MainGameManager.m_instance;
+                    var eventTriggerMgr = mgm?.m_EventTriggerMgr;
+                    if (eventTriggerMgr != null)
+                    {
+                        var triggerDict = eventTriggerMgr.m_TriggerDictionary;
+                        var placementData = eventTriggerMgr.m_CsvbPlacementData;
+
+                        if (triggerDict != null && placementData != null)
+                        {
+                            var enumerator = triggerDict.GetEnumerator();
+                            while (enumerator.MoveNext())
+                            {
+                                var trigger = enumerator.Current.Value;
+                                if (trigger == null || trigger.gameObject == null || !trigger.gameObject.activeInHierarchy)
+                                    continue;
+
+                                try
+                                {
+                                    uint placementId = enumerator.Current.Key;
+                                    var npcData = HashIdSearchClass<ParameterPlacementNpc>.GetParam(placementData, placementId);
+                                    if (npcData == null) continue;
+
+                                    var facilityType = (MainGameManager.Facility)npcData.m_Facility;
+                                    if (facilityType == MainGameManager.Facility.None) continue;
+
+                                    float dist = Vector3.Distance(playerPos, trigger.transform.position);
+                                    if (dist < FacilityRange && dist > 1f)
+                                        results.Add((trigger.gameObject, PositionalAudio.SoundType.Facility, dist));
+                                }
+                                catch { }
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
 
             return results;
         }
 
         private void StopAllAudio()
         {
-            foreach (var audio in _audioByType.Values)
+            foreach (var kvp in _navAudio)
             {
-                if (audio.IsPlaying)
-                    audio.Stop();
+                try { kvp.Value.audio.Dispose(); } catch { }
             }
-            _targetByType.Clear();
+            _navAudio.Clear();
         }
 
-        #region Wall Detection
-
-        private void UpdateWallDetection()
+        /// <summary>
+        /// Get the north angle for the current map area from ParameterDigiviceAreaData.
+        /// Returns degrees (0 = +Z is north).
+        /// </summary>
+        private float GetNorthAngle(int mapNo, int areaNo)
         {
-            // Stop if player is not in control
-            if (!IsPlayerInControl())
-            {
-                ResetWallStates();
-                return;
-            }
-
-            if (_playerCtrl == null) return;
-
-            // Rate limit checking
-            float currentTime = Time.time;
-            if (currentTime - _lastWallCheckTime < WallCheckInterval) return;
-            _lastWallCheckTime = currentTime;
-
-            DetectWallsNavMesh();
-        }
-
-        private void DetectWallsNavMesh()
-        {
-            if (_playerCtrl == null) return;
-
             try
             {
-                Vector3 playerPos = _playerCtrl.transform.position;
-                Vector3 forward = _playerCtrl.transform.forward;
-                Vector3 right = _playerCtrl.transform.right;
-
-                bool wallAhead = !IsPositionWalkable(playerPos + forward * WallDetectionDistance);
-                bool wallBehind = !IsPositionWalkable(playerPos - forward * WallDetectionDistance);
-                bool wallLeft = !IsPositionWalkable(playerPos - right * WallDetectionDistance);
-                bool wallRight = !IsPositionWalkable(playerPos + right * WallDetectionDistance);
-
-                if (wallAhead && !_wallAhead)
+                var areaData = ParameterDigiviceAreaData.GetParam((AppInfo.MAP)mapNo, areaNo);
+                if (areaData != null)
                 {
-                    PlayWallSound("wall up.wav", 0f, 0.4f);
+                    float angle = areaData.m_fieldNorthAngle;
+                    DebugLogger.Log($"[AudioNav] North angle for map {mapNo} area {areaNo}: {angle:F1}°");
+                    return angle;
                 }
-                if (wallBehind && !_wallBehind)
-                {
-                    PlayWallSound("wall down.wav", 0f, 0.5f);
-                }
-                if (wallLeft && !_wallLeft)
-                {
-                    PlayWallSound("wall left.wav", -0.8f, 0.3f);
-                }
-                if (wallRight && !_wallRight)
-                {
-                    PlayWallSound("wall right.wav", 0.8f, 0.3f);
-                }
-
-                _wallAhead = wallAhead;
-                _wallBehind = wallBehind;
-                _wallLeft = wallLeft;
-                _wallRight = wallRight;
             }
             catch (Exception ex)
             {
-                DebugLogger.Log($"[AudioNav] Wall detection error: {ex.Message}");
+                DebugLogger.Warning($"[AudioNav] GetNorthAngle error: {ex.Message}");
             }
+
+            DebugLogger.Warning($"[AudioNav] No north angle for map {mapNo} area {areaNo}, defaulting to 0");
+            return 0f;
         }
 
-        private bool IsPositionWalkable(Vector3 position)
+        /// <summary>
+        /// Get the compass direction the camera is currently facing,
+        /// relative to the map's north angle.
+        /// </summary>
+        public string GetCameraCompassDirection()
         {
             try
             {
-                NavMeshHit hit;
-                bool foundNavMesh = NavMesh.SamplePosition(position, out hit, NavMeshSampleRadius, NavMesh.AllAreas);
+                GetCameraVectors(out Vector3 camFwd, out Vector3 camUp);
 
-                if (!foundNavMesh)
-                {
-                    return false;
-                }
+                // Project camera forward to horizontal plane
+                float fwdX = camFwd.x;
+                float fwdZ = camFwd.z;
+                float len = (float)Math.Sqrt(fwdX * fwdX + fwdZ * fwdZ);
+                if (len < 0.001f) return "unknown";
 
-                float horizontalDistance = Vector2.Distance(
-                    new Vector2(position.x, position.z),
-                    new Vector2(hit.position.x, hit.position.z)
-                );
+                // World angle from +Z axis
+                float worldAngleDeg = (float)Math.Atan2(fwdX, fwdZ) * (180f / (float)Math.PI);
 
-                return horizontalDistance < NavMeshSampleRadius;
+                // Subtract north angle to get compass bearing
+                float compassDeg = worldAngleDeg - _currentNorthAngle;
+                compassDeg = ((compassDeg % 360f) + 360f) % 360f;
+
+                // 8-direction compass with 45-degree sectors
+                // N: 337.5-22.5, NE: 22.5-67.5, E: 67.5-112.5, etc.
+                if (compassDeg >= 337.5f || compassDeg < 22.5f) return "North";
+                if (compassDeg < 67.5f) return "Northeast";
+                if (compassDeg < 112.5f) return "East";
+                if (compassDeg < 157.5f) return "Southeast";
+                if (compassDeg < 202.5f) return "South";
+                if (compassDeg < 247.5f) return "Southwest";
+                if (compassDeg < 292.5f) return "West";
+                return "Northwest";
             }
             catch
             {
-                // Fallback to raycast if NavMesh fails
-                return !Physics.Raycast(
-                    _playerCtrl.transform.position + UnityEngine.Vector3.up * 0.5f,
-                    (position - _playerCtrl.transform.position).normalized,
-                    WallDetectionDistance
-                );
+                return "unknown";
             }
         }
 
-        private void ResetWallStates()
+        private void UpdateEnvironmentSimulation()
         {
-            _wallAhead = false;
-            _wallBehind = false;
-            _wallLeft = false;
-            _wallRight = false;
-        }
+            if (!SteamAudioEnvironment.IsInitialized) return;
 
-        private void PlayWallSound(string filename, float pan, float volume = 0.5f)
-        {
             try
             {
-                string filePath = Path.Combine(_soundsPath, filename);
-                if (!File.Exists(filePath)) return;
-
-                var audioFile = new AudioFileReader(filePath);
-
-                ISampleProvider sampleProvider;
-                if (audioFile.WaveFormat.Channels == 2)
+                // Check for area change and rebuild geometry
+                var mgm = MainGameManager.m_instance;
+                if (mgm != null)
                 {
-                    sampleProvider = new StereoToMonoSampleProvider(audioFile);
-                }
-                else
-                {
-                    sampleProvider = audioFile;
+                    SteamAudioEnvironment.CheckAreaChange(mgm.mapNo, mgm.areaNo);
                 }
 
-                var panner = new PanningSampleProvider(sampleProvider)
+                // Update listener position for simulation
+                if (_playerCtrl != null)
                 {
-                    Pan = pan
-                };
+                    Vector3 pos = _playerCtrl.transform.position;
+                    GetCameraVectors(out Vector3 envFwd, out Vector3 envUp);
+                    SteamAudioEnvironment.UpdateListener(pos, envFwd, envUp);
+                }
 
-                var volumeProvider = new VolumeSampleProvider(panner)
-                {
-                    Volume = volume
-                };
-
-                var waveOut = new WaveOutEvent();
-                waveOut.Init(volumeProvider);
-
-                waveOut.PlaybackStopped += (sender, args) =>
-                {
-                    try
-                    {
-                        waveOut.Dispose();
-                        audioFile.Dispose();
-                    }
-                    catch { }
-                };
-
-                waveOut.Play();
+                // Run direct simulation for all registered sources
+                SteamAudioEnvironment.RunDirectSimulation();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[AudioNav] Env simulation error: {ex.Message}");
+            }
         }
-
-        #endregion
 
         private bool IsPlayerInControl()
         {
             try
             {
-                // The player's actionState is the game's own check for whether
-                // the player can move. Idle = walking around, everything else
-                // (Event, Battle, Care, Dead, etc.) = not in control.
                 if (_playerCtrl == null) return false;
+
+                // actionState must be Idle (walking around). Everything else
+                // (Event, Battle, Care, Dead, etc.) = not in control.
                 if (_playerCtrl.actionState != UnitCtrlBase.ActionState.ActionState_Idle)
+                    return false;
+
+                // Game step may still be Battle while actionState is already Idle
+                // (e.g. death recovery transition before teleport to town)
+                if (GameStateService.IsInBattlePhase())
                     return false;
 
                 // Pause is a system-level freeze that doesn't change actionState
                 if (GameStateService.IsGamePaused())
+                    return false;
+
+                // Evolution keeps actionState as Idle but disables field objects.
+                // IsMenuOpen() checks EvolutionBase, training result, digivice, etc.
+                if (GameStateService.IsMenuOpen())
                     return false;
 
                 return true;
@@ -553,6 +614,59 @@ namespace DigimonNOAccess
             catch
             {
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// Gets the camera's full 3D orientation vectors for audio spatialization.
+        /// Uses CameraManager.Ref (same object that holds the game's AudioListener).
+        /// Returns forward and up vectors without any horizontal projection -
+        /// HRTF needs the real camera orientation including pitch and zoom.
+        /// </summary>
+        private void GetCameraVectors(out Vector3 camForward, out Vector3 camUp)
+        {
+            camForward = Vector3.forward;
+            camUp = Vector3.up;
+
+            try
+            {
+                var camMgr = CameraManager.Ref;
+                if (camMgr != null && camMgr.m_mainCameraObject != null)
+                {
+                    var t = camMgr.m_mainCameraObject.transform;
+                    camForward = t.forward;
+                    camUp = t.up;
+
+                    // Log camera mode changes for diagnostics
+                    int currentMode = (int)camMgr.modeID;
+                    if (currentMode != _lastLoggedCameraMode)
+                    {
+                        _lastLoggedCameraMode = currentMode;
+                        DebugLogger.Log($"[AudioNav] Camera mode: {camMgr.modeID}, fwd: ({camForward.x:F2}, {camForward.y:F2}, {camForward.z:F2}), up: ({camUp.x:F2}, {camUp.y:F2}, {camUp.z:F2})");
+                    }
+                }
+                else
+                {
+                    Camera cam = Camera.main;
+                    if (cam != null)
+                    {
+                        camForward = cam.transform.forward;
+                        camUp = cam.transform.up;
+                    }
+                }
+            }
+            catch
+            {
+                try
+                {
+                    Camera cam = Camera.main;
+                    if (cam != null)
+                    {
+                        camForward = cam.transform.forward;
+                        camUp = cam.transform.up;
+                    }
+                }
+                catch { }
             }
         }
 
@@ -585,13 +699,7 @@ namespace DigimonNOAccess
         public void Cleanup()
         {
             _initialized = false;
-
-            foreach (var audio in _audioByType.Values)
-            {
-                try { audio.Dispose(); } catch { }
-            }
-            _audioByType.Clear();
-            _targetByType.Clear();
+            StopAllAudio();
         }
     }
 }

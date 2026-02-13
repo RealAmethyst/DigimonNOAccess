@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using NAudio.Wave;
@@ -8,23 +9,30 @@ namespace DigimonNOAccess
 {
     /// <summary>
     /// Provides true positional audio using NAudio, bypassing the game's audio system.
-    /// Simulates 3D audio with stereo panning and distance-based volume.
+    /// Uses Steam Audio HRTF for 3D binaural spatialization when available,
+    /// falls back to stereo panning when phonon.dll is not present.
     /// Supports loading custom WAV files for different object types.
+    /// Audio output is routed through the shared AudioOutputMixer (single WaveOutEvent).
     /// </summary>
     public class PositionalAudio : IDisposable
     {
-        // Audio output
-        private WaveOutEvent _waveOut;
+        // Audio chain (no WaveOutEvent - uses shared AudioOutputMixer)
         private PanningSampleProvider _panner;
+        private HrtfSampleProvider _hrtfProvider;
         private VolumeSampleProvider _volumeProvider;
         private SignalGenerator _signalGenerator;
-        private LoopingWaveProvider _loopingWave;
-        private AudioFileReader _audioFile;
 
-        // Position tracking
+        // Whether this instance is using HRTF (true) or panning fallback (false)
+        private bool _useHrtf;
+
+        // Whether our _volumeProvider is currently registered with the mixer
+        private bool _addedToMixer;
+
+        // Position tracking (full 3D camera orientation for HRTF)
         private float _targetX, _targetY, _targetZ;
         private float _playerX, _playerY, _playerZ;
-        private float _playerForwardX, _playerForwardZ;
+        private float _camFwdX, _camFwdY, _camFwdZ;
+        private float _camUpX, _camUpY, _camUpZ;
         private readonly object _positionLock = new object();
 
         // Configuration
@@ -48,30 +56,33 @@ namespace DigimonNOAccess
             Item,       // Items (item.wav)
             NPC,        // NPCs (potential npc.wav)
             Enemy,      // Enemy Digimon (potential enemie digimon.wav)
-            Transition  // Area transitions (transission.wav)
+            Transition, // Area transitions (transission.wav)
+            Facility    // Facilities, fishing, toilets (facility.wav)
         }
 
         private SoundType _currentSoundType = SoundType.Item;
+
+        // Static audio cache: read each WAV file once, reuse across all instances
+        private static readonly Dictionary<string, (float[] samples, WaveFormat format)> _audioCache
+            = new Dictionary<string, (float[], WaveFormat)>();
+        private static readonly object _cacheLock = new object();
+        private static readonly Random _cacheRandom = new Random();
 
         public PositionalAudio()
         {
             try
             {
-                // Find sounds folder relative to mod DLL location
-                string modPath = Path.GetDirectoryName(typeof(PositionalAudio).Assembly.Location);
-                _soundsPath = Path.Combine(Path.GetDirectoryName(modPath), "sounds");
-
-                // Fallback to project directory structure
-                if (!Directory.Exists(_soundsPath))
+                // Find sounds folder relative to mod DLL location (only resolves once)
+                if (_soundsPath == null)
                 {
-                    _soundsPath = Path.Combine(modPath, "sounds");
+                    string modPath = Path.GetDirectoryName(typeof(PositionalAudio).Assembly.Location);
+                    _soundsPath = Path.Combine(Path.GetDirectoryName(modPath), "sounds");
+                    if (!Directory.Exists(_soundsPath))
+                        _soundsPath = Path.Combine(modPath, "sounds");
+                    DebugLogger.Log($"[PositionalAudio] Sounds path: {_soundsPath}");
                 }
 
-                DebugLogger.Log($"[PositionalAudio] Sounds path: {_soundsPath}");
-                DebugLogger.Log($"[PositionalAudio] Sounds folder exists: {Directory.Exists(_soundsPath)}");
-
                 InitializeAudio(SoundType.Item);
-                DebugLogger.Log("[PositionalAudio] Initialized successfully");
             }
             catch (Exception ex)
             {
@@ -90,6 +101,7 @@ namespace DigimonNOAccess
                 SoundType.NPC => "potential npc.wav",
                 SoundType.Enemy => "potential enemie digimon.wav",
                 SoundType.Transition => "transission.wav",
+                SoundType.Facility => "facility.wav",
                 _ => "item.wav"
             };
             return Path.Combine(_soundsPath, filename);
@@ -97,11 +109,12 @@ namespace DigimonNOAccess
 
         private void InitializeAudio(SoundType soundType)
         {
-            // Clean up existing
+            // Clean up existing (removes from mixer if needed)
             StopInternal();
 
             _currentSoundType = soundType;
             _useWavFile = false;
+            _useHrtf = false;
 
             // Try to load WAV file first
             string wavPath = GetSoundFilePath(soundType);
@@ -111,7 +124,6 @@ namespace DigimonNOAccess
                 {
                     InitializeFromWavFile(wavPath);
                     _useWavFile = true;
-                    DebugLogger.Log($"[PositionalAudio] Loaded WAV file: {wavPath}");
                     return;
                 }
                 catch (Exception ex)
@@ -121,50 +133,69 @@ namespace DigimonNOAccess
             }
             else
             {
+                // Facility type: no WAV = no audio (no tone fallback)
+                if (soundType == SoundType.Facility)
+                {
+                    DebugLogger.Log($"[PositionalAudio] WAV file not found: {wavPath}, facility audio disabled");
+                    return;
+                }
                 DebugLogger.Log($"[PositionalAudio] WAV file not found: {wavPath}, using generated tone");
             }
 
-            // Fallback to generated tone
+            // Fallback to generated tone (not used for Facility type)
             InitializeFromGenerator(soundType);
         }
 
         private void InitializeFromWavFile(string wavPath)
         {
-            _audioFile = new AudioFileReader(wavPath);
+            // Use cached audio data - only reads from disk the first time per file
+            var (samples, format) = LoadOrGetCachedAudio(wavPath);
 
-            // Create looping provider
-            _loopingWave = new LoopingWaveProvider(_audioFile);
+            // Random start offset prevents comb filtering when many instances play the same WAV
+            int startOffset;
+            lock (_cacheLock) { startOffset = _cacheRandom.Next(samples.Length); }
+            var monoSource = new CachedLoopingSampleProvider(samples, format, startOffset);
 
-            // Convert to mono if stereo, for proper panning
-            ISampleProvider sampleProvider;
-            if (_loopingWave.WaveFormat.Channels == 2)
+            BuildAudioChain(monoSource);
+        }
+
+        internal static (float[] samples, WaveFormat format) LoadOrGetCachedAudio(string wavPath)
+        {
+            lock (_cacheLock)
             {
-                // Convert stereo to mono for panning to work correctly
-                sampleProvider = new StereoToMonoSampleProvider(_loopingWave.ToSampleProvider());
+                if (_audioCache.TryGetValue(wavPath, out var cached))
+                    return cached;
             }
-            else
+
+            // First load: read WAV file, decode to mono float samples
+            using (var reader = new AudioFileReader(wavPath))
             {
-                sampleProvider = _loopingWave.ToSampleProvider();
+                ISampleProvider source;
+                if (reader.WaveFormat.Channels == 2)
+                    source = new StereoToMonoSampleProvider(reader);
+                else
+                    source = reader;
+
+                var allSamples = new List<float>();
+                float[] buf = new float[4096];
+                int read;
+                while ((read = source.Read(buf, 0, buf.Length)) > 0)
+                {
+                    for (int i = 0; i < read; i++)
+                        allSamples.Add(buf[i]);
+                }
+
+                var samples = allSamples.ToArray();
+                var format = WaveFormat.CreateIeeeFloatWaveFormat(reader.WaveFormat.SampleRate, 1);
+
+                lock (_cacheLock)
+                {
+                    _audioCache[wavPath] = (samples, format);
+                }
+
+                DebugLogger.Log($"[PositionalAudio] Cached {wavPath}: {samples.Length} samples ({samples.Length / (float)format.SampleRate:F1}s)");
+                return (samples, format);
             }
-
-            // PanningSampleProvider takes MONO input and creates stereo output with panning
-            _panner = new PanningSampleProvider(sampleProvider)
-            {
-                Pan = 0f
-            };
-
-            // Add volume control
-            _volumeProvider = new VolumeSampleProvider(_panner)
-            {
-                Volume = 0.5f
-            };
-
-            // Create output device
-            _waveOut = new WaveOutEvent
-            {
-                DesiredLatency = 100
-            };
-            _waveOut.Init(_volumeProvider);
         }
 
         private void InitializeFromGenerator(SoundType soundType)
@@ -176,20 +207,20 @@ namespace DigimonNOAccess
             switch (soundType)
             {
                 case SoundType.NPC:
-                    frequency = 600f;  // Medium pitch for NPCs
+                    frequency = 600f;
                     signalType = SignalGeneratorType.Sin;
                     break;
                 case SoundType.Enemy:
-                    frequency = 880f;  // Higher pitch for enemies
+                    frequency = 880f;
                     signalType = SignalGeneratorType.Square;
                     break;
                 case SoundType.Transition:
-                    frequency = 523f;  // C5 for transitions
+                    frequency = 523f;
                     signalType = SignalGeneratorType.Triangle;
                     break;
                 case SoundType.Item:
                 default:
-                    frequency = 440f;  // A4 note for items
+                    frequency = 440f;
                     signalType = SignalGeneratorType.Sin;
                     break;
             }
@@ -202,26 +233,44 @@ namespace DigimonNOAccess
                 Gain = 0.3
             };
 
-            // PanningSampleProvider takes MONO input and creates stereo output with panning
-            _panner = new PanningSampleProvider(_signalGenerator)
-            {
-                Pan = 0f  // -1 = left, 0 = center, 1 = right
-            };
-
-            // Add volume control to the stereo output from panner
-            _volumeProvider = new VolumeSampleProvider(_panner)
-            {
-                Volume = 0.5f
-            };
-
-            // Create output device
-            _waveOut = new WaveOutEvent
-            {
-                DesiredLatency = 100
-            };
-            _waveOut.Init(_volumeProvider);
+            BuildAudioChain(_signalGenerator);
 
             DebugLogger.Log($"[PositionalAudio] Audio initialized with generator: {soundType}, freq={frequency}Hz");
+        }
+
+        /// <summary>
+        /// Build the audio processing chain from a mono source.
+        /// Uses HRTF when available, falls back to stereo panning.
+        /// Chain ends at VolumeSampleProvider which is registered with AudioOutputMixer.
+        /// </summary>
+        private void BuildAudioChain(ISampleProvider monoSource)
+        {
+            ISampleProvider stereoSource;
+
+            if (SteamAudioManager.IsAvailable)
+            {
+                // HRTF: spatialize mono → stereo
+                _hrtfProvider = new HrtfSampleProvider(monoSource);
+                stereoSource = _hrtfProvider;
+                _useHrtf = true;
+                _panner = null;
+            }
+            else
+            {
+                // Fallback: stereo panning (no front/back distinction)
+                _panner = new PanningSampleProvider(monoSource)
+                {
+                    Pan = 0f
+                };
+                stereoSource = _panner;
+                _hrtfProvider = null;
+                _useHrtf = false;
+            }
+
+            _volumeProvider = new VolumeSampleProvider(stereoSource)
+            {
+                Volume = 0f // Start silent, UpdateAudioParameters will set real volume
+            };
         }
 
         /// <summary>
@@ -231,7 +280,7 @@ namespace DigimonNOAccess
         {
             try
             {
-                if (_currentSoundType != soundType || _waveOut == null)
+                if (_currentSoundType != soundType || _volumeProvider == null)
                 {
                     InitializeAudio(soundType);
                 }
@@ -240,7 +289,12 @@ namespace DigimonNOAccess
                 _isPlaying = true;
                 _shouldUpdate = true;
 
-                _waveOut?.Play();
+                // Register with shared mixer if not already
+                if (!_addedToMixer && _volumeProvider != null)
+                {
+                    AudioOutputMixer.AddInput(_volumeProvider);
+                    _addedToMixer = true;
+                }
 
                 // Start position update thread
                 if (_updateThread == null || !_updateThread.IsAlive)
@@ -253,7 +307,7 @@ namespace DigimonNOAccess
                     _updateThread.Start();
                 }
 
-                DebugLogger.Log($"[PositionalAudio] Started tracking with {soundType}, maxDist={maxDistance}");
+                // Reduced logging - only significant events
             }
             catch (Exception ex)
             {
@@ -290,7 +344,7 @@ namespace DigimonNOAccess
             bool wasPlaying = _isPlaying;
             _maxDistance = maxDistance;
 
-            // Reinitialize with new sound type
+            // Reinitialize with new sound type (StopInternal removes from mixer)
             InitializeAudio(soundType);
 
             // Resume if we were playing
@@ -298,7 +352,13 @@ namespace DigimonNOAccess
             {
                 _isPlaying = true;
                 _shouldUpdate = true;
-                _waveOut?.Play();
+
+                // Re-register with mixer
+                if (!_addedToMixer && _volumeProvider != null)
+                {
+                    AudioOutputMixer.AddInput(_volumeProvider);
+                    _addedToMixer = true;
+                }
 
                 // Restart update thread if needed
                 if (_updateThread == null || !_updateThread.IsAlive)
@@ -315,19 +375,17 @@ namespace DigimonNOAccess
 
         private void StopInternal()
         {
-            try
+            // Remove from mixer first (before disposing the chain)
+            if (_addedToMixer && _volumeProvider != null)
             {
-                _waveOut?.Stop();
-                _waveOut?.Dispose();
-                _waveOut = null;
+                AudioOutputMixer.RemoveInput(_volumeProvider);
+                _addedToMixer = false;
             }
-            catch { }
 
             try
             {
-                _audioFile?.Dispose();
-                _audioFile = null;
-                _loopingWave = null;
+                _hrtfProvider?.Dispose();
+                _hrtfProvider = null;
             }
             catch { }
 
@@ -350,17 +408,24 @@ namespace DigimonNOAccess
         }
 
         /// <summary>
-        /// Update the player position and forward direction (call this from game thread)
+        /// Update the player position and camera orientation (call this from game thread).
+        /// Uses full 3D camera vectors for proper HRTF spatialization matching the game's AudioListener.
         /// </summary>
-        public void UpdatePlayerPosition(float x, float y, float z, float forwardX, float forwardZ)
+        public void UpdatePlayerPosition(float x, float y, float z,
+            float camFwdX, float camFwdY, float camFwdZ,
+            float camUpX, float camUpY, float camUpZ)
         {
             lock (_positionLock)
             {
                 _playerX = x;
                 _playerY = y;
                 _playerZ = z;
-                _playerForwardX = forwardX;
-                _playerForwardZ = forwardZ;
+                _camFwdX = camFwdX;
+                _camFwdY = camFwdY;
+                _camFwdZ = camFwdZ;
+                _camUpX = camUpX;
+                _camUpY = camUpY;
+                _camUpZ = camUpZ;
             }
         }
 
@@ -386,12 +451,12 @@ namespace DigimonNOAccess
 
         private void UpdateAudioParameters()
         {
-            if (_panner == null || _volumeProvider == null)
+            if (_volumeProvider == null)
                 return;
 
             float targetX, targetY, targetZ;
             float playerX, playerY, playerZ;
-            float forwardX, forwardZ;
+            float cfX, cfY, cfZ, cuX, cuY, cuZ;
 
             lock (_positionLock)
             {
@@ -401,64 +466,67 @@ namespace DigimonNOAccess
                 playerX = _playerX;
                 playerY = _playerY;
                 playerZ = _playerZ;
-                forwardX = _playerForwardX;
-                forwardZ = _playerForwardZ;
+                cfX = _camFwdX; cfY = _camFwdY; cfZ = _camFwdZ;
+                cuX = _camUpX;  cuY = _camUpY;  cuZ = _camUpZ;
             }
 
-            // Calculate direction to target (horizontal plane)
+            // Calculate 3D direction and distance to target
             float dx = targetX - playerX;
+            float dy = targetY - playerY;
             float dz = targetZ - playerZ;
-            float distance = (float)Math.Sqrt(dx * dx + dz * dz);
+            float distance = (float)Math.Sqrt(dx * dx + dy * dy + dz * dz);
 
-            // Normalize direction to target
+            // Normalize direction
             if (distance > 0.01f)
             {
                 dx /= distance;
+                dy /= distance;
                 dz /= distance;
             }
 
-            // Normalize player forward
-            float forwardMag = (float)Math.Sqrt(forwardX * forwardX + forwardZ * forwardZ);
-            if (forwardMag > 0.01f)
+            if (_useHrtf && _hrtfProvider != null)
             {
-                forwardX /= forwardMag;
-                forwardZ /= forwardMag;
+                // Full 3D HRTF: transform world direction into camera's local space.
+                // This matches how the game's own AudioListener on the camera works.
+                // Camera right = cross(camUp, camForward) in Unity's left-handed system
+                float crX = cuY * cfZ - cuZ * cfY;
+                float crY = cuZ * cfX - cuX * cfZ;
+                float crZ = cuX * cfY - cuY * cfX;
+
+                // Project direction onto camera axes
+                float localRight   = dx * crX + dy * crY + dz * crZ;
+                float localUp      = dx * cuX + dy * cuY + dz * cuZ;
+                float localForward = dx * cfX + dy * cfY + dz * cfZ;
+
+                // Steam Audio: right-handed, -Z = forward
+                _hrtfProvider.SetDirection(localRight, localUp, -localForward);
+            }
+            else if (_panner != null)
+            {
+                // Panning fallback: project onto camera right axis for L/R
+                float crX = cuY * cfZ - cuZ * cfY;
+                float crY = cuZ * cfX - cuX * cfZ;
+                float crZ = cuX * cfY - cuY * cfX;
+
+                float pan = dx * crX + dy * crY + dz * crZ;
+                _panner.Pan = Math.Max(-1f, Math.Min(1f, pan));
             }
 
-            // Calculate pan using cross product (determines left/right)
-            // Cross product Y component, negated to match Unity's coordinate system
-            float cross = forwardZ * dx - forwardX * dz;
-
-            // Pan: negative = left, positive = right
-            // Clamp to -1 to 1 range
-            float pan = Math.Max(-1f, Math.Min(1f, cross));
-
-            // Calculate if target is in front or behind using dot product
-            float dot = forwardX * dx + forwardZ * dz;
-
-            // If target is behind, make the pan more extreme and reduce volume slightly
-            if (dot < 0)
-            {
-                // Behind: push pan toward extremes
-                pan = pan > 0 ? Math.Min(1f, pan + 0.3f) : Math.Max(-1f, pan - 0.3f);
-            }
-
-            // Calculate volume based on distance
+            // Volume based on distance - squared falloff for realistic attenuation
+            // At 25% range: ~56% vol, at 50%: ~25% vol, at 75%: ~6% vol
             float normalizedDist = Math.Min(1f, distance / _maxDistance);
-            float volume = _maxVolume - (normalizedDist * (_maxVolume - _minVolume));
-
-            // If very close, boost volume
             if (distance < 3f)
             {
-                volume = _maxVolume;
+                _volumeProvider.Volume = _maxVolume;
+            }
+            else
+            {
+                float falloff = (1f - normalizedDist) * (1f - normalizedDist); // squared
+                float volume = _minVolume + falloff * (_maxVolume - _minVolume);
+                _volumeProvider.Volume = volume;
             }
 
-            // Apply to audio
-            _panner.Pan = pan;
-            _volumeProvider.Volume = volume;
-
-            // Adjust frequency based on distance for additional cue (closer = slightly higher pitch)
-            // Only works with generated tones, not WAV files
+            // Pitch modulation for generated tones (distance cue)
             if (_signalGenerator != null && !_useWavFile)
             {
                 float basePitch = _currentSoundType switch
@@ -469,7 +537,6 @@ namespace DigimonNOAccess
                     _ => 440f
                 };
 
-                // Pitch rises as you get closer (up to 20% higher when very close)
                 float pitchMod = 1f + (1f - normalizedDist) * 0.2f;
                 _signalGenerator.Frequency = basePitch * pitchMod;
             }
@@ -479,6 +546,14 @@ namespace DigimonNOAccess
         /// Check if currently playing
         /// </summary>
         public bool IsPlaying => _isPlaying;
+
+        /// <summary>
+        /// Set the max volume for this source. Used to make non-nearest sources quieter.
+        /// </summary>
+        public void SetMaxVolume(float maxVol)
+        {
+            _maxVolume = maxVol;
+        }
 
         /// <summary>
         /// Get current distance to target
@@ -544,6 +619,40 @@ namespace DigimonNOAccess
             }
 
             return totalBytesRead;
+        }
+    }
+
+    /// <summary>
+    /// Loops over a shared float[] sample buffer without owning or copying it.
+    /// Each instance has its own read position, enabling many simultaneous players
+    /// of the same sound with zero disk I/O after the first load.
+    /// </summary>
+    public class CachedLoopingSampleProvider : ISampleProvider
+    {
+        private readonly float[] _samples;
+        private int _position;
+
+        public WaveFormat WaveFormat { get; }
+
+        public CachedLoopingSampleProvider(float[] samples, WaveFormat format, int startOffset = 0)
+        {
+            _samples = samples;
+            WaveFormat = format;
+            _position = samples.Length > 0 ? startOffset % samples.Length : 0;
+        }
+
+        public int Read(float[] buffer, int offset, int count)
+        {
+            if (_samples.Length == 0) return 0;
+
+            for (int i = 0; i < count; i++)
+            {
+                buffer[offset + i] = _samples[_position];
+                _position++;
+                if (_position >= _samples.Length)
+                    _position = 0;
+            }
+            return count;
         }
     }
 }

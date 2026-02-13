@@ -27,6 +27,11 @@
     <PackageReference Include="NAudio" Version="2.2.1" />
   </ItemGroup>
 
+  <!-- Steam Audio native DLL (phonon.dll) for HRTF binaural audio -->
+  <ItemGroup>
+    <None Include="phonon.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('phonon.dll')" />
+  </ItemGroup>
+
   <!-- MelonLoader references -->
   <ItemGroup>
     <Reference Include="MelonLoader">
