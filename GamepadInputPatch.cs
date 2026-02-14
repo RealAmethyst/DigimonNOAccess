@@ -148,7 +148,7 @@ namespace DigimonNOAccess
         // Postfixes for PadManager static methods
         private static void GetInput_Postfix(ref PadManager.BUTTON __result)
         {
-            if (_enabled && SDLController.IsAvailable)
+            if (_enabled && SDLController.IsAvailable && Application.isFocused)
             {
                 __result |= _currentInjectedButtons;
             }
@@ -156,7 +156,7 @@ namespace DigimonNOAccess
 
         private static void GetTrigger_Postfix(ref PadManager.BUTTON __result)
         {
-            if (_enabled && SDLController.IsAvailable)
+            if (_enabled && SDLController.IsAvailable && Application.isFocused)
             {
                 PadManager.BUTTON triggerButtons = _currentInjectedButtons & ~_lastInjectedButtons;
                 __result |= triggerButtons;
@@ -165,7 +165,7 @@ namespace DigimonNOAccess
 
         private static void GetRepeat_Postfix(ref PadManager.BUTTON __result)
         {
-            if (_enabled && SDLController.IsAvailable && _repeatButtons != PadManager.BUTTON._Non)
+            if (_enabled && SDLController.IsAvailable && Application.isFocused && _repeatButtons != PadManager.BUTTON._Non)
             {
                 __result |= _repeatButtons;
             }
@@ -173,7 +173,7 @@ namespace DigimonNOAccess
 
         private static void IsTrigger_Postfix(PadManager.BUTTON button, ref bool __result)
         {
-            if (!__result && _enabled && SDLController.IsAvailable)
+            if (!__result && _enabled && SDLController.IsAvailable && Application.isFocused)
             {
                 PadManager.BUTTON triggerButtons = _currentInjectedButtons & ~_lastInjectedButtons;
                 __result = (triggerButtons & button) != 0;
@@ -182,7 +182,7 @@ namespace DigimonNOAccess
 
         private static void IsRepeat_Postfix(PadManager.BUTTON button, ref bool __result)
         {
-            if (!__result && _enabled && SDLController.IsAvailable)
+            if (!__result && _enabled && SDLController.IsAvailable && Application.isFocused)
             {
                 // Check if this button should repeat
                 PadManager.BUTTON triggerButtons = _currentInjectedButtons & ~_lastInjectedButtons;
@@ -194,7 +194,7 @@ namespace DigimonNOAccess
 
         private static void IsInput_Postfix(PadManager.BUTTON button, ref bool __result)
         {
-            if (!__result && _enabled && SDLController.IsAvailable)
+            if (!__result && _enabled && SDLController.IsAvailable && Application.isFocused)
             {
                 __result = (_currentInjectedButtons & button) != 0;
             }
@@ -202,6 +202,8 @@ namespace DigimonNOAccess
 
         private static void GetLeftStick_Postfix(ref Vector2 __result)
         {
+            if (!Application.isFocused) return;
+
             // Auto-walk: override the stick value so the game's movement system
             // walks the player along the computed path
             if (NavigationListHandler.AutoWalkActive)
@@ -231,7 +233,7 @@ namespace DigimonNOAccess
         /// </summary>
         private static void Pad_Update_Postfix(Pad __instance)
         {
-            if (!_enabled || !SDLController.IsAvailable)
+            if (!_enabled || !SDLController.IsAvailable || !Application.isFocused)
                 return;
 
             try

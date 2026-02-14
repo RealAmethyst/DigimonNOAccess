@@ -72,9 +72,18 @@ namespace DigimonNOAccess
             if (!_initialized) return;
 
             // Update SDL3 controller state if available
+            // Always pump events even when unfocused to avoid stale state on refocus
             if (_useSDL)
             {
                 SDLController.Update();
+            }
+
+            // Skip all input processing when game window is not focused
+            if (!Application.isFocused)
+            {
+                _triggeredLastFrame = _triggeredThisFrame;
+                _triggeredThisFrame = new HashSet<string>();
+                return;
             }
 
             // Track which input device was last used (for button icon resolution)
