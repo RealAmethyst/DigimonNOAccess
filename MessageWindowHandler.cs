@@ -7,7 +7,7 @@ namespace DigimonNOAccess
     /// <summary>
     /// Handles accessibility for all message/dialog systems in the game.
     /// Monitors: EventWindowPanel (story), uCommonMessageWindow (field messages),
-    /// uDigimonMessagePanel (partner status), battle dialogs, and captions.
+    /// and uDigimonMessagePanel (partner status).
     ///
     /// Uses Harmony patches to intercept dialog text the moment it's set,
     /// announcing the full text immediately without waiting for typewriter animation.
@@ -32,10 +32,6 @@ namespace DigimonNOAccess
         private uDigimonMessagePanel _digimonMessagePanel;
 
 
-        // Caption tracking (field hints/instructions)
-        private uCaptionBase _captionPanel;
-        private bool _wasCaptionActive = false;
-        private string _lastCaptionText = "";
 
         // General tracking
         private float _lastAnnouncementTime = 0f;
@@ -57,7 +53,7 @@ namespace DigimonNOAccess
         /// </summary>
         public bool IsOpen()
         {
-            return IsEventPanelOpen() || IsCommonWindowOpen() || IsDigimonPanelOpen() || IsCaptionOpen();
+            return IsEventPanelOpen() || IsCommonWindowOpen() || IsDigimonPanelOpen();
         }
 
         /// <summary>
@@ -76,7 +72,6 @@ namespace DigimonNOAccess
             // We still track panel state for status queries
             UpdateEventPanelState();
 
-            UpdateCaption();
         }
 
         /// <summary>
@@ -388,183 +383,6 @@ namespace DigimonNOAccess
 
         #endregion
 
-        #region uCaptionBase (Field Hints/Instructions)
-
-        private bool IsCaptionOpen()
-        {
-            try
-            {
-                // Search for any active caption panels (tutorial hints, field instructions)
-                var captions = Object.FindObjectsOfType<uCaptionBase>();
-                if (captions != null)
-                {
-                    foreach (var caption in captions)
-                    {
-                        if (caption != null && caption.m_isOpend)
-                        {
-                            // Check if it has text
-                            string text = GetCaptionTextFromPanel(caption);
-                            if (!string.IsNullOrEmpty(text) && !IsIgnoredText(text))
-                            {
-                                _captionPanel = caption;
-                                return true;
-                            }
-                        }
-                    }
-                }
-            }
-            catch { }
-
-            _captionPanel = null;
-            return false;
-        }
-
-        private void UpdateCaption()
-        {
-            // Skip caption announcements during battle result screen
-            // BattleResultHandler handles those announcements
-            if (IsBattleResultActive())
-            {
-                _wasCaptionActive = false;
-                return;
-            }
-
-            // Skip caption announcements during training panel
-            // The button hint captions ("or Bonus", "or Skill") aren't useful
-            // TrainingPanelHandler handles its own tab announcements
-            if (IsTrainingPanelActive())
-            {
-                _wasCaptionActive = false;
-                return;
-            }
-
-            bool isActive = IsCaptionOpen();
-
-            if (isActive && !_wasCaptionActive)
-            {
-                OnCaptionOpen();
-            }
-            else if (!isActive && _wasCaptionActive)
-            {
-                OnCaptionClose();
-            }
-            else if (isActive)
-            {
-                CheckCaptionChange();
-            }
-
-            _wasCaptionActive = isActive;
-        }
-
-        /// <summary>
-        /// Check if the battle result panel is currently active.
-        /// Used to suppress caption announcements during result screen.
-        /// </summary>
-        private bool IsBattleResultActive()
-        {
-            try
-            {
-                var battlePanel = uBattlePanel.m_instance;
-                if (battlePanel != null)
-                {
-                    var resultPanel = battlePanel.m_result;
-                    if (resultPanel != null && resultPanel.m_enabled)
-                    {
-                        return true;
-                    }
-                }
-            }
-            catch { }
-            return false;
-        }
-
-        /// <summary>
-        /// Check if the training panel is currently active.
-        /// Used to suppress caption announcements during training.
-        /// </summary>
-        private bool IsTrainingPanelActive()
-        {
-            try
-            {
-                var panel = Object.FindObjectOfType<uTrainingPanelCommand>();
-                if (panel != null && panel.gameObject != null && panel.gameObject.activeInHierarchy)
-                {
-                    var state = panel.m_state;
-                    return state != uTrainingPanelCommand.State.None &&
-                           state != uTrainingPanelCommand.State.Close;
-                }
-            }
-            catch { }
-            return false;
-        }
-
-        private void OnCaptionOpen()
-        {
-            _lastCaptionText = "";
-
-            if (_captionPanel == null)
-                return;
-
-            string text = GetCaptionText();
-            if (!string.IsNullOrEmpty(text) && !IsIgnoredText(text))
-            {
-                AnnounceMessage(text, "Caption");
-                _lastCaptionText = text;
-            }
-        }
-
-        private void OnCaptionClose()
-        {
-            _captionPanel = null;
-            _lastCaptionText = "";
-        }
-
-        private void CheckCaptionChange()
-        {
-            if (_captionPanel == null)
-                return;
-
-            string text = GetCaptionText();
-
-            if (IsIgnoredText(text))
-                return;
-
-            if (!string.IsNullOrEmpty(text) && text != _lastCaptionText)
-            {
-                AnnounceMessage(text, "Caption");
-                _lastCaptionText = text;
-            }
-        }
-
-        private string GetCaptionText()
-        {
-            return GetCaptionTextFromPanel(_captionPanel);
-        }
-
-        private string GetCaptionTextFromPanel(uCaptionBase caption)
-        {
-            if (caption == null)
-                return "";
-
-            try
-            {
-                if (caption.m_text != null)
-                {
-                    string text = caption.m_text.text;
-                    if (!string.IsNullOrEmpty(text))
-                        return CleanText(text);
-                }
-            }
-            catch (System.Exception ex)
-            {
-                DebugLogger.Log($"[MessageWindow] Error in GetCaptionTextFromPanel: {ex.Message}");
-            }
-
-            return "";
-        }
-
-        #endregion
-
         #region Utility Methods
 
         /// <summary>
@@ -651,11 +469,6 @@ namespace DigimonNOAccess
             {
                 announcement = GetDigimonPanelText();
             }
-            else if (IsCaptionOpen())
-            {
-                announcement = GetCaptionText();
-            }
-
             if (!string.IsNullOrEmpty(announcement))
             {
                 ScreenReader.Say(CleanText(announcement));

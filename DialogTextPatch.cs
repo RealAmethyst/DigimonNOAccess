@@ -222,6 +222,10 @@ namespace DigimonNOAccess
                 if (IsGameLoading())
                     return;
 
+                // Skip when restaurant panel is handling menu announcements
+                if (RestaurantPanelHandler.ShouldSuppressMessages())
+                    return;
+
                 if (str == _lastCommonMessage && (DateTime.Now - _lastCommonMessageTime).TotalMilliseconds < 500)
                     return;
 
@@ -260,6 +264,10 @@ namespace DigimonNOAccess
             {
                 // Skip during game loading
                 if (IsGameLoading())
+                    return;
+
+                // Skip when restaurant panel is handling its own announcements
+                if (RestaurantPanelHandler.ShouldSuppressMessages())
                     return;
 
                 // Read the label text that was resolved from the lang code

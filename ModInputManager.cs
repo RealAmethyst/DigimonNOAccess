@@ -236,7 +236,7 @@ namespace DigimonNOAccess
                 keyboard: new InputBinding(KeyCode.C),
                 controller: new InputBinding(ControllerButton.R3));
 
-            // === Shop/Trade Menu ===
+            // === Shop/Trade/Restaurant Menus ===
             RegisterAction("ShopCheckBits",
                 keyboard: new InputBinding(KeyCode.F10),
                 controller: new InputBinding(ControllerButton.RT, ControllerButton.DPadDown));
@@ -813,7 +813,7 @@ TrainingP1Info = F3
 TrainingP2Info = F4
 
 ; === Shop/Trade Menu ===
-; Announce current bits (only works when shop or trade panel is open)
+; Announce current bits (works in shop, trade, restaurant, and selection menus)
 ShopCheckBits = B
 
 [Controller]
@@ -859,7 +859,7 @@ TrainingP1Info = RT+DPadUp
 TrainingP2Info = LT+DPadUp
 
 ; === Shop/Trade Menu ===
-; Announce current bits (only works when shop or trade panel is open)
+; Announce current bits (works in shop, trade, restaurant, and selection menus)
 ShopCheckBits = L3
 ";
 
