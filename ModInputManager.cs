@@ -769,7 +769,7 @@ ToggleVoicedText = F5
 
 ; === Compass Direction ===
 ; Announce which compass direction the camera is facing
-CompassDirection = C
+CompassDirection = U
 
 ; === Field Partner Status ===
 Partner1Status = F3
@@ -805,7 +805,7 @@ TrainingP2Info = F4
 
 ; === Shop/Trade Menu ===
 ; Announce current bits (only works when shop or trade panel is open)
-ShopCheckBits = F10
+ShopCheckBits = B
 
 [Controller]
 ; === Global ===
@@ -815,11 +815,11 @@ ToggleVoicedText = None
 
 ; === Compass Direction ===
 ; Announce which compass direction the camera is facing
-CompassDirection = R3
+CompassDirection = RT+DPadLeft
 
 ; === Field Partner Status ===
 Partner1Status = RT+DPadUp
-Partner2Status = LT+DPadUp
+Partner2Status = RT+DPadDown
 
 ; === Battle Enemy Info (per-enemy) ===
 BattleEnemy1 = RStickUp
@@ -833,25 +833,25 @@ BattleSPDetails = RT+DPadLeft
 
 ; === Navigation List ===
 ; Cycle through categories (NPCs, Items, Transitions, Enemies)
-NavNextCategory = None
-NavPrevCategory = None
+NavNextCategory = LT+DPadRight
+NavPrevCategory = LT+DPadLeft
 ; Cycle through events within the selected category
-NavPrevEvent = None
+NavPrevEvent = LT+DPadUp
 NavCurrentEvent = None
-NavNextEvent = None
-; Announce path to the selected event
-NavToEvent = None
+NavNextEvent = LT+DPadDown
+; Start path to the selected event
+NavToEvent = L3
 ; Toggle auto-walk (when enabled, pathfinding also walks the player)
-ToggleAutoWalk = None
+ToggleAutoWalk = R3
 
 ; === Training Menu ===
 ; Announce stats or bonus for each partner (reads whichever tab is active)
-TrainingP1Info = RB+DPadUp
-TrainingP2Info = LB+DPadUp
+TrainingP1Info = RT+DPadUp
+TrainingP2Info = LT+DPadUp
 
 ; === Shop/Trade Menu ===
 ; Announce current bits (only works when shop or trade panel is open)
-ShopCheckBits = RT+DPadDown
+ShopCheckBits = L3
 ";
 
             try

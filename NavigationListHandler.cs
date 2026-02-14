@@ -31,7 +31,7 @@ namespace DigimonNOAccess
             NPCs,
             Items,
             Materials,
-            KeyItems,
+            Quest,
             Transitions,
             Enemies,
             Facilities
@@ -54,7 +54,7 @@ namespace DigimonNOAccess
             EventCategory.NPCs,
             EventCategory.Items,
             EventCategory.Materials,
-            EventCategory.KeyItems,
+            EventCategory.Quest,
             EventCategory.Transitions,
             EventCategory.Enemies,
             EventCategory.Facilities
@@ -151,6 +151,7 @@ namespace DigimonNOAccess
         public static bool AutoWalkActive { get; private set; }
         public static float AutoWalkStickX { get; private set; }
         public static float AutoWalkStickY { get; private set; }
+        public static float AutoWalkCameraStickX { get; private set; }
 
         // Evolution state (set by Main before Update)
         private bool _evolutionActive = false;
@@ -187,16 +188,16 @@ namespace DigimonNOAccess
                 return;
             }
 
-            // Rescan after returning to field from evolution/battles (>2s away)
-            // Don't wipe existing lists - just do an additive rescan that removes
-            // destroyed/picked-up objects and adds any new ones. This prevents losing
-            // all items when briefly leaving the field (e.g. item pickup dialog).
-            if (!_wasInField && _listBuilt && (currentTime - _leftFieldTime > 2f))
+            // Refresh lists when returning to field from any absence (battle, NPC talk,
+            // item pickup, facility, etc.) rather than polling every second while walking.
+            if (!_wasInField && _listBuilt)
             {
+                // Any absence (battle, NPC talk, item pickup, etc.) - do additive rescan
+                // to catch newly activated quest triggers after accepting quests
                 _isRescanning = true;
                 _mapChangeTime = currentTime;
                 _nextRescanTime = currentTime + InitialScanDelay;
-                DebugLogger.Log("[NavList] Returned to field after extended absence, rescanning (preserving lists)");
+                DebugLogger.Log("[NavList] Returned to field, rescanning (preserving lists)");
             }
             _wasInField = true;
 
@@ -216,18 +217,11 @@ namespace DigimonNOAccess
                         $"{_events[EventCategory.NPCs].Count} NPCs, " +
                         $"{_events[EventCategory.Items].Count} items, " +
                         $"{_events[EventCategory.Materials].Count} materials, " +
-                        $"{_events[EventCategory.KeyItems].Count} key items, " +
+                        $"{_events[EventCategory.Quest].Count} quest, " +
                         $"{_events[EventCategory.Transitions].Count} transitions, " +
                         $"{_events[EventCategory.Enemies].Count} enemies, " +
                         $"{_events[EventCategory.Facilities].Count} facilities");
                 }
-            }
-
-            // Periodically refresh to catch item pickups and enemy changes
-            if (_listBuilt && !_isRescanning && currentTime - _lastScanTime >= ScanInterval)
-            {
-                RefreshLists();
-                _lastScanTime = currentTime;
             }
 
             // Handle input
@@ -299,7 +293,7 @@ namespace DigimonNOAccess
                     _events[EventCategory.NPCs] = new List<NavigationEvent>();
                     _events[EventCategory.Items] = new List<NavigationEvent>();
                     _events[EventCategory.Materials] = new List<NavigationEvent>();
-                    _events[EventCategory.KeyItems] = new List<NavigationEvent>();
+                    _events[EventCategory.Quest] = new List<NavigationEvent>();
                     _events[EventCategory.Transitions] = new List<NavigationEvent>();
                     _events[EventCategory.Enemies] = new List<NavigationEvent>();
                     _events[EventCategory.Facilities] = new List<NavigationEvent>();
@@ -435,25 +429,32 @@ namespace DigimonNOAccess
                     catch { }
                 }
 
-                // Strategy 3: FishingTrigger
-                var fishingTriggers = UnityEngine.Object.FindObjectsOfType<FishingTrigger>();
-                if (fishingTriggers != null)
+                // Strategy 3: MapTriggerScript scan for fishing spots and toilets
+                var mapTriggers = UnityEngine.Object.FindObjectsOfType<MapTriggerScript>();
+                foreach (var trigger in mapTriggers)
                 {
-                    foreach (var ft in fishingTriggers)
-                    {
-                        if (ft == null || ft.gameObject == null || !ft.gameObject.activeInHierarchy) continue;
-                        if (_knownTargets.Contains(ft.gameObject)) continue;
+                    if (trigger == null || trigger.gameObject == null || !trigger.gameObject.activeInHierarchy)
+                        continue;
+                    if (_knownTargets.Contains(trigger.gameObject))
+                        continue;
 
-                        float dist = Vector3.Distance(playerPos, ft.transform.position);
-                        _events[EventCategory.Facilities].Add(new NavigationEvent
-                        {
-                            Name = "Fishing Spot", Position = ft.transform.position,
-                            Target = ft.gameObject, Category = EventCategory.Facilities,
-                            DistanceToPlayer = dist
-                        });
-                        _knownTargets.Add(ft.gameObject);
-                        newCount++;
-                    }
+                    string name = null;
+                    if (trigger.enterID == MapTriggerManager.EVENT.Fishing)
+                        name = "Fishing Spot";
+                    else if (trigger.enterID == MapTriggerManager.EVENT.Toilet)
+                        name = "Toilet";
+
+                    if (name == null) continue;
+
+                    float dist = Vector3.Distance(playerPos, trigger.transform.position);
+                    _events[EventCategory.Facilities].Add(new NavigationEvent
+                    {
+                        Name = name, Position = trigger.transform.position,
+                        Target = trigger.gameObject, Category = EventCategory.Facilities,
+                        DistanceToPlayer = dist
+                    });
+                    _knownTargets.Add(trigger.gameObject);
+                    newCount++;
                 }
             }
             catch (Exception ex)
@@ -683,6 +684,102 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[NavList] Rescan Enemies error: {ex.Message}");
             }
 
+            // Scan for new quest triggers (EventTriggerScripts load asynchronously)
+            try
+            {
+                var eventTriggers = Resources.FindObjectsOfTypeAll<EventTriggerScript>();
+                var placementLookup = BuildPlacementLookup();
+                foreach (var et in eventTriggers)
+                {
+                    if (et == null || et.gameObject == null || !et.gameObject.activeInHierarchy)
+                        continue;
+                    try { if (!et.enabled) continue; } catch { continue; }
+                    if (_knownTargets.Contains(et.gameObject))
+                        continue;
+                    if (et.gameObject.GetComponent<NpcCtrl>() != null)
+                        continue;
+                    if (et.gameObject.GetComponent<EnemyCtrl>() != null)
+                        continue;
+
+                    string cmdBlock = null;
+                    ParameterPlacementNpc placement = null;
+                    if (placementLookup.TryGetValue(et.m_EventParamId, out placement))
+                        cmdBlock = placement.m_CmdBlock;
+                    if (string.IsNullOrEmpty(cmdBlock))
+                        continue;
+                    if (placement != null && (MainGameManager.Facility)placement.m_Facility != MainGameManager.Facility.None)
+                        continue;
+                    if (cmdBlock.StartsWith("VENDOR_") || cmdBlock.StartsWith("EVENT."))
+                        continue;
+                    try
+                    {
+                        var eid = et.enterID;
+                        if (eid == MapTriggerManager.EVENT.MapChange ||
+                            eid == MapTriggerManager.EVENT.TownCamera ||
+                            eid == MapTriggerManager.EVENT.Fishing ||
+                            eid == MapTriggerManager.EVENT.Toilet)
+                            continue;
+                    }
+                    catch { }
+
+                    // For non-PICK_ triggers, skip those without quest icons (Main/Sub).
+                    // PICK_ triggers keep icon=None since the icon is on the quest-giving NPC.
+                    if (!cmdBlock.StartsWith("PICK_"))
+                    {
+                        try
+                        {
+                            if (et.m_IconDispType == EventTriggerScript.EventIconDispType.None)
+                                continue;
+                        }
+                        catch { continue; }
+                    }
+
+                    if (cmdBlock.StartsWith("PICK_"))
+                    {
+                        var questInfo = ResolveQuestItem(cmdBlock);
+                        string name = questInfo.name ?? "Quest Pickup";
+                        uint flagSetId = questInfo.flagSetId;
+                        if (flagSetId != 0 && IsQuestFlagSet(flagSetId))
+                            continue;
+                        // PICK_ acceptance check: completion flag + 1 must be set
+                        if (flagSetId != 0)
+                        {
+                            uint acceptFlag = flagSetId + 1;
+                            bool accepted = false;
+                            try { accepted = StorageData.m_ScenarioProgressData?.IsOnFlagSetAnd(acceptFlag, true) ?? false; } catch { }
+                            if (!accepted)
+                                continue;
+                        }
+                        float dist = Vector3.Distance(playerPos, et.transform.position);
+                        _events[EventCategory.Quest].Add(new NavigationEvent
+                        {
+                            Name = name, Position = et.transform.position,
+                            Target = et.gameObject, Category = EventCategory.Quest,
+                            DistanceToPlayer = dist, FlagSetId = flagSetId
+                        });
+                    }
+                    else
+                    {
+                        uint completionFlag = GetCompletionFlagForCmdBlock(cmdBlock);
+                        if (completionFlag != 0 && IsQuestFlagSet(completionFlag))
+                            continue;
+                        float dist = Vector3.Distance(playerPos, et.transform.position);
+                        _events[EventCategory.Quest].Add(new NavigationEvent
+                        {
+                            Name = "Quest Event", Position = et.transform.position,
+                            Target = et.gameObject, Category = EventCategory.Quest,
+                            DistanceToPlayer = dist, FlagSetId = completionFlag
+                        });
+                    }
+                    _knownTargets.Add(et.gameObject);
+                    newCount++;
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[NavList] Rescan Quest error: {ex.Message}");
+            }
+
             // Remove destroyed objects, picked-up items, and defeated enemies during rescan.
             // Don't remove inactive non-item/non-enemy objects - the game deactivates distant objects for performance.
             foreach (var cat in AllCategories)
@@ -696,7 +793,7 @@ namespace DigimonNOAccess
                             return true;
 
                         // Picked-up items/materials: enableItemPickPoint becomes false after pickup.
-                        if (e.Category == EventCategory.Items || e.Category == EventCategory.Materials || e.Category == EventCategory.KeyItems)
+                        if (e.Category == EventCategory.Items || e.Category == EventCategory.Materials || e.Category == EventCategory.Quest)
                         {
                             var pickPoint = e.Target.GetComponent<ItemPickPointBase>();
                             if (pickPoint != null && !pickPoint.enableItemPickPoint)
@@ -704,6 +801,13 @@ namespace DigimonNOAccess
                                 _knownTargets.Remove(e.Target);
                                 return true;
                             }
+                        }
+
+                        // Completed quests: completion flag is now set
+                        if (e.Category == EventCategory.Quest && e.FlagSetId != 0 && IsQuestFlagSet(e.FlagSetId))
+                        {
+                            _knownTargets.Remove(e.Target);
+                            return true;
                         }
 
                         // Defeated/inactive enemies: check actionState for dead/dying
@@ -744,7 +848,7 @@ namespace DigimonNOAccess
             _events[EventCategory.NPCs] = new List<NavigationEvent>();
             _events[EventCategory.Items] = new List<NavigationEvent>();
             _events[EventCategory.Materials] = new List<NavigationEvent>();
-            _events[EventCategory.KeyItems] = new List<NavigationEvent>();
+            _events[EventCategory.Quest] = new List<NavigationEvent>();
             _events[EventCategory.Transitions] = new List<NavigationEvent>();
             _events[EventCategory.Enemies] = new List<NavigationEvent>();
             _events[EventCategory.Facilities] = new List<NavigationEvent>();
@@ -830,7 +934,7 @@ namespace DigimonNOAccess
             DebugLogger.Log($"[NavList] Built lists: {_events[EventCategory.NPCs].Count} NPCs, " +
                 $"{_events[EventCategory.Items].Count} items, " +
                 $"{_events[EventCategory.Materials].Count} materials, " +
-                $"{_events[EventCategory.KeyItems].Count} key items, " +
+                $"{_events[EventCategory.Quest].Count} quest, " +
                 $"{_events[EventCategory.Transitions].Count} transitions, " +
                 $"{_events[EventCategory.Enemies].Count} enemies, " +
                 $"{_events[EventCategory.Facilities].Count} facilities");
@@ -863,11 +967,11 @@ namespace DigimonNOAccess
 
             var items = _events.ContainsKey(EventCategory.Items) ? _events[EventCategory.Items] : null;
             var materials = _events.ContainsKey(EventCategory.Materials) ? _events[EventCategory.Materials] : null;
-            var keyItems = _events.ContainsKey(EventCategory.KeyItems) ? _events[EventCategory.KeyItems] : null;
+            var keyItems = _events.ContainsKey(EventCategory.Quest) ? _events[EventCategory.Quest] : null;
             items?.RemoveAll(e => removePickedUp(e));
             materials?.RemoveAll(e => removePickedUp(e));
 
-            // Key items (EventTrigger pickups) - remove if destroyed, inactive, or consumed
+            // Quest items (EventTrigger pickups) - remove if destroyed, inactive, or consumed
             // Uses scenario completion flags from form 5 (SSetFlagSetData) which persist in save data
             keyItems?.RemoveAll(e =>
             {
@@ -885,7 +989,7 @@ namespace DigimonNOAccess
                 return false;
             });
 
-            // Check for new items/materials/key items that may have loaded since the last scan
+            // Check for new items/materials/quest that may have loaded since the last scan
             if (!_itemsLoadComplete)
             {
                 try
@@ -924,7 +1028,7 @@ namespace DigimonNOAccess
 
                     var category = GetItemCategory(point);
                     var targetList = category == EventCategory.Materials ? materials
-                                  : category == EventCategory.KeyItems ? keyItems
+                                  : category == EventCategory.Quest ? keyItems
                                   : items;
                     if (targetList == null) continue;
 
@@ -985,7 +1089,7 @@ namespace DigimonNOAccess
                             Name = name,
                             Position = et.transform.position,
                             Target = et.gameObject,
-                            Category = EventCategory.KeyItems,
+                            Category = EventCategory.Quest,
                             DistanceToPlayer = dist,
                             FlagSetId = flagSetId
                         });
@@ -1011,14 +1115,35 @@ namespace DigimonNOAccess
             updateDistances(materials);
             updateDistances(keyItems);
 
-            // Refresh enemies - remove destroyed and defeated.
+            // Refresh enemies - use IsEnemyAlive for immediate defeat detection (same as audio nav)
             var enemies = _events.ContainsKey(EventCategory.Enemies) ? _events[EventCategory.Enemies] : null;
             if (enemies != null)
             {
-                enemies.RemoveAll(e => e.Target == null);
-
-                // Remove defeated enemies: deactivated via SetDisp(false) after defeat.
-                enemies.RemoveAll(e => e.Target != null && !e.Target.activeInHierarchy);
+                enemies.RemoveAll(e =>
+                {
+                    bool dead = false;
+                    if (e.Target == null)
+                    {
+                        dead = true;
+                    }
+                    else
+                    {
+                        try
+                        {
+                            var enemyCtrl = e.Target.GetComponent<EnemyCtrl>();
+                            dead = enemyCtrl == null || !GameStateService.IsEnemyAlive(enemyCtrl);
+                        }
+                        catch { dead = true; }
+                    }
+                    if (dead)
+                    {
+                        _knownTargets.Remove(e.Target);
+                        if (_isPathfinding && _pathfindingTarget == e.Target)
+                            StopPathfinding("Target defeated");
+                        return true;
+                    }
+                    return false;
+                });
 
                 // Check for new enemies that may have spawned (only if enemy data loaded)
                 if (!_enemiesLoadComplete)
@@ -1059,19 +1184,6 @@ namespace DigimonNOAccess
                         });
                     }
                 }
-
-                // Remove defeated/inactive enemies
-                enemies.RemoveAll(e =>
-                {
-                    if (e.Target == null || !e.Target.activeInHierarchy)
-                    {
-                        _knownTargets.Remove(e.Target);
-                        if (_isPathfinding && _pathfindingTarget == e.Target)
-                            StopPathfinding("Target defeated");
-                        return true;
-                    }
-                    return false;
-                });
 
                 // Update distances for remaining active enemies
                 foreach (var e in enemies)
@@ -1263,7 +1375,7 @@ namespace DigimonNOAccess
                     });
                 }
 
-                DebugLogger.Log($"[NavList] ScanItems complete: {_events[EventCategory.Items].Count} items, {_events[EventCategory.Materials].Count} materials, {_events[EventCategory.KeyItems].Count} key items found");
+                DebugLogger.Log($"[NavList] ScanItems complete: {_events[EventCategory.Items].Count} items, {_events[EventCategory.Materials].Count} materials, {_events[EventCategory.Quest].Count} quest found");
             }
             catch (Exception ex)
             {
@@ -1275,9 +1387,6 @@ namespace DigimonNOAccess
         {
             try
             {
-                // Quest items are standalone EventTriggerScript objects with PICK_ command blocks.
-                // They are invisible trigger zones placed by the scenario system for quest pickups.
-                // Must use FindObjectsOfTypeAll because standalone EventTriggers aren't found by FindObjectsOfType.
                 var eventTriggers = Resources.FindObjectsOfTypeAll<EventTriggerScript>();
                 var placementLookup = BuildPlacementLookup();
 
@@ -1286,48 +1395,183 @@ namespace DigimonNOAccess
                     if (et == null || et.gameObject == null || !et.gameObject.activeInHierarchy)
                         continue;
 
-                    // Skip NPC and enemy triggers - only want standalone pickup triggers
+                    // Skip disabled triggers - ActiveTalkEventTrigger disables the component
+                    // when the quest isn't active, so this filters pre-start and post-complete triggers
+                    try { if (!et.enabled) continue; } catch { continue; }
+
+                    // Skip NPC and enemy triggers - only want standalone triggers
                     if (et.gameObject.GetComponent<NpcCtrl>() != null)
                         continue;
                     if (et.gameObject.GetComponent<EnemyCtrl>() != null)
                         continue;
 
-                    // Verify this is a PICK_ trigger via placement data
                     string cmdBlock = null;
-                    if (placementLookup.TryGetValue(et.m_EventParamId, out var placement))
+                    ParameterPlacementNpc placement = null;
+                    if (placementLookup.TryGetValue(et.m_EventParamId, out placement))
                         cmdBlock = placement.m_CmdBlock;
 
-                    if (string.IsNullOrEmpty(cmdBlock) || !cmdBlock.StartsWith("PICK_"))
+                    if (string.IsNullOrEmpty(cmdBlock))
                         continue;
 
-                    var questInfo = ResolveQuestItem(placement.m_CmdBlock);
-                    string name = questInfo.name ?? "Quest Pickup";
-                    uint itemId = questInfo.itemId;
-                    uint flagSetId = questInfo.flagSetId;
-
-                    // Skip items already consumed (checked via saved scenario flags)
-                    if (flagSetId != 0 && IsQuestFlagSet(flagSetId))
+                    // Skip facility triggers (already in Facilities category)
+                    if (placement != null && (MainGameManager.Facility)placement.m_Facility != MainGameManager.Facility.None)
                         continue;
 
-                    float dist = Vector3.Distance(playerPos, et.transform.position);
+                    // Skip known non-quest command block prefixes
+                    if (cmdBlock.StartsWith("VENDOR_") || cmdBlock.StartsWith("EVENT."))
+                        continue;
 
-                    _events[EventCategory.KeyItems].Add(new NavigationEvent
+                    // Skip non-quest enterID types (transitions, cameras, fishing, toilet)
+                    try
                     {
-                        Name = name,
-                        Position = et.transform.position,
-                        Target = et.gameObject,
-                        Category = EventCategory.KeyItems,
-                        DistanceToPlayer = dist,
-                        FlagSetId = flagSetId
-                    });
-                }
+                        var eid = et.enterID;
+                        if (eid == MapTriggerManager.EVENT.MapChange ||
+                            eid == MapTriggerManager.EVENT.TownCamera ||
+                            eid == MapTriggerManager.EVENT.Fishing ||
+                            eid == MapTriggerManager.EVENT.Toilet)
+                            continue;
+                    }
+                    catch { }
 
-                DebugLogger.Log($"[NavList] ScanQuestItems: {_events[EventCategory.KeyItems].Count} active quest items");
+                    // For non-PICK_ triggers, skip those without quest icons (Main/Sub).
+                    // PICK_ triggers keep icon=None since the icon is on the quest-giving NPC.
+                    if (!cmdBlock.StartsWith("PICK_"))
+                    {
+                        try
+                        {
+                            if (et.m_IconDispType == EventTriggerScript.EventIconDispType.None)
+                                continue;
+                        }
+                        catch { continue; }
+                    }
+
+                    if (cmdBlock.StartsWith("PICK_"))
+                    {
+                        // PICK_ triggers: resolve item name and completion flag from CSVB
+                        var questInfo = ResolveQuestItem(cmdBlock);
+                        string name = questInfo.name ?? "Quest Pickup";
+                        uint flagSetId = questInfo.flagSetId;
+
+                        if (flagSetId != 0 && IsQuestFlagSet(flagSetId))
+                            continue;
+
+                        // PICK_ triggers are pre-loaded and always enabled, even before quest acceptance.
+                        // The acceptance flag is completion flag + 1 (game convention).
+                        // Only show PICK_ triggers after the quest has been accepted.
+                        if (flagSetId != 0)
+                        {
+                            uint acceptFlag = flagSetId + 1;
+                            bool accepted = false;
+                            try { accepted = StorageData.m_ScenarioProgressData?.IsOnFlagSetAnd(acceptFlag, true) ?? false; } catch { }
+                            if (!accepted)
+                                continue;
+                        }
+
+                        float dist = Vector3.Distance(playerPos, et.transform.position);
+                        _events[EventCategory.Quest].Add(new NavigationEvent
+                        {
+                            Name = name,
+                            Position = et.transform.position,
+                            Target = et.gameObject,
+                            Category = EventCategory.Quest,
+                            DistanceToPlayer = dist,
+                            FlagSetId = flagSetId
+                        });
+                    }
+                    else
+                    {
+                        // Non-PICK_ quest event triggers (location-based quest objectives)
+                        // Check completion via Form 5 flags in the command block's CSVB data
+                        uint completionFlag = GetCompletionFlagForCmdBlock(cmdBlock);
+                        if (completionFlag != 0 && IsQuestFlagSet(completionFlag))
+                            continue;
+
+                        float dist = Vector3.Distance(playerPos, et.transform.position);
+                        _events[EventCategory.Quest].Add(new NavigationEvent
+                        {
+                            Name = "Quest Event",
+                            Position = et.transform.position,
+                            Target = et.gameObject,
+                            Category = EventCategory.Quest,
+                            DistanceToPlayer = dist,
+                            FlagSetId = completionFlag
+                        });
+                    }
+                }
             }
             catch (Exception ex)
             {
                 DebugLogger.Log($"[NavList] ScanQuestItems error: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Extracts a completion flag from any command block's CSVB data by looking for Form 5 (SSetFlagSetData).
+        /// Form 5 records set scenario progress flags when the event triggers. If the flag is already set,
+        /// the quest event has been completed.
+        /// </summary>
+        private uint GetCompletionFlagForCmdBlock(string cmdBlock)
+        {
+            if (string.IsNullOrEmpty(cmdBlock))
+                return 0;
+
+            // Check cache (shared with PICK_ quest items)
+            if (_questItemCache.TryGetValue(cmdBlock, out var cached))
+                return cached.flagSetId;
+
+            try
+            {
+                var ss = MainGameManager.m_instance?.m_SS;
+                if (ss == null) return 0;
+
+                var scriptBase = ss.Cast<CScenarioScriptBase>();
+                if (scriptBase == null) return 0;
+
+                var csvbInfoArr = scriptBase.m_CsvbInfo;
+                if (csvbInfoArr == null) return 0;
+
+                for (int i = 0; i < csvbInfoArr.Length; i++)
+                {
+                    var info = csvbInfoArr[i];
+                    if (info?.m_BlockNames == null || info.m_Csvb == null) continue;
+                    if (!info.m_BlockNames.ContainsKey(cmdBlock)) continue;
+
+                    int blockIdx = info.m_BlockNames[cmdBlock];
+                    var csvb = info.m_Csvb;
+                    int numRecords = csvb.GetNumRecord(blockIdx);
+                    var binary = csvb.m_CsvbBinary;
+                    if (binary == null || numRecords == 0) continue;
+
+                    for (int r = 0; r < numRecords; r++)
+                    {
+                        var accessInfo = new CCsvbVForm.SCsvbVRecAccessInfo();
+                        if (!csvb.GetVRecAccessInfo(r, blockIdx, ref accessInfo)) continue;
+
+                        uint dataPos = csvb.GetVRecDataPos(accessInfo);
+                        int maxBytes = (int)((uint)binary.Length - dataPos);
+
+                        // Form 5 = SSetFlagSetData: m_FlagSetId (offset 0), m_Val (offset 4)
+                        if (accessInfo.m_formIdx == 5 && maxBytes >= 8)
+                        {
+                            uint flagId = ReadUInt32(binary, dataPos);
+                            uint val = ReadUInt32(binary, dataPos + 4);
+                            if (flagId != 0 && val == 1)
+                            {
+                                _questItemCache[cmdBlock] = (null, 0, flagId);
+                                return flagId;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[NavList] GetCompletionFlag error for '{cmdBlock}': {ex.Message}");
+            }
+
+            // Cache miss - no flag found
+            _questItemCache[cmdBlock] = (null, 0, 0);
+            return 0;
         }
 
         private Dictionary<uint, ParameterPlacementNpc> BuildPlacementLookup()
@@ -1446,12 +1690,12 @@ namespace DigimonNOAccess
                             }
                             catch { }
                         }
-                        else if (accessInfo.m_formIdx == 5 && maxBytes >= 8 && completionFlagSetId == 0)
+                        else if (accessInfo.m_formIdx == 5 && maxBytes >= 8)
                         {
                             // SSetFlagSetData: m_FlagSetId (offset 0), m_Val (offset 4)
                             uint flagId = ReadUInt32(binary, dataPos);
                             uint val = ReadUInt32(binary, dataPos + 4);
-                            if (flagId != 0 && val == 1)
+                            if (flagId != 0 && val == 1 && completionFlagSetId == 0)
                                 completionFlagSetId = flagId;
                         }
                     }
@@ -1803,55 +2047,38 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[NavList] FacilityScan NpcMgr error: {ex.Message}");
             }
 
-            // Strategy 3: FishingTrigger (standalone fishing spots)
+            // Strategy 3: MapTriggerScript scan for fishing spots and toilets (works on all maps)
             try
             {
-                var fishingTriggers = UnityEngine.Object.FindObjectsOfType<FishingTrigger>();
-                if (fishingTriggers != null)
+                var mapTriggers = UnityEngine.Object.FindObjectsOfType<MapTriggerScript>();
+                foreach (var trigger in mapTriggers)
                 {
-                    foreach (var ft in fishingTriggers)
-                    {
-                        if (ft == null || ft.gameObject == null || !ft.gameObject.activeInHierarchy) continue;
-                        if (facilityObjects.Contains(ft.gameObject)) continue;
+                    if (trigger == null || trigger.gameObject == null || !trigger.gameObject.activeInHierarchy)
+                        continue;
+                    if (facilityObjects.Contains(trigger.gameObject))
+                        continue;
 
-                        float dist = Vector3.Distance(playerPos, ft.transform.position);
-                        _events[EventCategory.Facilities].Add(new NavigationEvent
-                        {
-                            Name = "Fishing Spot", Position = ft.transform.position,
-                            Target = ft.gameObject, Category = EventCategory.Facilities,
-                            DistanceToPlayer = dist
-                        });
-                        facilityObjects.Add(ft.gameObject);
-                    }
+                    string name = null;
+                    if (trigger.enterID == MapTriggerManager.EVENT.Fishing)
+                        name = "Fishing Spot";
+                    else if (trigger.enterID == MapTriggerManager.EVENT.Toilet)
+                        name = "Toilet";
+
+                    if (name == null) continue;
+
+                    float dist = Vector3.Distance(playerPos, trigger.transform.position);
+                    _events[EventCategory.Facilities].Add(new NavigationEvent
+                    {
+                        Name = name, Position = trigger.transform.position,
+                        Target = trigger.gameObject, Category = EventCategory.Facilities,
+                        DistanceToPlayer = dist
+                    });
+                    facilityObjects.Add(trigger.gameObject);
                 }
             }
             catch (Exception ex)
             {
-                DebugLogger.Log($"[NavList] FacilityScan fishing error: {ex.Message}");
-            }
-
-            // Strategy 4: Static toilet (training hall map only - map 1, area 12)
-            try
-            {
-                if (_lastMapNo == 1 && _lastAreaNo == 12)
-                {
-                    var toiletObj = GameObject.Find("TriggerToiletPrefab");
-                    if (toiletObj != null && toiletObj.activeInHierarchy && !facilityObjects.Contains(toiletObj))
-                    {
-                        float dist = Vector3.Distance(playerPos, toiletObj.transform.position);
-                        _events[EventCategory.Facilities].Add(new NavigationEvent
-                        {
-                            Name = "Toilet", Position = toiletObj.transform.position,
-                            Target = toiletObj, Category = EventCategory.Facilities,
-                            DistanceToPlayer = dist
-                        });
-                        facilityObjects.Add(toiletObj);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Log($"[NavList] FacilityScan toilet error: {ex.Message}");
+                DebugLogger.Log($"[NavList] FacilityScan MapTrigger error: {ex.Message}");
             }
         }
 
@@ -1976,7 +2203,7 @@ namespace DigimonNOAccess
                 {
                     var itemData = ParameterItemData.GetParam(itemId);
                     if (itemData != null && itemData.IsKindKeyItem())
-                        return EventCategory.KeyItems;
+                        return EventCategory.Quest;
                 }
             }
             catch (Exception ex)
@@ -2517,30 +2744,12 @@ namespace DigimonNOAccess
                     playerPos.x, playerPos.y, playerPos.z,
                     playerForward.x, playerForward.z);
 
-                // Key items: stop pathfinding when player enters the trigger zone.
-                // The game's MapTriggerScript.isStay/isEnter tracks whether the player
-                // is inside the trigger volume. This ensures the event will actually fire.
-                if (_pathfindingCategory == EventCategory.KeyItems && _pathfindingTarget != null)
-                {
-                    try
-                    {
-                        var trigger = _pathfindingTarget.GetComponent<MapTriggerScript>();
-                        if (trigger != null && (trigger.isStay || trigger.isEnter))
-                        {
-                            StopPathfinding("Destination reached");
-                            return;
-                        }
-                    }
-                    catch { }
-                }
-
-                // Distance-based arrival for NPCs, Enemies, and Facilities.
+                // Distance-based arrival for NPCs, Enemies, Facilities, and Quest triggers.
                 // Transitions need to walk into the zone trigger (map change stops pathfinding).
                 // Items need close proximity to trigger the pickup prompt.
                 // Both rely on stuck detection below instead.
                 if (_pathfindingCategory != EventCategory.Transitions
-                    && _pathfindingCategory != EventCategory.Items
-                    && _pathfindingCategory != EventCategory.KeyItems)
+                    && _pathfindingCategory != EventCategory.Items)
                 {
                     float distToTarget = Vector3.Distance(playerPos, _pathfindingRawDestination);
                     bool atPathEnd = _isAutoWalking && _autoWalkCorners != null && _autoWalkCorners.Length > 0
@@ -2819,6 +3028,7 @@ namespace DigimonNOAccess
             AutoWalkActive = false;
             AutoWalkStickX = 0;
             AutoWalkStickY = 0;
+            AutoWalkCameraStickX = 0;
             DebugLogger.Log("[NavList] Auto-walk stopped");
         }
 
@@ -2976,18 +3186,29 @@ namespace DigimonNOAccess
                         AutoWalkStickX = Vector3.Dot(direction, camRight);
                         // Negative because SDL convention: stick up (forward) = negative Y
                         AutoWalkStickY = -Vector3.Dot(direction, camForward);
+
+                        // Rotate camera to follow walking direction via right stick.
+                        // Negated cross product: positive when direction is to the right of camera.
+                        float cross = -(camForward.x * direction.z - camForward.z * direction.x);
+                        // Scale: full stick when camera is 90+ degrees off, gentle when nearly aligned
+                        AutoWalkCameraStickX = Mathf.Clamp(cross * 2f, -1f, 1f);
+                        // Dead zone: don't fight small angle differences
+                        if (Mathf.Abs(AutoWalkCameraStickX) < 0.05f)
+                            AutoWalkCameraStickX = 0;
                     }
                     else
                     {
                         // Fallback: assume camera looks at -Z
                         AutoWalkStickX = direction.x;
                         AutoWalkStickY = direction.z;
+                        AutoWalkCameraStickX = 0;
                     }
                     AutoWalkActive = true;
                 }
                 else
                 {
                     AutoWalkActive = false;
+                    AutoWalkCameraStickX = 0;
                 }
             }
             catch (Exception ex)
@@ -3107,7 +3328,7 @@ namespace DigimonNOAccess
                 case EventCategory.NPCs: return "NPCs";
                 case EventCategory.Items: return "Items";
                 case EventCategory.Materials: return "Materials";
-                case EventCategory.KeyItems: return "Key Items";
+                case EventCategory.Quest: return "Quest";
                 case EventCategory.Transitions: return "Transitions";
                 case EventCategory.Enemies: return "Enemies";
                 case EventCategory.Facilities: return "Facilities";

@@ -262,6 +262,16 @@ namespace DigimonNOAccess
                             // This ensures our input is always registered
                             padData.button |= _currentInjectedButtons;
 
+                            // During auto-walk, inject camera rotation as right stick buttons
+                            if (NavigationListHandler.AutoWalkActive)
+                            {
+                                float camStick = NavigationListHandler.AutoWalkCameraStickX;
+                                if (camStick < -0.05f)
+                                    padData.button |= PadManager.BUTTON.srLeft;
+                                else if (camStick > 0.05f)
+                                    padData.button |= PadManager.BUTTON.srRight;
+                            }
+
                             // Also inject stick data
                             InjectStickData(padData);
                         }
@@ -454,13 +464,16 @@ namespace DigimonNOAccess
                 if (stickArray == null || stickArray.Length < 2)
                     return;
 
-                // Auto-walk: inject virtual left stick input to move the player along the path.
+                // Auto-walk: inject virtual left stick (movement) and right stick (camera rotation).
                 // This takes priority over real stick input so the player walks the computed path.
                 if (NavigationListHandler.AutoWalkActive)
                 {
                     stickArray[0] = new Vector2(
                         NavigationListHandler.AutoWalkStickX,
                         NavigationListHandler.AutoWalkStickY);
+                    float camStick = NavigationListHandler.AutoWalkCameraStickX;
+                    if (Mathf.Abs(camStick) > 0.01f)
+                        stickArray[1] = new Vector2(camStick, 0);
                     return;
                 }
 

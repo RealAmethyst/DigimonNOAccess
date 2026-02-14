@@ -75,9 +75,6 @@ namespace DigimonNOAccess
                 LoggerInstance.Msg("SDL3 not available - using game's default input (Xbox controllers via Steam)");
             }
 
-            // Force field camera to look horizontally (improves audio navigation accuracy)
-            CameraPatch.Apply(_harmony);
-
             // Create special handlers that need direct references
             _evolutionHandler = new EvolutionHandler();
             _navigationListHandler = new NavigationListHandler();
