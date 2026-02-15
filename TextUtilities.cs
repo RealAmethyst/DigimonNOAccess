@@ -27,6 +27,27 @@ namespace DigimonNOAccess
             ("\u001B", "\u25A1"), // ESC → □ Square (probable)
         };
 
+        // Control characters the game uses as stat icon placeholders in messages.
+        // NGUI BMSymbol sequences mapped to sprite glyphs for stat/attribute icons.
+        // Appear in food eating results, education messages, and partner status text.
+        // Character code = ParamKind enum value (zero-indexed):
+        //   Satiety=0, MaxHp=1, Defense=2, Mood=3, Weight=4, MaxMp=5,
+        //   Wisdom=6, Education=7, Attack=8, Speed=9, Fatigue=10
+        private static readonly (string character, string name)[] _statIconPlaceholders = new[]
+        {
+            ("\u0001", "Max HP"),
+            ("\u0002", "Defense"),
+            ("\u0003", "Mood"),
+            ("\u0004", "Weight"),
+            ("\u0005", "Max MP"),
+            ("\u0006", "Wisdom"),
+            ("\u0007", "Education"),
+            ("\u0008", "Mood"),
+            ("\u000B", "Speed"),      // skip 0x09 Tab, 0x0A LF
+            ("\u000C", "Fatigue"),
+            ("\u000E", "Satiety"),    // skip 0x0D CR; 0x00 is null so Satiety may use 0x0E
+        };
+
         // Bare Unicode button symbols (fallback for any text that uses raw PS symbols)
         private static readonly (string symbol, string key)[] _bareButtonSymbols = new[]
         {
@@ -59,6 +80,12 @@ namespace DigimonNOAccess
                 if (text.Contains(symbol))
                     text = text.Replace(symbol, ButtonIconResolver.ResolveIconTag(key));
             }
+            // Replace stat icon placeholders (NGUI BMSymbol sequences for stat attributes)
+            foreach (var (character, name) in _statIconPlaceholders)
+            {
+                if (text.Contains(character))
+                    text = text.Replace(character, name);
+            }
             // Strip ・ bullet characters (screen reader reads them incorrectly)
             text = text.Replace("\u30FB", "");
             return text;
@@ -88,6 +115,12 @@ namespace DigimonNOAccess
             {
                 if (cleaned.Contains(symbol))
                     cleaned = cleaned.Replace(symbol, ButtonIconResolver.ResolveIconTag(key));
+            }
+            // Replace stat icon placeholders (NGUI BMSymbol sequences for stat attributes)
+            foreach (var (character, name) in _statIconPlaceholders)
+            {
+                if (cleaned.Contains(character))
+                    cleaned = cleaned.Replace(character, name);
             }
             // Strip ・ bullet characters (screen reader reads them incorrectly)
             cleaned = cleaned.Replace("\u30FB", "");

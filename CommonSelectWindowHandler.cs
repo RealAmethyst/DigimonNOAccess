@@ -55,6 +55,10 @@ namespace DigimonNOAccess
 
             string announcement = AnnouncementBuilder.MenuOpen(title, itemText, cursor, total);
 
+            string desc = GetItemDescription(cursor);
+            if (!string.IsNullOrEmpty(desc))
+                announcement += $". {desc}";
+
             // On open, also announce player's current balance if this menu has costs
             string balance = GetPlayerBalance();
             if (!string.IsNullOrEmpty(balance))
@@ -96,6 +100,11 @@ namespace DigimonNOAccess
                 int total = GetMenuItemCount();
 
                 string announcement = AnnouncementBuilder.CursorPosition(itemText, cursor, total);
+
+                string desc = GetItemDescription(cursor);
+                if (!string.IsNullOrEmpty(desc))
+                    announcement += $". {desc}";
+
                 ScreenReader.Say(announcement);
 
                 DebugLogger.Log($"{LogTag} Cursor changed: {itemText}");
@@ -104,17 +113,18 @@ namespace DigimonNOAccess
         }
 
         /// <summary>
-        /// Builds the full announcement for an item: name + cost if applicable.
+        /// Builds the full announcement for an item: name + cost + description if applicable.
         /// </summary>
         private string GetItemAnnouncement(int index)
         {
             string name = GetMenuItemText(index);
             string cost = GetItemCost(index);
 
+            string announcement = name;
             if (!string.IsNullOrEmpty(cost))
-                return $"{name}, {cost}";
+                announcement += $", {cost}";
 
-            return name;
+            return announcement;
         }
 
         /// <summary>
@@ -206,6 +216,37 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"{LogTag} Error reading cost: {ex.Message}");
             }
 
+            return null;
+        }
+
+        /// <summary>
+        /// Gets the item description via ParameterItemData looked up from uItemParts.itemID.
+        /// </summary>
+        private string GetItemDescription(int index)
+        {
+            try
+            {
+                var paramList = _panel?.m_paramCommonSelectWindowList;
+                if (paramList == null || index < 0 || index >= paramList.Count)
+                    return null;
+
+                var param = paramList[index];
+                if (param == null) return null;
+
+                // scriptCommandParam1 contains the item string ID (e.g. "item_other_003")
+                string itemStringId = param.m_scriptCommandParam1;
+                if (string.IsNullOrEmpty(itemStringId))
+                    return null;
+
+                uint itemHash = Language.makeHash(itemStringId);
+                var paramItemData = ParameterItemData.GetParam(itemHash);
+                if (paramItemData == null) return null;
+
+                string desc = paramItemData.GetDescription();
+                if (!string.IsNullOrEmpty(desc))
+                    return TextUtilities.CleanText(desc);
+            }
+            catch { }
             return null;
         }
 
@@ -335,6 +376,10 @@ namespace DigimonNOAccess
             string title = GetWindowTitle();
 
             string announcement = AnnouncementBuilder.MenuOpen(title, itemText, cursor, total);
+
+            string desc = GetItemDescription(cursor);
+            if (!string.IsNullOrEmpty(desc))
+                announcement += $". {desc}";
 
             string balance = GetPlayerBalance();
             if (!string.IsNullOrEmpty(balance))

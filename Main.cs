@@ -105,6 +105,7 @@ namespace DigimonNOAccess
                 new FieldItemPanelHandler(),
                 new SavePanelHandler(),
                 new ColosseumPanelHandler(),
+                new IjigenBoxPanelHandler(),
                 new FarmPanelHandler(),
                 new RestaurantPanelHandler(),
                 new TradePanelHandler(),
