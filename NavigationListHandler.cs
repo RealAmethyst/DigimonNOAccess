@@ -113,7 +113,6 @@ namespace DigimonNOAccess
 
         // Track field state to rescan after evolution/events
         private bool _wasInField = false;
-        private float _leftFieldTime = 0f;
 
         // Pathfinding beacon
         private PathfindingBeacon _pathfindingBeacon;
@@ -177,8 +176,6 @@ namespace DigimonNOAccess
             bool inField = IsPlayerInField();
             if (!inField)
             {
-                if (_wasInField)
-                    _leftFieldTime = currentTime;
                 _wasInField = false;
 
                 // Pause pathfinding beacon audio when leaving field (auto-walk pauses naturally since Update stops)
@@ -689,11 +686,23 @@ namespace DigimonNOAccess
             {
                 var eventTriggers = Resources.FindObjectsOfTypeAll<EventTriggerScript>();
                 var placementLookup = BuildPlacementLookup();
+                if (_debugQuestScan)
+                    DebugLogger.Log($"[QuestRescan] Starting rescan: {eventTriggers.Count} triggers, {placementLookup.Count} placements");
                 foreach (var et in eventTriggers)
                 {
                     if (et == null || et.gameObject == null || !et.gameObject.activeInHierarchy)
                         continue;
-                    try { if (!et.enabled) continue; } catch { continue; }
+
+                    string goName = "?";
+                    try { goName = et.gameObject.name; } catch { }
+
+                    bool enabled = false;
+                    try { enabled = et.enabled; } catch { }
+                    if (!enabled)
+                    {
+                        if (_debugQuestScan) DebugLogger.Log($"[QuestRescan] SKIP disabled: {goName} paramId={et.m_EventParamId}");
+                        continue;
+                    }
                     if (_knownTargets.Contains(et.gameObject))
                         continue;
                     if (et.gameObject.GetComponent<NpcCtrl>() != null)
@@ -739,18 +748,18 @@ namespace DigimonNOAccess
                         var questInfo = ResolveQuestItem(cmdBlock);
                         string name = questInfo.name ?? "Quest Pickup";
                         uint flagSetId = questInfo.flagSetId;
+
+                        if (_debugQuestScan) DebugLogger.Log($"[QuestRescan] PICK_ trigger: {goName} cmd={cmdBlock} name={name} flagSetId=0x{flagSetId:X}");
+
                         if (flagSetId != 0 && IsQuestFlagSet(flagSetId))
-                            continue;
-                        // PICK_ acceptance check: completion flag + 1 must be set
-                        if (flagSetId != 0)
                         {
-                            uint acceptFlag = flagSetId + 1;
-                            bool accepted = false;
-                            try { accepted = StorageData.m_ScenarioProgressData?.IsOnFlagSetAnd(acceptFlag, true) ?? false; } catch { }
-                            if (!accepted)
-                                continue;
+                            if (_debugQuestScan) DebugLogger.Log($"[QuestRescan] SKIP completed: {goName} flag=0x{flagSetId:X}");
+                            continue;
                         }
+                        // No acceptance check - show all uncompleted PICK_ items.
+                        // The completion flag check above already filters finished quests.
                         float dist = Vector3.Distance(playerPos, et.transform.position);
+                        if (_debugQuestScan) DebugLogger.Log($"[QuestRescan] ADDED PICK_: {goName} cmd={cmdBlock} name={name} dist={dist:F1}");
                         _events[EventCategory.Quest].Add(new NavigationEvent
                         {
                             Name = name, Position = et.transform.position,
@@ -764,6 +773,7 @@ namespace DigimonNOAccess
                         if (completionFlag != 0 && IsQuestFlagSet(completionFlag))
                             continue;
                         float dist = Vector3.Distance(playerPos, et.transform.position);
+                        if (_debugQuestScan) DebugLogger.Log($"[QuestRescan] ADDED non-PICK: {goName} cmd={cmdBlock} flag=0x{completionFlag:X} dist={dist:F1}");
                         _events[EventCategory.Quest].Add(new NavigationEvent
                         {
                             Name = "Quest Event", Position = et.transform.position,
@@ -1383,6 +1393,9 @@ namespace DigimonNOAccess
             }
         }
 
+        // Debug flag for verbose quest scanning logs - set to true for debugging
+        private static bool _debugQuestScan = false;
+
         private void ScanQuestItems(Vector3 playerPos)
         {
             try
@@ -1390,14 +1403,27 @@ namespace DigimonNOAccess
                 var eventTriggers = Resources.FindObjectsOfTypeAll<EventTriggerScript>();
                 var placementLookup = BuildPlacementLookup();
 
+                if (_debugQuestScan)
+                    DebugLogger.Log($"[QuestScan] Starting scan: {eventTriggers.Count} total EventTriggerScripts, {placementLookup.Count} placements");
+
                 foreach (var et in eventTriggers)
                 {
                     if (et == null || et.gameObject == null || !et.gameObject.activeInHierarchy)
                         continue;
 
+                    // Log every active trigger we encounter
+                    string goName = "?";
+                    try { goName = et.gameObject.name; } catch { }
+
                     // Skip disabled triggers - ActiveTalkEventTrigger disables the component
                     // when the quest isn't active, so this filters pre-start and post-complete triggers
-                    try { if (!et.enabled) continue; } catch { continue; }
+                    bool enabled = false;
+                    try { enabled = et.enabled; } catch { }
+                    if (!enabled)
+                    {
+                        if (_debugQuestScan) DebugLogger.Log($"[QuestScan] SKIP disabled: {goName} paramId={et.m_EventParamId}");
+                        continue;
+                    }
 
                     // Skip NPC and enemy triggers - only want standalone triggers
                     if (et.gameObject.GetComponent<NpcCtrl>() != null)
@@ -1411,17 +1437,27 @@ namespace DigimonNOAccess
                         cmdBlock = placement.m_CmdBlock;
 
                     if (string.IsNullOrEmpty(cmdBlock))
+                    {
+                        if (_debugQuestScan) DebugLogger.Log($"[QuestScan] SKIP no cmdBlock: {goName} paramId={et.m_EventParamId}");
                         continue;
+                    }
 
                     // Skip facility triggers (already in Facilities category)
                     if (placement != null && (MainGameManager.Facility)placement.m_Facility != MainGameManager.Facility.None)
+                    {
+                        if (_debugQuestScan) DebugLogger.Log($"[QuestScan] SKIP facility: {goName} cmd={cmdBlock}");
                         continue;
+                    }
 
                     // Skip known non-quest command block prefixes
                     if (cmdBlock.StartsWith("VENDOR_") || cmdBlock.StartsWith("EVENT."))
+                    {
+                        if (_debugQuestScan) DebugLogger.Log($"[QuestScan] SKIP prefix: {goName} cmd={cmdBlock}");
                         continue;
+                    }
 
                     // Skip non-quest enterID types (transitions, cameras, fishing, toilet)
+                    bool skipEnterID = false;
                     try
                     {
                         var eid = et.enterID;
@@ -1429,9 +1465,14 @@ namespace DigimonNOAccess
                             eid == MapTriggerManager.EVENT.TownCamera ||
                             eid == MapTriggerManager.EVENT.Fishing ||
                             eid == MapTriggerManager.EVENT.Toilet)
-                            continue;
+                            skipEnterID = true;
                     }
                     catch { }
+                    if (skipEnterID)
+                    {
+                        if (_debugQuestScan) DebugLogger.Log($"[QuestScan] SKIP enterID: {goName} cmd={cmdBlock}");
+                        continue;
+                    }
 
                     // For non-PICK_ triggers, skip those without quest icons (Main/Sub).
                     // PICK_ triggers keep icon=None since the icon is on the quest-giving NPC.
@@ -1439,10 +1480,19 @@ namespace DigimonNOAccess
                     {
                         try
                         {
-                            if (et.m_IconDispType == EventTriggerScript.EventIconDispType.None)
+                            var iconType = et.m_IconDispType;
+                            if (iconType == EventTriggerScript.EventIconDispType.None)
+                            {
+                                if (_debugQuestScan) DebugLogger.Log($"[QuestScan] SKIP no icon: {goName} cmd={cmdBlock} icon={iconType}");
                                 continue;
+                            }
+                            if (_debugQuestScan) DebugLogger.Log($"[QuestScan] Non-PICK trigger has icon: {goName} cmd={cmdBlock} icon={iconType}");
                         }
-                        catch { continue; }
+                        catch
+                        {
+                            if (_debugQuestScan) DebugLogger.Log($"[QuestScan] SKIP icon error: {goName} cmd={cmdBlock}");
+                            continue;
+                        }
                     }
 
                     if (cmdBlock.StartsWith("PICK_"))
@@ -1452,22 +1502,19 @@ namespace DigimonNOAccess
                         string name = questInfo.name ?? "Quest Pickup";
                         uint flagSetId = questInfo.flagSetId;
 
-                        if (flagSetId != 0 && IsQuestFlagSet(flagSetId))
-                            continue;
+                        if (_debugQuestScan) DebugLogger.Log($"[QuestScan] PICK_ trigger: {goName} cmd={cmdBlock} name={name} flagSetId={flagSetId}");
 
-                        // PICK_ triggers are pre-loaded and always enabled, even before quest acceptance.
-                        // The acceptance flag is completion flag + 1 (game convention).
-                        // Only show PICK_ triggers after the quest has been accepted.
-                        if (flagSetId != 0)
+                        if (flagSetId != 0 && IsQuestFlagSet(flagSetId))
                         {
-                            uint acceptFlag = flagSetId + 1;
-                            bool accepted = false;
-                            try { accepted = StorageData.m_ScenarioProgressData?.IsOnFlagSetAnd(acceptFlag, true) ?? false; } catch { }
-                            if (!accepted)
-                                continue;
+                            if (_debugQuestScan) DebugLogger.Log($"[QuestScan] SKIP completed: {goName} cmd={cmdBlock} flag={flagSetId}");
+                            continue;
                         }
 
+                        // No acceptance check - show all uncompleted PICK_ items.
+                        // The completion flag check above already filters finished quests.
+
                         float dist = Vector3.Distance(playerPos, et.transform.position);
+                        if (_debugQuestScan) DebugLogger.Log($"[QuestScan] ADDED PICK_: {goName} cmd={cmdBlock} name={name} dist={dist:F1}");
                         _events[EventCategory.Quest].Add(new NavigationEvent
                         {
                             Name = name,
@@ -1484,9 +1531,13 @@ namespace DigimonNOAccess
                         // Check completion via Form 5 flags in the command block's CSVB data
                         uint completionFlag = GetCompletionFlagForCmdBlock(cmdBlock);
                         if (completionFlag != 0 && IsQuestFlagSet(completionFlag))
+                        {
+                            if (_debugQuestScan) DebugLogger.Log($"[QuestScan] SKIP completed non-PICK: {goName} cmd={cmdBlock} flag={completionFlag}");
                             continue;
+                        }
 
                         float dist = Vector3.Distance(playerPos, et.transform.position);
+                        if (_debugQuestScan) DebugLogger.Log($"[QuestScan] ADDED non-PICK: {goName} cmd={cmdBlock} flag={completionFlag} dist={dist:F1}");
                         _events[EventCategory.Quest].Add(new NavigationEvent
                         {
                             Name = "Quest Event",

@@ -41,7 +41,7 @@ namespace DigimonNOAccess
             ("\u0004", "Weight"),
             ("\u0005", "Max MP"),
             ("\u0006", "Wisdom"),
-            ("\u0007", "Education"),
+            ("\u0007", "Discipline"),
             ("\u0008", "Mood"),
             ("\u000B", "Speed"),      // skip 0x09 Tab, 0x0A LF
             ("\u000C", "Fatigue"),
