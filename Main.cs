@@ -110,6 +110,7 @@ namespace DigimonNOAccess
                 new RestaurantPanelHandler(),
                 new TradePanelHandler(),
                 new ShopHandler(),
+                new ConstructionPanelHandler(),
                 new EducationPanelHandler(),
                 new CarePanelHandler(),
                 new StoragePanelHandler(),
