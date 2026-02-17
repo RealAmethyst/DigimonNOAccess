@@ -152,6 +152,10 @@ namespace DigimonNOAccess
         public static float AutoWalkStickY { get; private set; }
         public static float AutoWalkCameraStickX { get; private set; }
 
+        // Pitfall avoidance: EventTriggerScripts with PIT_ command blocks
+        private List<Vector3> _pitfallPositions = new List<Vector3>();
+        private const float PitfallAvoidanceRadius = 10f; // How far to route around pitfalls
+
         // Evolution state (set by Main before Update)
         private bool _evolutionActive = false;
 
@@ -218,6 +222,7 @@ namespace DigimonNOAccess
                         $"{_events[EventCategory.Transitions].Count} transitions, " +
                         $"{_events[EventCategory.Enemies].Count} enemies, " +
                         $"{_events[EventCategory.Facilities].Count} facilities");
+
                 }
             }
 
@@ -301,6 +306,9 @@ namespace DigimonNOAccess
                     _itemsLoadComplete = false;
                     _npcsLoadComplete = false;
                     _enemiesLoadComplete = false;
+
+                    // Clear pitfall data from previous map
+                    _pitfallPositions.Clear();
 
                     DebugLogger.Log($"[NavList] Map changed to {mapNo}/{areaNo}, will rescan for {RescanDuration}s");
                 }
@@ -790,6 +798,10 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[NavList] Rescan Quest error: {ex.Message}");
             }
 
+            // Rescan for pitfalls if none found yet (placement data may not have been ready during BuildLists)
+            if (_pitfallPositions.Count == 0)
+                ScanPitfalls();
+
             // Remove destroyed objects, picked-up items, and defeated enemies during rescan.
             // Don't remove inactive non-item/non-enemy objects - the game deactivates distant objects for performance.
             foreach (var cat in AllCategories)
@@ -922,6 +934,9 @@ namespace DigimonNOAccess
                 ScanEnemies(playerPos);
             else
                 DebugLogger.Log("[NavList] Enemy placement data not yet loaded, skipping enemy scan");
+
+            // Scan for pitfall triggers (PIT_ command blocks) and place NavMesh obstacles
+            ScanPitfalls();
 
             // Sort each category by distance
             foreach (var kvp in _events)
@@ -1395,6 +1410,7 @@ namespace DigimonNOAccess
 
         // Debug flag for verbose quest scanning logs - set to true for debugging
         private static bool _debugQuestScan = false;
+
 
         private void ScanQuestItems(Vector3 playerPos)
         {
@@ -2646,6 +2662,167 @@ namespace DigimonNOAccess
             ScreenReader.Say($"{navEvent.Name}, {direction}{dist} meters, {index} of {total}");
         }
 
+        #region Pitfall Detection and Avoidance
+
+        /// <summary>
+        /// Scan for pitfall triggers - EventTriggerScripts with PIT_ command blocks.
+        /// Stores their positions so pathfinding can route around them.
+        /// </summary>
+        private void ScanPitfalls()
+        {
+            try
+            {
+                var eventTriggers = Resources.FindObjectsOfTypeAll<EventTriggerScript>();
+                var placementLookup = BuildPlacementLookup();
+
+                if (eventTriggers == null || placementLookup.Count == 0) return;
+
+                foreach (var et in eventTriggers)
+                {
+                    if (et == null || et.gameObject == null || !et.gameObject.activeInHierarchy)
+                        continue;
+
+                    bool enabled = false;
+                    try { enabled = et.enabled; } catch { }
+                    if (!enabled) continue;
+
+                    uint paramId = 0;
+                    try { paramId = et.m_EventParamId; } catch { continue; }
+
+                    string cmdBlock = null;
+                    ParameterPlacementNpc placement = null;
+                    if (placementLookup.TryGetValue(paramId, out placement))
+                    {
+                        try { cmdBlock = placement.m_CmdBlock; } catch { }
+                    }
+
+                    if (string.IsNullOrEmpty(cmdBlock) || !cmdBlock.StartsWith("PIT"))
+                        continue;
+
+                    var pos = et.transform.position;
+                    _pitfallPositions.Add(pos);
+                    DebugLogger.Log($"[Pitfall] Found pitfall at ({pos.x:F1}, {pos.y:F1}, {pos.z:F1}) [{cmdBlock}]");
+                }
+
+                if (_pitfallPositions.Count > 0)
+                    DebugLogger.Log($"[Pitfall] Total: {_pitfallPositions.Count} pitfalls on map {_lastMapNo}/{_lastAreaNo}");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[Pitfall] ScanPitfalls error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Adjusts a NavMesh path to route around known pitfall positions.
+        /// For each path segment that passes near a pitfall, inserts a detour waypoint.
+        /// </summary>
+        private Vector3[] AdjustPathAroundPitfalls(Vector3[] corners)
+        {
+            if (_pitfallPositions.Count == 0 || corners == null || corners.Length < 2)
+                return corners;
+
+            var adjusted = new List<Vector3>();
+            adjusted.Add(corners[0]);
+
+            for (int i = 0; i < corners.Length - 1; i++)
+            {
+                Vector3 segStart = corners[i];
+                Vector3 segEnd = corners[i + 1];
+
+                // Check each pitfall against this segment (2D, ignoring Y)
+                foreach (var pit in _pitfallPositions)
+                {
+                    float dist = DistancePointToSegment2D(pit, segStart, segEnd);
+                    if (dist < PitfallAvoidanceRadius)
+                    {
+                        // Path passes too close to pitfall - insert a detour waypoint
+                        Vector3 detour = CalculateDetourPoint(segStart, segEnd, pit);
+
+                        // Verify the detour point is on the NavMesh
+                        NavMeshHit hit;
+                        if (NavMesh.SamplePosition(detour, out hit, 5f, NavMesh.AllAreas))
+                        {
+                            adjusted.Add(hit.position);
+                            DebugLogger.Log($"[Pitfall] Detour around ({pit.x:F1}, {pit.z:F1}): waypoint at ({hit.position.x:F1}, {hit.position.z:F1})");
+                        }
+                    }
+                }
+
+                adjusted.Add(segEnd);
+            }
+
+            return adjusted.ToArray();
+        }
+
+        /// <summary>
+        /// Calculate the shortest distance from a point to a line segment in 2D (XZ plane).
+        /// </summary>
+        private float DistancePointToSegment2D(Vector3 point, Vector3 segA, Vector3 segB)
+        {
+            float dx = segB.x - segA.x;
+            float dz = segB.z - segA.z;
+            float lenSq = dx * dx + dz * dz;
+
+            if (lenSq < 0.001f)
+                return Mathf.Sqrt((point.x - segA.x) * (point.x - segA.x) + (point.z - segA.z) * (point.z - segA.z));
+
+            float t = ((point.x - segA.x) * dx + (point.z - segA.z) * dz) / lenSq;
+            t = Mathf.Clamp01(t);
+
+            float closestX = segA.x + t * dx;
+            float closestZ = segA.z + t * dz;
+
+            float distX = point.x - closestX;
+            float distZ = point.z - closestZ;
+            return Mathf.Sqrt(distX * distX + distZ * distZ);
+        }
+
+        /// <summary>
+        /// Calculate a detour waypoint that routes around a pitfall.
+        /// Goes perpendicular to the segment direction, choosing the side
+        /// that keeps the path shorter overall.
+        /// </summary>
+        private Vector3 CalculateDetourPoint(Vector3 segStart, Vector3 segEnd, Vector3 pitfall)
+        {
+            // Segment direction (2D)
+            float segDx = segEnd.x - segStart.x;
+            float segDz = segEnd.z - segStart.z;
+            float segLen = Mathf.Sqrt(segDx * segDx + segDz * segDz);
+
+            if (segLen < 0.001f)
+            {
+                // Degenerate segment - just offset from pitfall
+                return new Vector3(pitfall.x + PitfallAvoidanceRadius, pitfall.y, pitfall.z);
+            }
+
+            // Normalized segment direction
+            float ndx = segDx / segLen;
+            float ndz = segDz / segLen;
+
+            // Two perpendicular directions
+            float perpX1 = -ndz;
+            float perpZ1 = ndx;
+
+            // Detour point candidates: offset from pitfall center by avoidance radius
+            Vector3 detour1 = new Vector3(
+                pitfall.x + perpX1 * (PitfallAvoidanceRadius + 2f),
+                pitfall.y,
+                pitfall.z + perpZ1 * (PitfallAvoidanceRadius + 2f));
+            Vector3 detour2 = new Vector3(
+                pitfall.x - perpX1 * (PitfallAvoidanceRadius + 2f),
+                pitfall.y,
+                pitfall.z - perpZ1 * (PitfallAvoidanceRadius + 2f));
+
+            // Pick the one that gives a shorter total path
+            float totalDist1 = Vector3.Distance(segStart, detour1) + Vector3.Distance(detour1, segEnd);
+            float totalDist2 = Vector3.Distance(segStart, detour2) + Vector3.Distance(detour2, segEnd);
+
+            return totalDist1 <= totalDist2 ? detour1 : detour2;
+        }
+
+        #endregion
+
         private void AnnouncePathToEvent()
         {
             // Toggle off if already pathfinding
@@ -2694,8 +2871,8 @@ namespace DigimonNOAccess
                     return;
                 }
 
-                // Extract path corners into flat arrays for the beacon
-                var corners = path.corners;
+                // Extract path corners and adjust around pitfalls
+                var corners = AdjustPathAroundPitfalls(path.corners);
                 float[] cx = new float[corners.Length];
                 float[] cy = new float[corners.Length];
                 float[] cz = new float[corners.Length];
@@ -2902,7 +3079,7 @@ namespace DigimonNOAccess
                     return;
                 }
 
-                var corners = path.corners;
+                var corners = AdjustPathAroundPitfalls(path.corners);
                 float[] cx = new float[corners.Length];
                 float[] cy = new float[corners.Length];
                 float[] cz = new float[corners.Length];
@@ -2971,7 +3148,8 @@ namespace DigimonNOAccess
 
                 if (found && path.corners.Length >= 2)
                 {
-                    var corners = path.corners;
+                    var corners = AdjustPathAroundPitfalls(path.corners);
+
                     float[] cx = new float[corners.Length];
                     float[] cy = new float[corners.Length];
                     float[] cz = new float[corners.Length];
