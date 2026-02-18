@@ -91,8 +91,10 @@ namespace DigimonNOAccess
         {
             if (_cachedCmdPanel == null) return;
 
-            int partner = _cachedCmdPanel.m_selectDigimon;
+            int partner = (int)_cachedCmdPanel.GetOpenCmdUnit();
             string cmdInfo = GetCurrentCommandInfo();
+
+            DebugLogger.Log($"[OrderRing] GetOpenCmdUnit={partner}, m_selectDigimon={_cachedCmdPanel.m_selectDigimon}, m_selectIndex={_cachedCmdPanel.m_selectIndex}");
 
             if (includePartner)
             {
@@ -110,6 +112,19 @@ namespace DigimonNOAccess
 
         private string GetPartnerName(int partnerIndex)
         {
+            // m_selectDigimon: 0 = partner 1, 1 = partner 2, 2 = both
+            if (partnerIndex > 1)
+            {
+                string name0 = GetSinglePartnerName(0);
+                string name1 = GetSinglePartnerName(1);
+                return $"{name0} and {name1}";
+            }
+
+            return GetSinglePartnerName(partnerIndex);
+        }
+
+        private string GetSinglePartnerName(int partnerIndex)
+        {
             try
             {
                 var partner = MainGameManager.GetPartnerCtrl(partnerIndex);
@@ -118,6 +133,9 @@ namespace DigimonNOAccess
                     string name = partner.gameData?.m_commonData?.m_name;
                     if (!string.IsNullOrEmpty(name) && !name.Contains("ランゲージ"))
                         return TextUtilities.StripRichTextTags(name);
+
+                    if (!string.IsNullOrEmpty(partner.Name))
+                        return partner.Name;
                 }
             }
             catch { }

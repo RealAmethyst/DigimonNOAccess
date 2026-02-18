@@ -198,10 +198,6 @@ namespace DigimonNOAccess
                 keyboard: new InputBinding(KeyCode.F12),
                 controller: new InputBinding(ControllerButton.RStickRight));
 
-            RegisterAction("BattleSPDetails",
-                keyboard: null,
-                controller: new InputBinding(ControllerButton.RT, ControllerButton.DPadLeft));
-
             // === Navigation List ===
             RegisterAction("NavNextCategory",
                 keyboard: new InputBinding(KeyCode.O),
@@ -789,10 +785,8 @@ BattleEnemy1 = F6
 BattleEnemy2 = F7
 BattleEnemy3 = F11
 
-; === Battle Order Power & SP Details ===
+; === Battle Order Power ===
 BattleOrderPower = F12
-; SP charge details (controller only by default)
-BattleSPDetails = None
 
 ; === Navigation List ===
 ; Cycle through categories (NPCs, Items, Transitions, Enemies)
@@ -824,21 +818,19 @@ ToggleVoicedText = None
 
 ; === Compass Direction ===
 ; Announce which compass direction the camera is facing
-CompassDirection = RT+DPadLeft
+CompassDirection = RT+DPadUp
 
 ; === Field Partner Status ===
-Partner1Status = RT+DPadUp
-Partner2Status = RT+DPadDown
+Partner1Status = RT+DPadRight
+Partner2Status = RT+DPadLeft
 
 ; === Battle Enemy Info (per-enemy) ===
 BattleEnemy1 = RStickUp
 BattleEnemy2 = RStickDown
 BattleEnemy3 = RStickLeft
 
-; === Battle Order Power & SP Details ===
+; === Battle Order Power ===
 BattleOrderPower = RStickRight
-; Announce last SP charge warning details (which enemy is charging)
-BattleSPDetails = RT+DPadLeft
 
 ; === Navigation List ===
 ; Cycle through categories (NPCs, Items, Transitions, Enemies)

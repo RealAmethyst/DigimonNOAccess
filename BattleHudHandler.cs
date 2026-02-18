@@ -157,12 +157,6 @@ namespace DigimonNOAccess
                 ScreenReader.Say(info);
             }
 
-            // SP charge details (RT+DPadLeft)
-            if (ModInputManager.IsActionTriggered("BattleSPDetails"))
-            {
-                string info = BattleMonitorHandler.GetLastSPChargeInfo();
-                ScreenReader.Say(info);
-            }
         }
 
         private uBattlePanelDigimon GetDigimonPanel(int index)
@@ -215,7 +209,8 @@ namespace DigimonNOAccess
                 return;
             }
 
-            string name = PartnerUtilities.GetPartnerLabel(partnerIndex);
+            string name = MainGameManager.GetPartnerCtrl(partnerIndex)?.Name
+                          ?? PartnerUtilities.GetPartnerLabel(partnerIndex);
             string hpText = "0";
             string mpText = "0";
             string order = "";
