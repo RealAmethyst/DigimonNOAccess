@@ -844,10 +844,14 @@ namespace DigimonNOAccess
                 }
             }
 
+            // Preserve selected item across sort
+            var selectedEvent = GetSelectedEvent();
+
             // Always update categories after cleanup (items may have been removed)
             foreach (var kvp in _events)
                 kvp.Value.Sort((a, b) => a.DistanceToPlayer.CompareTo(b.DistanceToPlayer));
             UpdateActiveCategories();
+            RestoreSelectionAfterSort(selectedEvent);
 
             if (newCount > 0)
             {
@@ -1263,13 +1267,17 @@ namespace DigimonNOAccess
                 }
             }
 
+            // Preserve selected item across sort
+            var selectedEvent = GetSelectedEvent();
+
             // Re-sort all categories by distance (closest first)
             foreach (var kvp in _events)
                 kvp.Value.Sort((a, b) => a.DistanceToPlayer.CompareTo(b.DistanceToPlayer));
 
             UpdateActiveCategories();
 
-            // Clamp current indices if lists shrunk
+            // Restore selection to same item after sort, or clamp if removed
+            RestoreSelectionAfterSort(selectedEvent);
             ClampIndices();
         }
 
@@ -2589,7 +2597,21 @@ namespace DigimonNOAccess
             int catPos = _currentCategoryIndex + 1;
             int catTotal = _activeCategories.Count;
 
-            ScreenReader.Say($"{categoryName}, {count} {(count == 1 ? "entry" : "entries")}, {catPos} of {catTotal}");
+            // Announce category then first item details in one speech
+            var firstEvent = _events[category][0];
+            int dist = 0;
+            string cardinal = "";
+            if (_playerCtrl != null && firstEvent.Target != null)
+            {
+                var targetPos = firstEvent.Target.transform.position;
+                firstEvent.DistanceToPlayer = Vector3.Distance(
+                    _playerCtrl.transform.position, targetPos);
+                dist = Mathf.RoundToInt(firstEvent.DistanceToPlayer);
+                Vector3 diff = targetPos - _playerCtrl.transform.position;
+                cardinal = GetCardinalDirection(diff) + ", ";
+            }
+
+            ScreenReader.Say($"{categoryName}, {count} {(count == 1 ? "entry" : "entries")}, {catPos} of {catTotal}. {firstEvent.Name}, {cardinal}{dist} meters, 1 of {count}");
         }
 
         private void CycleEvent(int direction)
@@ -3548,6 +3570,41 @@ namespace DigimonNOAccess
             if (category.HasValue && _events.ContainsKey(category.Value))
                 return _events[category.Value];
             return null;
+        }
+
+        /// <summary>
+        /// Get the currently selected NavigationEvent, or null if none.
+        /// </summary>
+        private NavigationEvent GetSelectedEvent()
+        {
+            var list = GetCurrentEventList();
+            if (list != null && _currentEventIndex >= 0 && _currentEventIndex < list.Count)
+                return list[_currentEventIndex];
+            return null;
+        }
+
+        /// <summary>
+        /// After sorting, restore _currentEventIndex to point to the same item by Target identity.
+        /// Falls back to clamping if the item was removed.
+        /// </summary>
+        private void RestoreSelectionAfterSort(NavigationEvent previouslySelected)
+        {
+            if (previouslySelected == null) return;
+
+            var list = GetCurrentEventList();
+            if (list == null) return;
+
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (list[i].Target == previouslySelected.Target)
+                {
+                    _currentEventIndex = i;
+                    return;
+                }
+            }
+            // Item was removed from list; clamp index
+            if (_currentEventIndex >= list.Count)
+                _currentEventIndex = Math.Max(0, list.Count - 1);
         }
 
         private string GetCategoryDisplayName(EventCategory category)
