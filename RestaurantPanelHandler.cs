@@ -34,28 +34,49 @@ namespace DigimonNOAccess
             {
                 var mgm = MainGameManager.m_instance;
                 var panel = mgm?.restaurantUI;
-                return panel != null && panel.m_enabelPanel;
+                if (panel != null && panel.m_enabelPanel)
+                    return true;
+
+                // Also check camp cooking (uCampPanel.m_restaurantPanel)
+                var campPanel = Object.FindObjectOfType<uCampPanel>();
+                var campRestaurant = campPanel?.m_restaurantPanel;
+                if (campRestaurant != null && campRestaurant.m_enabelPanel)
+                    return true;
             }
-            catch { return false; }
+            catch { }
+            return false;
         }
 
         public override bool IsOpen()
         {
             try
             {
+                // Check town restaurant first
                 var mgm = MainGameManager.m_instance;
-                if (mgm == null) return false;
+                if (mgm != null)
+                {
+                    var panel = mgm.restaurantUI;
+                    if (panel != null && panel.m_enabelPanel)
+                    {
+                        _panel = panel;
+                        return true;
+                    }
+                }
 
-                var panel = mgm.restaurantUI;
-                if (panel == null) return false;
-
-                _panel = panel;
-                return panel.m_enabelPanel;
+                // Check camp cooking (uCampPanel.m_restaurantPanel)
+                var campPanel = Object.FindObjectOfType<uCampPanel>();
+                var campRestaurant = campPanel?.m_restaurantPanel;
+                if (campRestaurant != null && campRestaurant.m_enabelPanel)
+                {
+                    _panel = campRestaurant;
+                    return true;
+                }
             }
             catch
             {
                 return false;
             }
+            return false;
         }
 
         protected override void OnOpen()
@@ -107,9 +128,13 @@ namespace DigimonNOAccess
             CheckItemStateChange();
 
             // Route cursor tracking based on which sub-state we're in
-            if (_itemPanel != null &&
-                (_itemPanel.m_state == uRestaurantPanelItem.State.SelectDigimon ||
-                 _itemPanel.m_state == uRestaurantPanelItem.State.RestaurantSelectDigimonUpdate))
+            bool inPartnerSelect =
+                (_itemPanel != null &&
+                    (_itemPanel.m_state == uRestaurantPanelItem.State.SelectDigimon ||
+                     _itemPanel.m_state == uRestaurantPanelItem.State.RestaurantSelectDigimonUpdate)) ||
+                (_panel != null && _panel.m_state == uRestaurantPanel.State.CampCookingSelectDigimonUpdate);
+
+            if (inPartnerSelect)
                 CheckDialogCursorChange();
             else
                 CheckMenuCursorChange();
@@ -129,6 +154,9 @@ namespace DigimonNOAccess
 
         private void AnnounceBits()
         {
+            if (IsCampCooking)
+                return;
+
             try
             {
                 if (_bitPanel?.m_haveMoneyText != null)
@@ -150,16 +178,24 @@ namespace DigimonNOAccess
 
         // ── Item Announcement (name + price + stats + position) ──
 
+        private bool IsCampCooking => _panel != null && _panel.m_type == uRestaurantPanel.Type.CampCooking;
+
         private string BuildItemAnnouncement(int cursor)
         {
             string itemText = GetFoodName(cursor);
-            string price = GetPriceText();
             int total = GetMenuItemCount();
             string stats = BuildFoodDetailString();
 
             string announcement = itemText;
-            if (!string.IsNullOrEmpty(price))
-                announcement += $", {price}";
+
+            // Only show price for restaurant (camp cooking is free)
+            if (!IsCampCooking)
+            {
+                string price = GetPriceText();
+                if (!string.IsNullOrEmpty(price))
+                    announcement += $", {price}";
+            }
+
             announcement += $". {cursor + 1} of {total}";
             if (!string.IsNullOrEmpty(stats))
                 announcement += $". {stats}";
@@ -247,7 +283,7 @@ namespace DigimonNOAccess
                     // Transition, don't announce
                     break;
                 case uRestaurantPanel.State.CampCookingSelectDigimonUpdate:
-                    ScreenReader.Say("Select which Digimon eats");
+                    AnnouncePartnerSelection();
                     break;
                 case uRestaurantPanel.State.CampItemNoneMessage:
                 case uRestaurantPanel.State.CampItemNoneMessageWait:
@@ -285,6 +321,11 @@ namespace DigimonNOAccess
                     break;
 
                 case uRestaurantPanelItem.State.SelectDigimon:
+                    // In camp cooking, SelectDigimon fires before the cooking animation -
+                    // the actual partner selection UI appears later at CampCookingSelectDigimonUpdate.
+                    if (!IsCampCooking)
+                        AnnouncePartnerSelection();
+                    break;
                 case uRestaurantPanelItem.State.RestaurantSelectDigimonUpdate:
                     AnnouncePartnerSelection();
                     break;

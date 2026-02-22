@@ -100,7 +100,7 @@ namespace DigimonNOAccess
                 new TrainingBonusHandler(),
                 new TrainingResultHandler(),
                 new DigiviceTopPanelHandler(),
-                new CampCommandHandler(),
+                // Camp menu is handled by CarePanelHandler (uCampPanel extends uCarePanel)
                 new TrainingPanelHandler(),
                 new FieldItemPanelHandler(),
                 new SavePanelHandler(),

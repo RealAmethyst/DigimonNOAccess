@@ -1,69 +1,94 @@
 using Il2Cpp;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace DigimonNOAccess
 {
     /// <summary>
     /// Handles accessibility for the Care menu (Square button in field)
+    /// and Camp menu (rest at camp sites). Both share uCarePanel as base class.
+    /// Care panel lives on MainGameManager.careUI.
+    /// Camp panel lives on MainGameTent.m_campPanel (separate instance).
+    /// Camp cooking is handled by RestaurantPanelHandler (same uRestaurantPanel class).
     /// </summary>
     public class CarePanelHandler : IAccessibilityHandler
     {
         public int Priority => 62;
 
+        private const string LogTag = "[CarePanel]";
+
         private uCarePanel _carePanel;
-        private uCarePanelCommand _commandPanel;
-        private bool _wasActive = false;
+        private uCampPanel _campPanel;
+        private bool _wasActive;
         private int _lastCursor = -1;
-        private uCarePanel.State _lastState = uCarePanel.State.None;
         private MainGameManager.ORDER_UNIT _lastTarget = (MainGameManager.ORDER_UNIT)(-1);
+
+        private bool IsCampMode => _campPanel != null;
+        private string MenuName => IsCampMode ? "Camp Menu" : "Care Menu";
 
         public bool IsOpen()
         {
-            // Access care panel through MainGameManager (the correct way)
-            _carePanel = GetCarePanel();
+            _carePanel = null;
+            _campPanel = null;
 
-            if (_carePanel == null)
-                return false;
-
-            // Check if the care panel is in Main state (command selection)
-            if (_carePanel.m_state != uCarePanel.State.Main)
-                return false;
-
-            // Get the command panel from the care panel
-            _commandPanel = _carePanel.m_commandPanel;
-
-            if (_commandPanel == null)
-                return false;
-
-            // Verify the command panel is active
-            if (_commandPanel.gameObject == null || !_commandPanel.gameObject.activeInHierarchy)
-                return false;
-
-            return true;
-        }
-
-        private uCarePanel GetCarePanel()
-        {
+            // Try camp panel first via FindObjectOfType (it lives on MainGameTent, not careUI)
             try
             {
-                // Try via MainGameManager.m_instance.careUI first
-                var mgr = MainGameManager.m_instance;
-                if (mgr != null)
+                var campPanel = Object.FindObjectOfType<uCampPanel>();
+                if (campPanel != null)
                 {
-                    var careUI = mgr.careUI;
-                    if (careUI != null)
+                    var state = campPanel.m_state;
+                    if (state == uCarePanel.State.Main)
                     {
-                        return careUI;
+                        var cmd = campPanel.m_command;
+                        if (cmd?.gameObject != null && cmd.gameObject.activeInHierarchy)
+                        {
+                            _campPanel = campPanel;
+                            _carePanel = campPanel;
+                            return true;
+                        }
                     }
                 }
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[CarePanel] Error getting careUI: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error finding camp panel: {ex.Message}");
             }
 
-            // Fallback to FindObjectOfType
-            return Object.FindObjectOfType<uCarePanel>();
+            // Try care panel via MainGameManager.careUI
+            try
+            {
+                var mgr = MainGameManager.m_instance;
+                if (mgr != null)
+                {
+                    var careUI = mgr.careUI;
+                    if (careUI != null && careUI.TryCast<uCampPanel>() == null)
+                        _carePanel = careUI;
+                }
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Error getting careUI: {ex.Message}");
+            }
+
+            if (_carePanel == null)
+            {
+                var found = Object.FindObjectOfType<uCarePanel>();
+                if (found != null && found.TryCast<uCampPanel>() == null)
+                    _carePanel = found;
+            }
+
+            if (_carePanel == null)
+                return false;
+
+            if (_carePanel.m_state != uCarePanel.State.Main)
+                return false;
+
+            var cmdPanel = _carePanel.m_commandPanel;
+            if (cmdPanel?.gameObject == null || !cmdPanel.gameObject.activeInHierarchy)
+                return false;
+
+            return true;
         }
 
         public void Update()
@@ -91,77 +116,50 @@ namespace DigimonNOAccess
         {
             _lastCursor = -1;
             _lastTarget = (MainGameManager.ORDER_UNIT)(-1);
+            int cursor = GetCursorPosition();
+            int total = GetMenuItemCount();
+            string itemText = GetCommandName(cursor);
 
-            if (_commandPanel == null)
-            {
-                ScreenReader.Say("Care menu");
-                DebugLogger.Log("[CarePanel] Opened but command panel is null");
-                return;
-            }
-
-            // Get initial target partner
             var currentTarget = GetCurrentTarget();
             _lastTarget = currentTarget;
             string partnerName = GetTargetPartnerName(currentTarget);
 
-            int cursor = _commandPanel.m_selectNo;
-            int total = _commandPanel.m_selectMax;
-            string itemText = GetCommandName(cursor);
+            string announcement = total > 0
+                ? AnnouncementBuilder.MenuOpen(MenuName, itemText, cursor, total)
+                : $"{MenuName}. {itemText}";
 
-            string announcement;
-            if (total > 0)
-            {
-                announcement = AnnouncementBuilder.MenuOpen("Care menu", itemText, cursor, total);
-            }
-            else
-            {
-                announcement = $"Care menu. {itemText}";
-            }
-
-            // Add partner name to the announcement
             if (!string.IsNullOrEmpty(partnerName))
-            {
                 announcement += $", {partnerName}";
-            }
 
             ScreenReader.Say(announcement);
-            DebugLogger.Log($"[CarePanel] Opened, state={_carePanel?.m_state}, cursor={cursor}, total={total}, item={itemText}, target={currentTarget}");
+            DebugLogger.Log($"{LogTag} {MenuName} opened, cursor={cursor}, total={total}, item={itemText}, target={currentTarget}");
             _lastCursor = cursor;
         }
 
         private void OnClose()
         {
             _carePanel = null;
-            _commandPanel = null;
+            _campPanel = null;
             _lastCursor = -1;
             _lastTarget = (MainGameManager.ORDER_UNIT)(-1);
-            DebugLogger.Log("[CarePanel] Closed");
+            DebugLogger.Log($"{LogTag} Closed");
         }
 
         private void CheckCursorChange()
         {
-            if (_commandPanel == null)
-                return;
-
-            int cursor = _commandPanel.m_selectNo;
+            int cursor = GetCursorPosition();
 
             if (cursor != _lastCursor && cursor >= 0)
             {
                 string itemText = GetCommandName(cursor);
-                int total = _commandPanel.m_selectMax;
+                int total = GetMenuItemCount();
 
-                string announcement;
-                if (total > 0)
-                {
-                    announcement = AnnouncementBuilder.CursorPosition(itemText, cursor, total);
-                }
-                else
-                {
-                    announcement = itemText;
-                }
+                string announcement = total > 0
+                    ? AnnouncementBuilder.CursorPosition(itemText, cursor, total)
+                    : itemText;
 
                 ScreenReader.Say(announcement);
-                DebugLogger.Log($"[CarePanel] Cursor: {itemText} ({cursor + 1}/{total})");
+                DebugLogger.Log($"{LogTag} Cursor: {itemText} ({cursor + 1}/{total})");
                 _lastCursor = cursor;
             }
         }
@@ -176,11 +174,121 @@ namespace DigimonNOAccess
                 if (!string.IsNullOrEmpty(partnerName))
                 {
                     ScreenReader.Say(partnerName);
-                    DebugLogger.Log($"[CarePanel] Target changed to {currentTarget}: {partnerName}");
+                    DebugLogger.Log($"{LogTag} Target changed to {currentTarget}: {partnerName}");
                 }
             }
 
             _lastTarget = currentTarget;
+        }
+
+        private int GetCursorPosition()
+        {
+            try
+            {
+                if (IsCampMode)
+                {
+                    // SimpleCursor is a 2D grid - use GetSelectNo() for the flattened index
+                    var cursor = _campPanel.m_command?.m_cusror;
+                    if (cursor != null)
+                        return cursor.GetSelectNo();
+                }
+                else
+                {
+                    var cmd = _carePanel?.m_commandPanel;
+                    if (cmd != null)
+                        return cmd.m_selectNo;
+                }
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Error getting cursor: {ex.Message}");
+            }
+            return 0;
+        }
+
+        private int GetMenuItemCount()
+        {
+            try
+            {
+                if (IsCampMode)
+                {
+                    // Count visible commands (active GameObjects)
+                    var commands = _campPanel.m_command?.m_commands;
+                    if (commands != null)
+                    {
+                        int count = 0;
+                        for (int i = 0; i < commands.Length; i++)
+                        {
+                            if (commands[i] != null && commands[i].activeSelf)
+                                count++;
+                        }
+                        return count;
+                    }
+                }
+                else
+                {
+                    var cmd = _carePanel?.m_commandPanel;
+                    if (cmd != null)
+                        return cmd.m_selectMax;
+                }
+            }
+            catch { }
+            return 0;
+        }
+
+        private string GetCommandName(int index)
+        {
+            try
+            {
+                if (index < 0)
+                    return "Option";
+
+                if (IsCampMode)
+                {
+                    // Read text from the command GameObject directly.
+                    // m_commandText array doesn't align with GetSelectNo() indices
+                    // since SimpleCursor uses a 2D grid layout.
+                    var commands = _campPanel.m_command?.m_commands;
+                    if (commands != null && index < commands.Length)
+                    {
+                        var cmdObj = commands[index];
+                        if (cmdObj != null)
+                        {
+                            var textComp = cmdObj.GetComponentInChildren<Text>();
+                            if (textComp != null && !string.IsNullOrEmpty(textComp.text))
+                                return textComp.text;
+                        }
+                    }
+                }
+                else
+                {
+                    var cmd = _carePanel?.m_commandPanel;
+                    if (cmd != null)
+                    {
+                        var choiceText = cmd.m_choiceText;
+                        if (choiceText != null && index < choiceText.Length)
+                        {
+                            var text = choiceText[index]?.text;
+                            if (!string.IsNullOrEmpty(text))
+                                return text;
+                        }
+
+                        var commandNames = cmd.m_command_name;
+                        if (commandNames != null && index < commandNames.Length)
+                        {
+                            string cmdName = commandNames[index];
+                            if (!string.IsNullOrEmpty(cmdName))
+                                return cmdName;
+                        }
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Error getting command name: {ex.Message}");
+            }
+
+            return AnnouncementBuilder.FallbackItem("Option", index);
         }
 
         private MainGameManager.ORDER_UNIT GetCurrentTarget()
@@ -188,13 +296,11 @@ namespace DigimonNOAccess
             try
             {
                 if (_carePanel != null)
-                {
                     return _carePanel.m_target;
-                }
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[CarePanel] Error getting target: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error getting target: {ex.Message}");
             }
             return MainGameManager.ORDER_UNIT.Partner00;
         }
@@ -203,37 +309,23 @@ namespace DigimonNOAccess
         {
             try
             {
-                // Get the partner's actual Digimon name from the game
-                Il2Cpp.PartnerCtrl partner = null;
-                if (target == MainGameManager.ORDER_UNIT.Partner00)
-                {
-                    partner = MainGameManager.GetPartnerCtrl(0);
-                }
-                else if (target == MainGameManager.ORDER_UNIT.Partner01)
-                {
-                    partner = MainGameManager.GetPartnerCtrl(1);
-                }
+                int partnerIndex = target == MainGameManager.ORDER_UNIT.Partner01 ? 1 : 0;
+                if (target == MainGameManager.ORDER_UNIT.PartnerAll)
+                    return "Both Partners";
 
+                var partner = MainGameManager.GetPartnerCtrl(partnerIndex);
                 if (partner != null)
                 {
-                    // Use gameData.m_commonData.m_name for the actual localized name
-                    var commonData = partner.gameData?.m_commonData;
-                    if (commonData != null)
-                    {
-                        var name = commonData.m_name;
-                        if (!string.IsNullOrEmpty(name) && !name.Contains("ランゲージ"))
-                        {
-                            return name;
-                        }
-                    }
+                    var name = partner.gameData?.m_commonData?.m_name;
+                    if (!string.IsNullOrEmpty(name) && !name.Contains("\u30E9\u30F3\u30B2\u30FC\u30B8"))
+                        return name;
                 }
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[CarePanel] Error getting partner name: {ex.Message}");
+                DebugLogger.Log($"{LogTag} Error getting partner name: {ex.Message}");
             }
 
-            // Fallback to generic partner label
             return target switch
             {
                 MainGameManager.ORDER_UNIT.Partner00 => "Partner 1",
@@ -243,62 +335,22 @@ namespace DigimonNOAccess
             };
         }
 
-        private string GetCommandName(int index)
-        {
-            try
-            {
-                if (_commandPanel == null || index < 0)
-                    return "Option";
-
-                // Try to get text from the choice text array
-                var choiceText = _commandPanel.m_choiceText;
-                if (choiceText != null && index < choiceText.Length)
-                {
-                    var textComponent = choiceText[index];
-                    if (textComponent != null)
-                    {
-                        string text = textComponent.text;
-                        if (!string.IsNullOrEmpty(text))
-                        {
-                            return text;
-                        }
-                    }
-                }
-
-                // Fallback to command name array
-                var commandNames = _commandPanel.m_command_name;
-                if (commandNames != null && index < commandNames.Length)
-                {
-                    string cmdName = commandNames[index];
-                    if (!string.IsNullOrEmpty(cmdName))
-                    {
-                        return cmdName;
-                    }
-                }
-            }
-            catch (System.Exception ex)
-            {
-                DebugLogger.Log($"[CarePanel] Error getting command name: {ex.Message}");
-            }
-
-            return "Option";
-        }
-
         public void AnnounceStatus()
         {
             if (!IsOpen())
-            {
-                ScreenReader.Say("Care menu");
                 return;
-            }
 
-            int cursor = _commandPanel.m_selectNo;
-            int total = _commandPanel.m_selectMax;
+            int cursor = GetCursorPosition();
+            int total = GetMenuItemCount();
             string itemText = GetCommandName(cursor);
+            string partnerName = GetTargetPartnerName(GetCurrentTarget());
 
             string announcement = total > 0
-                ? AnnouncementBuilder.MenuOpen("Care menu", itemText, cursor, total)
-                : $"Care menu. {itemText}";
+                ? AnnouncementBuilder.MenuOpen(MenuName, itemText, cursor, total)
+                : $"{MenuName}. {itemText}";
+
+            if (!string.IsNullOrEmpty(partnerName))
+                announcement += $", {partnerName}";
 
             ScreenReader.Say(announcement);
         }
