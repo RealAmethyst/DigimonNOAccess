@@ -616,11 +616,17 @@ namespace DigimonNOAccess
                     DebugLogger.Log($"[QuestRescan] Starting rescan: {eventTriggers.Count} triggers, {placementLookup.Count} placements");
                 foreach (var et in eventTriggers)
                 {
-                    if (et == null || et.gameObject == null || !et.gameObject.activeInHierarchy)
+                    if (et == null || et.gameObject == null)
                         continue;
 
                     string goName = "?";
                     try { goName = et.gameObject.name; } catch { }
+
+                    if (!et.gameObject.activeInHierarchy)
+                    {
+                        if (_debugQuestScan) DebugLogger.Log($"[QuestRescan] SKIP inactive: {goName} paramId={et.m_EventParamId}");
+                        continue;
+                    }
 
                     bool enabled = false;
                     try { enabled = et.enabled; } catch { }
@@ -630,22 +636,40 @@ namespace DigimonNOAccess
                         continue;
                     }
                     if (_knownTargets.Contains(et.gameObject))
+                    {
+                        if (_debugQuestScan) DebugLogger.Log($"[QuestRescan] SKIP known: {goName}");
                         continue;
+                    }
                     if (et.gameObject.GetComponent<NpcCtrl>() != null)
+                    {
+                        if (_debugQuestScan) DebugLogger.Log($"[QuestRescan] SKIP NPC: {goName}");
                         continue;
+                    }
                     if (et.gameObject.GetComponent<EnemyCtrl>() != null)
+                    {
+                        if (_debugQuestScan) DebugLogger.Log($"[QuestRescan] SKIP enemy: {goName}");
                         continue;
+                    }
 
                     string cmdBlock = null;
                     ParameterPlacementNpc placement = null;
                     if (placementLookup.TryGetValue(et.m_EventParamId, out placement))
                         cmdBlock = placement.m_CmdBlock;
                     if (string.IsNullOrEmpty(cmdBlock))
+                    {
+                        if (_debugQuestScan) DebugLogger.Log($"[QuestRescan] SKIP no cmdBlock: {goName} paramId={et.m_EventParamId}");
                         continue;
+                    }
                     if (placement != null && (MainGameManager.Facility)placement.m_Facility != MainGameManager.Facility.None)
+                    {
+                        if (_debugQuestScan) DebugLogger.Log($"[QuestRescan] SKIP facility: {goName} cmd={cmdBlock}");
                         continue;
+                    }
                     if (cmdBlock.StartsWith("VENDOR_") || cmdBlock.StartsWith("EVENT."))
+                    {
+                        if (_debugQuestScan) DebugLogger.Log($"[QuestRescan] SKIP vendor/event: {goName} cmd={cmdBlock}");
                         continue;
+                    }
                     try
                     {
                         var eid = et.enterID;
@@ -653,20 +677,23 @@ namespace DigimonNOAccess
                             eid == MapTriggerManager.EVENT.TownCamera ||
                             eid == MapTriggerManager.EVENT.Fishing ||
                             eid == MapTriggerManager.EVENT.Toilet)
+                        {
+                            if (_debugQuestScan) DebugLogger.Log($"[QuestRescan] SKIP enterID: {goName} cmd={cmdBlock} eid={eid}");
                             continue;
+                        }
                     }
                     catch { }
 
-                    // For non-PICK_ triggers, skip those without quest icons (Main/Sub).
-                    // PICK_ triggers keep icon=None since the icon is on the quest-giving NPC.
-                    if (!cmdBlock.StartsWith("PICK_"))
+                    if (_debugQuestScan) DebugLogger.Log($"[QuestRescan] Passed filters: {goName} cmd={cmdBlock} paramId={et.m_EventParamId} enabled={enabled}");
+
+                    // For non-PICK_ triggers, use et.enabled as quest acceptance gate.
+                    // The game toggles EventTriggerScript.enabled via ActiveTalkEventTrigger
+                    // when quests are accepted/completed. This works for both icon and no-icon triggers.
+                    // PICK_ triggers already check enabled above, so this only applies to ST_SUB_ etc.
+                    if (!cmdBlock.StartsWith("PICK_") && !enabled)
                     {
-                        try
-                        {
-                            if (et.m_IconDispType == EventTriggerScript.EventIconDispType.None)
-                                continue;
-                        }
-                        catch { continue; }
+                        if (_debugQuestScan) DebugLogger.Log($"[QuestRescan] SKIP disabled non-PICK: {goName} cmd={cmdBlock}");
+                        continue;
                     }
 
                     if (cmdBlock.StartsWith("PICK_"))
@@ -993,6 +1020,7 @@ namespace DigimonNOAccess
             }
 
             // Check for new quest pickup triggers that may have been activated
+            // Only if minimap shows quest icons for current area
             if (keyItems != null)
             {
                 try
@@ -1342,6 +1370,32 @@ namespace DigimonNOAccess
         {
             try
             {
+                // Debug: dump all ItemPickPoint objects on the map
+                if (_debugQuestScan)
+                {
+                    try
+                    {
+                        var allPickPoints = Resources.FindObjectsOfTypeAll<ItemPickPointBase>();
+                        DebugLogger.Log($"[QuestScan] DEBUG: {allPickPoints.Count} ItemPickPointBase objects in scene");
+                        foreach (var pp in allPickPoints)
+                        {
+                            if (pp == null || pp.gameObject == null) continue;
+                            string ppName = "?";
+                            try { ppName = pp.gameObject.name; } catch { }
+                            bool ppActive = false;
+                            try { ppActive = pp.gameObject.activeInHierarchy; } catch { }
+                            bool ppEnabled = false;
+                            try { ppEnabled = pp.enableItemPickPoint; } catch { }
+                            string itemName = "?";
+                            try { itemName = GetItemName(pp); } catch { }
+                            var cat = EventCategory.Items;
+                            try { cat = GetItemCategory(pp); } catch { }
+                            DebugLogger.Log($"[QuestScan] DEBUG ItemPickPoint: '{ppName}' active={ppActive} enabled={ppEnabled} item='{itemName}' category={cat}");
+                        }
+                    }
+                    catch (Exception dex) { DebugLogger.Log($"[QuestScan] DEBUG ItemPickPoint error: {dex.Message}"); }
+                }
+
                 var eventTriggers = Resources.FindObjectsOfTypeAll<EventTriggerScript>();
                 var placementLookup = BuildPlacementLookup();
 
@@ -1416,25 +1470,14 @@ namespace DigimonNOAccess
                         continue;
                     }
 
-                    // For non-PICK_ triggers, skip those without quest icons (Main/Sub).
-                    // PICK_ triggers keep icon=None since the icon is on the quest-giving NPC.
-                    if (!cmdBlock.StartsWith("PICK_"))
+                    // For non-PICK_ triggers, use et.enabled as quest acceptance gate.
+                    // The game toggles EventTriggerScript.enabled via ActiveTalkEventTrigger
+                    // when quests are accepted/completed. This works for both icon and no-icon triggers.
+                    // PICK_ triggers already check enabled above, so this only applies to ST_SUB_ etc.
+                    if (!cmdBlock.StartsWith("PICK_") && !enabled)
                     {
-                        try
-                        {
-                            var iconType = et.m_IconDispType;
-                            if (iconType == EventTriggerScript.EventIconDispType.None)
-                            {
-                                if (_debugQuestScan) DebugLogger.Log($"[QuestScan] SKIP no icon: {goName} cmd={cmdBlock} icon={iconType}");
-                                continue;
-                            }
-                            if (_debugQuestScan) DebugLogger.Log($"[QuestScan] Non-PICK trigger has icon: {goName} cmd={cmdBlock} icon={iconType}");
-                        }
-                        catch
-                        {
-                            if (_debugQuestScan) DebugLogger.Log($"[QuestScan] SKIP icon error: {goName} cmd={cmdBlock}");
-                            continue;
-                        }
+                        if (_debugQuestScan) DebugLogger.Log($"[QuestScan] SKIP disabled non-PICK: {goName} cmd={cmdBlock}");
+                        continue;
                     }
 
                     if (cmdBlock.StartsWith("PICK_"))
