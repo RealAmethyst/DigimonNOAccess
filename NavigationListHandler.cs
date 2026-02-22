@@ -1365,6 +1365,9 @@ namespace DigimonNOAccess
         // Debug flag for verbose quest scanning logs - set to true for debugging
         private static bool _debugQuestScan = false;
 
+        // Debug flag for verbose transition scanning logs - set to true for debugging
+        private static bool _debugTransitionScan = false;
+
 
         private void ScanQuestItems(Vector3 playerPos)
         {
@@ -1791,57 +1794,75 @@ namespace DigimonNOAccess
                 // Get minimap icon data — the same data the game uses to show transition arrows.
                 var allIcons = ParameterDigiviceMapIconData.GetParams(mapEnum);
 
-                // Collect valid destinations from icon data
-                var validAreaDests = new System.Collections.Generic.HashSet<int>(); // Same-map area destinations
-                var validMapDests = new System.Collections.Generic.HashSet<int>();  // Cross-map destinations
-
-                if (allIcons != null && allIcons.Length > 0)
-                {
-                    foreach (var icon in allIcons)
-                    {
-                        if (icon == null) continue;
-                        var kind = (ParameterDigiviceMapIconData.MarkKind)icon.m_iconKind;
-                        if (kind != ParameterDigiviceMapIconData.MarkKind.MAP_BORDER &&
-                            kind != ParameterDigiviceMapIconData.MarkKind.AREA_BORDER)
-                            continue;
-
-                        if (icon.m_belongAreaID != _lastAreaNo)
-                            continue;
-
-                        // Only check startScenarioFlag — if set, this transition isn't available yet
-                        if (icon.m_startScenarioFlag != 0)
-                        {
-                            try
-                            {
-                                if (!StorageData.m_ScenarioProgressData.IsOnFlagSetAnd(icon.m_startScenarioFlag, true))
-                                {
-                                    DebugLogger.Log($"[NavList] ScanTransitions: skip {kind} map {icon.m_adjacentMapID} area {icon.m_adjacentAreaID} - not yet accessible (start flag 0x{icon.m_startScenarioFlag:X})");
-                                    continue;
-                                }
-                            }
-                            catch { }
-                        }
-
-                        if (kind == ParameterDigiviceMapIconData.MarkKind.AREA_BORDER)
-                        {
-                            validAreaDests.Add(icon.m_adjacentAreaID);
-                            DebugLogger.Log($"[NavList] ScanTransitions: valid AREA_BORDER -> area {icon.m_adjacentAreaID}");
-                        }
-                        else
-                        {
-                            validMapDests.Add(icon.m_adjacentMapID);
-                            DebugLogger.Log($"[NavList] ScanTransitions: valid MAP_BORDER -> map {icon.m_adjacentMapID}");
-                        }
-                    }
-                }
-
-                // Fallback for maps without icon data (e.g. town): use AreaChangeParent
+                // Fallback for maps without icon data (e.g. town): use TownJumpData
                 if (allIcons == null || allIcons.Length == 0)
                 {
-                    DebugLogger.Log($"[NavList] ScanTransitions: no icon data for map {_lastMapNo}, using AreaChangeParent fallback");
+                    DebugLogger.Log($"[NavList] ScanTransitions: no icon data for map {_lastMapNo}, using town fallback");
                     ScanTransitionsFallback(playerPos);
                     return;
                 }
+
+                // Collect valid destinations from icon data (MAP_BORDER + AREA_BORDER)
+                var validAreaDests = new System.Collections.Generic.HashSet<int>();
+                var validMapDests = new System.Collections.Generic.HashSet<int>();
+
+                foreach (var icon in allIcons)
+                {
+                    if (icon == null) continue;
+                    var kind = (ParameterDigiviceMapIconData.MarkKind)icon.m_iconKind;
+                    if (kind != ParameterDigiviceMapIconData.MarkKind.MAP_BORDER &&
+                        kind != ParameterDigiviceMapIconData.MarkKind.AREA_BORDER)
+                        continue;
+
+                    if (icon.m_belongAreaID != _lastAreaNo)
+                        continue;
+
+                    if (icon.m_startScenarioFlag != 0)
+                    {
+                        try
+                        {
+                            if (!StorageData.m_ScenarioProgressData.IsOnFlagSetAnd(icon.m_startScenarioFlag, true))
+                            {
+                                if (_debugTransitionScan)
+                                    DebugLogger.Log($"[TransitionScan] skip icon {kind} -> map {icon.m_adjacentMapID} area {icon.m_adjacentAreaID} (flag 0x{icon.m_startScenarioFlag:X})");
+                                continue;
+                            }
+                        }
+                        catch { }
+                    }
+
+                    if (kind == ParameterDigiviceMapIconData.MarkKind.AREA_BORDER)
+                        validAreaDests.Add(icon.m_adjacentAreaID);
+                    else
+                        validMapDests.Add(icon.m_adjacentMapID);
+                }
+
+                // Supplement with ParameterDigiviceAreaData adjacency (catches tunnels etc.)
+                try
+                {
+                    var areaData = ParameterDigiviceAreaData.GetParam(mapEnum, _lastAreaNo);
+                    if (areaData != null)
+                    {
+                        int[] adjacentAreas = { areaData.m_up, areaData.m_down, areaData.m_left, areaData.m_right };
+                        foreach (int adjArea in adjacentAreas)
+                        {
+                            if (adjArea > 0 && adjArea != _lastAreaNo && !validAreaDests.Contains(adjArea))
+                            {
+                                validAreaDests.Add(adjArea);
+                                if (_debugTransitionScan)
+                                    DebugLogger.Log($"[TransitionScan] AreaData adjacency added area {adjArea}");
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (_debugTransitionScan)
+                        DebugLogger.Log($"[TransitionScan] AreaData lookup failed: {ex.Message}");
+                }
+
+                if (_debugTransitionScan)
+                    DebugLogger.Log($"[TransitionScan] Valid destinations: areas=[{string.Join(",", validAreaDests)}] maps=[{string.Join(",", validMapDests)}]");
 
                 if (validAreaDests.Count == 0 && validMapDests.Count == 0)
                 {
@@ -1872,7 +1893,6 @@ namespace DigimonNOAccess
                     bool valid = false;
                     if (dest.m_MapNo == _lastMapNo)
                     {
-                        // AREA_BORDER: match by exact destination area
                         if (validAreaDests.Contains(dest.m_AreaNo) && !usedAreaDests.Contains(dest.m_AreaNo))
                         {
                             valid = true;
@@ -1881,7 +1901,6 @@ namespace DigimonNOAccess
                     }
                     else
                     {
-                        // MAP_BORDER: match by destination map (one per map)
                         if (validMapDests.Contains(dest.m_MapNo) && !usedMapDests.Contains(dest.m_MapNo))
                         {
                             valid = true;
