@@ -116,6 +116,7 @@ namespace DigimonNOAccess
                 new StoragePanelHandler(),
                 new MapPanelHandler(),
                 new LibraryHandler(),
+                new EvolutionDojoHandler(),
                 new MailPanelHandler(),
                 new PartnerPanelHandler(),
                 new TamerPanelHandler(),
