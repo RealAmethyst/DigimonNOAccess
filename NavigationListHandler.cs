@@ -1791,21 +1791,46 @@ namespace DigimonNOAccess
             {
                 var mapEnum = (AppInfo.MAP)_lastMapNo;
 
-                // Get minimap icon data — the same data the game uses to show transition arrows.
-                var allIcons = ParameterDigiviceMapIconData.GetParams(mapEnum);
+                // Use the game's own MapIconDataController for filtered icon list
+                // This handles all flag checks (scenario flags, area arrival, etc.) identically to the minimap
+                Il2CppSystem.Collections.Generic.List<ParameterDigiviceMapIconData> filteredIcons = null;
+                try
+                {
+                    var flagMgr = DigiviceMapFlagManager.Ref;
+                    if (flagMgr != null)
+                    {
+                        var iconCtrl = flagMgr.m_MapIconDataController;
+                        if (iconCtrl != null)
+                        {
+                            iconCtrl.UpdateEnableIconList(mapEnum, (uint)_lastAreaNo);
+                            filteredIcons = iconCtrl.GetMapIconDataList();
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (_debugTransitionScan)
+                        DebugLogger.Log($"[TransitionScan] MapIconDataController failed: {ex.Message}");
+                }
 
-                // Fallback for maps without icon data
-                if (allIcons == null || allIcons.Length == 0)
+                // Fallback: if MapIconDataController unavailable, use raw icon data
+                Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppReferenceArray<ParameterDigiviceMapIconData> rawIcons = null;
+                if (filteredIcons == null || filteredIcons.Count == 0)
+                {
+                    rawIcons = ParameterDigiviceMapIconData.GetParams(mapEnum);
+                }
+
+                bool hasAnyIcons = (filteredIcons != null && filteredIcons.Count > 0) || (rawIcons != null && rawIcons.Length > 0);
+
+                if (!hasAnyIcons)
                 {
                     if (_lastMapNo == (int)AppInfo.MAP.TOWN)
                     {
-                        // Town: use fast travel data (ParameterTownJumpData)
                         DebugLogger.Log($"[NavList] ScanTransitions: no icon data for map {_lastMapNo}, using town fallback");
                         ScanTransitionsFallback(playerPos);
                     }
                     else
                     {
-                        // Dimensions/dungeons: scan all AreaChangeInfo objects directly
                         DebugLogger.Log($"[NavList] ScanTransitions: no icon data for map {_lastMapNo}, using field fallback");
                         ScanTransitionsFieldFallback(playerPos);
                     }
@@ -1816,35 +1841,58 @@ namespace DigimonNOAccess
                 var validAreaDests = new System.Collections.Generic.HashSet<int>();
                 var validMapDests = new System.Collections.Generic.HashSet<int>();
 
-                foreach (var icon in allIcons)
+                // Process filtered icons from MapIconDataController (already flag-checked by the game)
+                if (filteredIcons != null && filteredIcons.Count > 0)
                 {
-                    if (icon == null) continue;
-                    var kind = (ParameterDigiviceMapIconData.MarkKind)icon.m_iconKind;
-                    if (kind != ParameterDigiviceMapIconData.MarkKind.MAP_BORDER &&
-                        kind != ParameterDigiviceMapIconData.MarkKind.AREA_BORDER)
-                        continue;
-
-                    if (icon.m_belongAreaID != _lastAreaNo)
-                        continue;
-
-                    if (icon.m_startScenarioFlag != 0)
+                    foreach (var icon in filteredIcons)
                     {
-                        try
-                        {
-                            if (!StorageData.m_ScenarioProgressData.IsOnFlagSetAnd(icon.m_startScenarioFlag, true))
-                            {
-                                if (_debugTransitionScan)
-                                    DebugLogger.Log($"[TransitionScan] skip icon {kind} -> map {icon.m_adjacentMapID} area {icon.m_adjacentAreaID} (flag 0x{icon.m_startScenarioFlag:X})");
-                                continue;
-                            }
-                        }
-                        catch { }
-                    }
+                        if (icon == null) continue;
+                        var kind = (ParameterDigiviceMapIconData.MarkKind)icon.m_iconKind;
+                        if (kind != ParameterDigiviceMapIconData.MarkKind.MAP_BORDER &&
+                            kind != ParameterDigiviceMapIconData.MarkKind.AREA_BORDER)
+                            continue;
 
-                    if (kind == ParameterDigiviceMapIconData.MarkKind.AREA_BORDER)
-                        validAreaDests.Add(icon.m_adjacentAreaID);
-                    else
-                        validMapDests.Add(icon.m_adjacentMapID);
+                        if (icon.m_belongAreaID != _lastAreaNo)
+                            continue;
+
+                        if (_debugTransitionScan)
+                            DebugLogger.Log($"[TransitionScan] filtered icon {kind} -> map {icon.m_adjacentMapID} area {icon.m_adjacentAreaID}");
+
+                        if (kind == ParameterDigiviceMapIconData.MarkKind.AREA_BORDER)
+                            validAreaDests.Add(icon.m_adjacentAreaID);
+                        else
+                            validMapDests.Add(icon.m_adjacentMapID);
+                    }
+                }
+                else
+                {
+                    // Fallback: manual flag check on raw icons
+                    foreach (var icon in rawIcons)
+                    {
+                        if (icon == null) continue;
+                        var kind = (ParameterDigiviceMapIconData.MarkKind)icon.m_iconKind;
+                        if (kind != ParameterDigiviceMapIconData.MarkKind.MAP_BORDER &&
+                            kind != ParameterDigiviceMapIconData.MarkKind.AREA_BORDER)
+                            continue;
+
+                        if (icon.m_belongAreaID != _lastAreaNo)
+                            continue;
+
+                        if (icon.m_startScenarioFlag != 0)
+                        {
+                            try
+                            {
+                                if (!StorageData.m_ScenarioProgressData.IsOnFlagSetAnd(icon.m_startScenarioFlag, true))
+                                    continue;
+                            }
+                            catch { }
+                        }
+
+                        if (kind == ParameterDigiviceMapIconData.MarkKind.AREA_BORDER)
+                            validAreaDests.Add(icon.m_adjacentAreaID);
+                        else
+                            validMapDests.Add(icon.m_adjacentMapID);
+                    }
                 }
 
                 // Supplement with ParameterDigiviceAreaData adjacency (catches tunnels etc.)
@@ -1876,7 +1924,15 @@ namespace DigimonNOAccess
 
                 if (validAreaDests.Count == 0 && validMapDests.Count == 0)
                 {
-                    DebugLogger.Log($"[NavList] ScanTransitions: no valid transitions for map {_lastMapNo} area {_lastAreaNo}");
+                    if (_lastMapNo != (int)AppInfo.MAP.TOWN)
+                    {
+                        DebugLogger.Log($"[NavList] ScanTransitions: no valid icon transitions for map {_lastMapNo} area {_lastAreaNo}, using field fallback");
+                        ScanTransitionsFieldFallback(playerPos);
+                    }
+                    else
+                    {
+                        DebugLogger.Log($"[NavList] ScanTransitions: no valid transitions for map {_lastMapNo} area {_lastAreaNo}");
+                    }
                     return;
                 }
 
@@ -1936,14 +1992,6 @@ namespace DigimonNOAccess
                 }
 
                 DebugLogger.Log($"[NavList] ScanTransitions: {_events[EventCategory.Transitions].Count} transitions (map {_lastMapNo} area {_lastAreaNo})");
-
-                // If icon-based scan found nothing and we're not in town, try field fallback
-                // (handles dimensions/dungeons where icon data exists but doesn't cover all exits)
-                if (_events[EventCategory.Transitions].Count == 0 && _lastMapNo != (int)AppInfo.MAP.TOWN)
-                {
-                    DebugLogger.Log($"[NavList] ScanTransitions: 0 results from icons, using field fallback");
-                    ScanTransitionsFieldFallback(playerPos);
-                }
             }
             catch (Exception ex)
             {
@@ -2032,12 +2080,58 @@ namespace DigimonNOAccess
                     }
                     catch { continue; }
 
-                    // Look up destination data from our pre-built dictionary
-                    if (!destLookup.TryGetValue(jump.m_destination_id, out var destData))
+                    // Resolve destination: try base destination first, fall back to grade destination
+                    // The game switches ACIs between destinations as town progresses,
+                    // so we match whichever destination has an actual ACI in the scene
+                    ParameterTownJumpDestinationData destData = null;
+                    if (destLookup.TryGetValue(jump.m_destination_id, out var baseData))
+                        destData = baseData;
+
+                    ParameterTownJumpDestinationData gradeDestData = null;
+                    uint gradeDestId = jump.m_grade_destination_id;
+                    if (gradeDestId != 0 && destLookup.TryGetValue(gradeDestId, out var gData))
+                        gradeDestData = gData;
+
+                    if (destData == null && gradeDestData == null)
                         continue;
 
-                    int destMap = destData.m_mapNo;
-                    int destArea = destData.m_areaNo;
+                    // Try to find an ACI for the base destination
+                    var baseKey = destData != null ? ((int)destData.m_mapNo, (int)destData.m_areaNo) : (-1, -1);
+                    var gradeKey = gradeDestData != null ? ((int)gradeDestData.m_mapNo, (int)gradeDestData.m_areaNo) : (-1, -1);
+
+                    AreaChangeInfo bestAci = null;
+                    float bestDist = float.MaxValue;
+                    (int, int) matchedKey = baseKey;
+
+                    // First try grade destination (the upgraded one takes priority if it exists in scene)
+                    if (gradeDestData != null && aciByDest.ContainsKey(gradeKey))
+                    {
+                        foreach (var aci in aciByDest[gradeKey])
+                        {
+                            if (_knownTargets.Contains(aci.gameObject)) continue;
+                            float d = Vector3.Distance(playerPos, aci.transform.position);
+                            if (d < bestDist) { bestDist = d; bestAci = aci; }
+                        }
+                        if (bestAci != null) matchedKey = gradeKey;
+                    }
+
+                    // If no grade ACI found, try base destination
+                    if (bestAci == null && destData != null && aciByDest.ContainsKey(baseKey))
+                    {
+                        foreach (var aci in aciByDest[baseKey])
+                        {
+                            if (_knownTargets.Contains(aci.gameObject)) continue;
+                            float d = Vector3.Distance(playerPos, aci.transform.position);
+                            if (d < bestDist) { bestDist = d; bestAci = aci; }
+                        }
+                        if (bestAci != null) matchedKey = baseKey;
+                    }
+
+                    if (bestAci == null)
+                        continue;
+
+                    int destMap = matchedKey.Item1;
+                    int destArea = matchedKey.Item2;
 
                     // Skip self-transitions
                     if (destMap == _lastMapNo && destArea == _lastAreaNo)
@@ -2048,7 +2142,7 @@ namespace DigimonNOAccess
                     if (addedAreas.Contains(areaKey))
                         continue;
 
-                    // Get proper area name (not fast travel menu label)
+                    // Get proper area name from the matched ACI's actual destination
                     string name = null;
                     try
                     {
@@ -2057,28 +2151,10 @@ namespace DigimonNOAccess
                     catch { }
                     if (string.IsNullOrEmpty(name) || name.Contains("not found"))
                     {
-                        // Fall back to fast travel label
                         try { name = jump.GetName(); } catch { }
                     }
                     if (string.IsNullOrEmpty(name) || name.Contains("not found"))
                         name = $"Map {destMap} Area {destArea}";
-
-                    // Find closest matching AreaChangeInfo from current area's exits
-                    AreaChangeInfo bestAci = null;
-                    float bestDist = float.MaxValue;
-
-                    if (aciByDest.ContainsKey(areaKey))
-                    {
-                        foreach (var aci in aciByDest[areaKey])
-                        {
-                            if (_knownTargets.Contains(aci.gameObject)) continue;
-                            float d = Vector3.Distance(playerPos, aci.transform.position);
-                            if (d < bestDist) { bestDist = d; bestAci = aci; }
-                        }
-                    }
-
-                    if (bestAci == null)
-                        continue;
 
                     float dist = Vector3.Distance(playerPos, bestAci.transform.position);
                     _events[EventCategory.Transitions].Add(new NavigationEvent
