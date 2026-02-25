@@ -61,7 +61,8 @@ namespace DigimonNOAccess
             _harmony = new HarmonyLib.Harmony("com.digimonoaccess.patches");
             DialogTextPatch.Apply(_harmony);
             BattleDamagePopPatch.Apply(_harmony);
-            LoggerInstance.Msg("Dialog and battle patches applied");
+            AreaChangePatch.Apply();
+            LoggerInstance.Msg("Dialog, battle, and area change patches applied");
 
             // Apply gamepad input injection patch for PlayStation controller support
             // Apply if SDL3 is available (even if controller not connected yet)

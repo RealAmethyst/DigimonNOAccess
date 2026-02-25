@@ -1794,11 +1794,21 @@ namespace DigimonNOAccess
                 // Get minimap icon data — the same data the game uses to show transition arrows.
                 var allIcons = ParameterDigiviceMapIconData.GetParams(mapEnum);
 
-                // Fallback for maps without icon data (e.g. town): use TownJumpData
+                // Fallback for maps without icon data
                 if (allIcons == null || allIcons.Length == 0)
                 {
-                    DebugLogger.Log($"[NavList] ScanTransitions: no icon data for map {_lastMapNo}, using town fallback");
-                    ScanTransitionsFallback(playerPos);
+                    if (_lastMapNo == (int)AppInfo.MAP.TOWN)
+                    {
+                        // Town: use fast travel data (ParameterTownJumpData)
+                        DebugLogger.Log($"[NavList] ScanTransitions: no icon data for map {_lastMapNo}, using town fallback");
+                        ScanTransitionsFallback(playerPos);
+                    }
+                    else
+                    {
+                        // Dimensions/dungeons: scan all AreaChangeInfo objects directly
+                        DebugLogger.Log($"[NavList] ScanTransitions: no icon data for map {_lastMapNo}, using field fallback");
+                        ScanTransitionsFieldFallback(playerPos);
+                    }
                     return;
                 }
 
@@ -1926,6 +1936,14 @@ namespace DigimonNOAccess
                 }
 
                 DebugLogger.Log($"[NavList] ScanTransitions: {_events[EventCategory.Transitions].Count} transitions (map {_lastMapNo} area {_lastAreaNo})");
+
+                // If icon-based scan found nothing and we're not in town, try field fallback
+                // (handles dimensions/dungeons where icon data exists but doesn't cover all exits)
+                if (_events[EventCategory.Transitions].Count == 0 && _lastMapNo != (int)AppInfo.MAP.TOWN)
+                {
+                    DebugLogger.Log($"[NavList] ScanTransitions: 0 results from icons, using field fallback");
+                    ScanTransitionsFieldFallback(playerPos);
+                }
             }
             catch (Exception ex)
             {
@@ -2081,6 +2099,62 @@ namespace DigimonNOAccess
             catch (Exception ex)
             {
                 DebugLogger.Log($"[NavList] ScanTransitions town error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Field fallback for dimensions/dungeons and other areas without minimap icon data.
+        /// Scans all active AreaChangeInfo objects and adds non-self transitions.
+        /// </summary>
+        private void ScanTransitionsFieldFallback(Vector3 playerPos)
+        {
+            try
+            {
+                var areaChangeInfos = UnityEngine.Object.FindObjectsOfType<AreaChangeInfo>();
+                var addedAreas = new System.Collections.Generic.HashSet<(int, int)>();
+                int added = 0;
+
+                foreach (var aci in areaChangeInfos)
+                {
+                    if (aci == null || aci.gameObject == null || !aci.gameObject.activeInHierarchy)
+                        continue;
+
+                    var dest = aci.m_Destination;
+                    if (dest == null) continue;
+
+                    if (_knownTargets.Contains(aci.gameObject))
+                        continue;
+
+                    // Skip transitions back to current area
+                    if (dest.m_MapNo == _lastMapNo && dest.m_AreaNo == _lastAreaNo)
+                        continue;
+
+                    // Deduplicate by destination
+                    var areaKey = (dest.m_MapNo, dest.m_AreaNo);
+                    if (addedAreas.Contains(areaKey))
+                        continue;
+
+                    string name = GetTransitionNameFromAreaChange(aci);
+                    float dist = Vector3.Distance(playerPos, aci.transform.position);
+
+                    _events[EventCategory.Transitions].Add(new NavigationEvent
+                    {
+                        Name = name,
+                        Position = aci.transform.position,
+                        Target = aci.gameObject,
+                        Category = EventCategory.Transitions,
+                        DistanceToPlayer = dist
+                    });
+                    _knownTargets.Add(aci.gameObject);
+                    addedAreas.Add(areaKey);
+                    added++;
+                }
+
+                DebugLogger.Log($"[NavList] ScanTransitions field fallback: {added} transitions (map {_lastMapNo} area {_lastAreaNo})");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[NavList] ScanTransitions field fallback error: {ex.Message}");
             }
         }
 
