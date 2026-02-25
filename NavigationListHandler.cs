@@ -1855,6 +1855,12 @@ namespace DigimonNOAccess
                         if (icon.m_belongAreaID != _lastAreaNo)
                             continue;
 
+                        // Skip invalid destinations (map 0 = MAP_NON, area 0 with no map)
+                        if (kind == ParameterDigiviceMapIconData.MarkKind.MAP_BORDER && icon.m_adjacentMapID <= 0)
+                            continue;
+                        if (kind == ParameterDigiviceMapIconData.MarkKind.AREA_BORDER && icon.m_adjacentAreaID <= 0)
+                            continue;
+
                         if (_debugTransitionScan)
                             DebugLogger.Log($"[TransitionScan] filtered icon {kind} -> map {icon.m_adjacentMapID} area {icon.m_adjacentAreaID}");
 
@@ -1876,6 +1882,12 @@ namespace DigimonNOAccess
                             continue;
 
                         if (icon.m_belongAreaID != _lastAreaNo)
+                            continue;
+
+                        // Skip invalid destinations (map 0 = MAP_NON, area 0 with no map)
+                        if (kind == ParameterDigiviceMapIconData.MarkKind.MAP_BORDER && icon.m_adjacentMapID <= 0)
+                            continue;
+                        if (kind == ParameterDigiviceMapIconData.MarkKind.AREA_BORDER && icon.m_adjacentAreaID <= 0)
                             continue;
 
                         if (icon.m_startScenarioFlag != 0)
