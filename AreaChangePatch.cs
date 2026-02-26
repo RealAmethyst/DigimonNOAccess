@@ -120,7 +120,6 @@ namespace DigimonNOAccess
                     {
                         bool enabled = isEnable != 0;
                         _transitionStates[idStr] = enabled;
-                        DebugLogger.Log($"[AreaChangePatch] {idStr} -> {(enabled ? "ENABLED" : "DISABLED")} (tracking {_transitionStates.Count})");
                     }
                 }
             }

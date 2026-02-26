@@ -100,6 +100,7 @@ namespace DigimonNOAccess
         private const float RescanInterval = 0.5f;
         private const float RescanDuration = 5.0f; // Keep rescanning for 5 seconds after map change
         private bool _isRescanning = false;
+        private int _lastHookTrackedCount = 0; // Track AreaChangePatch state changes for transition rebuilds
 
         // Track known GameObjects to avoid duplicate entries
         private HashSet<GameObject> _knownTargets = new HashSet<GameObject>();
@@ -281,6 +282,7 @@ namespace DigimonNOAccess
 
                     // Reset for new map
                     _listBuilt = false;
+                    _lastHookTrackedCount = 0;
                     _mapChangeTime = Time.time;
                     _nextRescanTime = Time.time + InitialScanDelay;
                     _isRescanning = true;
@@ -559,7 +561,20 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[NavList] Rescan Items error: {ex.Message}");
             }
 
-            // Rescan transitions using map icon data (same as initial scan)
+            // Rescan transitions - if AreaChangePatch hook count changed, rebuild from scratch
+            // (first scan may run before CSVB scripts fire EnableAreaChangeTrigger)
+            int currentHookCount = AreaChangePatch.TrackedCount;
+            if (currentHookCount != _lastHookTrackedCount)
+            {
+                // Hook state changed - remove old transition entries and rescan clean
+                foreach (var evt in _events[EventCategory.Transitions])
+                {
+                    if (evt.Target != null)
+                        _knownTargets.Remove(evt.Target);
+                }
+                _events[EventCategory.Transitions].Clear();
+                _lastHookTrackedCount = currentHookCount;
+            }
             int transitionsBefore = _events[EventCategory.Transitions].Count;
             ScanTransitions(playerPos);
             newCount += _events[EventCategory.Transitions].Count - transitionsBefore;
@@ -1789,169 +1804,16 @@ namespace DigimonNOAccess
         {
             try
             {
-                var mapEnum = (AppInfo.MAP)_lastMapNo;
-
-                // Use the game's own MapIconDataController for filtered icon list
-                // This handles all flag checks (scenario flags, area arrival, etc.) identically to the minimap
-                Il2CppSystem.Collections.Generic.List<ParameterDigiviceMapIconData> filteredIcons = null;
-                try
-                {
-                    var flagMgr = DigiviceMapFlagManager.Ref;
-                    if (flagMgr != null)
-                    {
-                        var iconCtrl = flagMgr.m_MapIconDataController;
-                        if (iconCtrl != null)
-                        {
-                            iconCtrl.UpdateEnableIconList(mapEnum, (uint)_lastAreaNo);
-                            filteredIcons = iconCtrl.GetMapIconDataList();
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    if (_debugTransitionScan)
-                        DebugLogger.Log($"[TransitionScan] MapIconDataController failed: {ex.Message}");
-                }
-
-                // Fallback: if MapIconDataController unavailable, use raw icon data
-                Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppReferenceArray<ParameterDigiviceMapIconData> rawIcons = null;
-                if (filteredIcons == null || filteredIcons.Count == 0)
-                {
-                    rawIcons = ParameterDigiviceMapIconData.GetParams(mapEnum);
-                }
-
-                bool hasAnyIcons = (filteredIcons != null && filteredIcons.Count > 0) || (rawIcons != null && rawIcons.Length > 0);
-
-                if (!hasAnyIcons)
-                {
-                    if (_lastMapNo == (int)AppInfo.MAP.TOWN)
-                    {
-                        DebugLogger.Log($"[NavList] ScanTransitions: no icon data for map {_lastMapNo}, using town fallback");
-                        ScanTransitionsFallback(playerPos);
-                    }
-                    else
-                    {
-                        DebugLogger.Log($"[NavList] ScanTransitions: no icon data for map {_lastMapNo}, using field fallback");
-                        ScanTransitionsFieldFallback(playerPos);
-                    }
-                    return;
-                }
-
-                // Collect valid destinations from icon data (MAP_BORDER + AREA_BORDER)
-                var validAreaDests = new System.Collections.Generic.HashSet<int>();
-                var validMapDests = new System.Collections.Generic.HashSet<int>();
-
-                // Process filtered icons from MapIconDataController (already flag-checked by the game)
-                if (filteredIcons != null && filteredIcons.Count > 0)
-                {
-                    foreach (var icon in filteredIcons)
-                    {
-                        if (icon == null) continue;
-                        var kind = (ParameterDigiviceMapIconData.MarkKind)icon.m_iconKind;
-                        if (kind != ParameterDigiviceMapIconData.MarkKind.MAP_BORDER &&
-                            kind != ParameterDigiviceMapIconData.MarkKind.AREA_BORDER)
-                            continue;
-
-                        if (icon.m_belongAreaID != _lastAreaNo)
-                            continue;
-
-                        // Skip invalid destinations (map 0 = MAP_NON, area 0 with no map)
-                        if (kind == ParameterDigiviceMapIconData.MarkKind.MAP_BORDER && icon.m_adjacentMapID <= 0)
-                            continue;
-                        if (kind == ParameterDigiviceMapIconData.MarkKind.AREA_BORDER && icon.m_adjacentAreaID <= 0)
-                            continue;
-
-                        if (_debugTransitionScan)
-                            DebugLogger.Log($"[TransitionScan] filtered icon {kind} -> map {icon.m_adjacentMapID} area {icon.m_adjacentAreaID}");
-
-                        if (kind == ParameterDigiviceMapIconData.MarkKind.AREA_BORDER)
-                            validAreaDests.Add(icon.m_adjacentAreaID);
-                        else
-                            validMapDests.Add(icon.m_adjacentMapID);
-                    }
-                }
-                else
-                {
-                    // Fallback: manual flag check on raw icons
-                    foreach (var icon in rawIcons)
-                    {
-                        if (icon == null) continue;
-                        var kind = (ParameterDigiviceMapIconData.MarkKind)icon.m_iconKind;
-                        if (kind != ParameterDigiviceMapIconData.MarkKind.MAP_BORDER &&
-                            kind != ParameterDigiviceMapIconData.MarkKind.AREA_BORDER)
-                            continue;
-
-                        if (icon.m_belongAreaID != _lastAreaNo)
-                            continue;
-
-                        // Skip invalid destinations (map 0 = MAP_NON, area 0 with no map)
-                        if (kind == ParameterDigiviceMapIconData.MarkKind.MAP_BORDER && icon.m_adjacentMapID <= 0)
-                            continue;
-                        if (kind == ParameterDigiviceMapIconData.MarkKind.AREA_BORDER && icon.m_adjacentAreaID <= 0)
-                            continue;
-
-                        if (icon.m_startScenarioFlag != 0)
-                        {
-                            try
-                            {
-                                if (!StorageData.m_ScenarioProgressData.IsOnFlagSetAnd(icon.m_startScenarioFlag, true))
-                                    continue;
-                            }
-                            catch { }
-                        }
-
-                        if (kind == ParameterDigiviceMapIconData.MarkKind.AREA_BORDER)
-                            validAreaDests.Add(icon.m_adjacentAreaID);
-                        else
-                            validMapDests.Add(icon.m_adjacentMapID);
-                    }
-                }
-
-                // Supplement with ParameterDigiviceAreaData adjacency (catches tunnels etc.)
-                try
-                {
-                    var areaData = ParameterDigiviceAreaData.GetParam(mapEnum, _lastAreaNo);
-                    if (areaData != null)
-                    {
-                        int[] adjacentAreas = { areaData.m_up, areaData.m_down, areaData.m_left, areaData.m_right };
-                        foreach (int adjArea in adjacentAreas)
-                        {
-                            if (adjArea > 0 && adjArea != _lastAreaNo && !validAreaDests.Contains(adjArea))
-                            {
-                                validAreaDests.Add(adjArea);
-                                if (_debugTransitionScan)
-                                    DebugLogger.Log($"[TransitionScan] AreaData adjacency added area {adjArea}");
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    if (_debugTransitionScan)
-                        DebugLogger.Log($"[TransitionScan] AreaData lookup failed: {ex.Message}");
-                }
+                // Universal transition scanning for all maps (town, field, dimension, dungeon):
+                // Scan all active AreaChangeInfo objects and filter using AreaChangePatch
+                // which tracks the game's own EnableAreaChangeTrigger calls (CSVB scripts)
+                var areaChangeInfos = UnityEngine.Object.FindObjectsOfType<AreaChangeInfo>();
+                var addedDests = new System.Collections.Generic.HashSet<(int, int)>();
 
                 if (_debugTransitionScan)
-                    DebugLogger.Log($"[TransitionScan] Valid destinations: areas=[{string.Join(",", validAreaDests)}] maps=[{string.Join(",", validMapDests)}]");
-
-                if (validAreaDests.Count == 0 && validMapDests.Count == 0)
                 {
-                    if (_lastMapNo != (int)AppInfo.MAP.TOWN)
-                    {
-                        DebugLogger.Log($"[NavList] ScanTransitions: no valid icon transitions for map {_lastMapNo} area {_lastAreaNo}, using field fallback");
-                        ScanTransitionsFieldFallback(playerPos);
-                    }
-                    else
-                    {
-                        DebugLogger.Log($"[NavList] ScanTransitions: no valid transitions for map {_lastMapNo} area {_lastAreaNo}");
-                    }
-                    return;
+                    DebugLogger.Log($"[TransitionScan] === map {_lastMapNo} area {_lastAreaNo}: {areaChangeInfos.Length} ACIs, {AreaChangePatch.TrackedCount} tracked by hook ===");
                 }
-
-                // Match AreaChangeInfo objects to valid destinations
-                var usedMapDests = new System.Collections.Generic.HashSet<int>();
-                var usedAreaDests = new System.Collections.Generic.HashSet<int>();
-                var areaChangeInfos = UnityEngine.Object.FindObjectsOfType<AreaChangeInfo>();
 
                 foreach (var aci in areaChangeInfos)
                 {
@@ -1968,33 +1830,21 @@ namespace DigimonNOAccess
                     if (dest.m_MapNo == _lastMapNo && dest.m_AreaNo == _lastAreaNo)
                         continue;
 
-                    bool valid = false;
-                    if (dest.m_MapNo == _lastMapNo)
+                    // Use AreaChangePatch to filter: the game's CSVB scripts explicitly
+                    // enable/disable transitions via EnableAreaChangeTrigger.
+                    // If the hook tracked this transition as disabled, skip it.
+                    string goName = aci.gameObject.name;
+                    if (AreaChangePatch.IsDisabled(goName))
                     {
-                        if (validAreaDests.Contains(dest.m_AreaNo) && !usedAreaDests.Contains(dest.m_AreaNo))
-                        {
-                            valid = true;
-                            usedAreaDests.Add(dest.m_AreaNo);
-                        }
-                    }
-                    else
-                    {
-                        if (validMapDests.Contains(dest.m_MapNo) && !usedMapDests.Contains(dest.m_MapNo))
-                        {
-                            valid = true;
-                            usedMapDests.Add(dest.m_MapNo);
-                        }
+                        if (_debugTransitionScan)
+                            DebugLogger.Log($"[TransitionScan]   SKIP (disabled) {goName} -> map {dest.m_MapNo} area {dest.m_AreaNo}");
+                        continue;
                     }
 
-                    // Also accept interactive entrances (m_IsInputWait = button press required)
-                    // These are interior/dungeon entrances with no minimap icon
-                    // Skip in town - town uses its own ScanTransitionsFallback path
-                    if (!valid && aci.m_IsInputWait && _lastMapNo != (int)AppInfo.MAP.TOWN)
-                    {
-                        valid = true;
-                    }
-
-                    if (!valid) continue;
+                    // Deduplicate by destination
+                    var destKey = (dest.m_MapNo, dest.m_AreaNo);
+                    if (addedDests.Contains(destKey))
+                        continue;
 
                     string name = GetTransitionNameFromAreaChange(aci);
                     float dist = Vector3.Distance(playerPos, aci.transform.position);
@@ -2008,7 +1858,10 @@ namespace DigimonNOAccess
                         DistanceToPlayer = dist
                     });
                     _knownTargets.Add(aci.gameObject);
-                    DebugLogger.Log($"[NavList] ScanTransitions: added '{name}' -> map {dest.m_MapNo} area {dest.m_AreaNo}");
+                    addedDests.Add(destKey);
+
+                    if (_debugTransitionScan)
+                        DebugLogger.Log($"[TransitionScan]   ADDED {goName}: '{name}' -> map {dest.m_MapNo} area {dest.m_AreaNo} (tracked={AreaChangePatch.IsTracked(goName)})");
                 }
 
                 DebugLogger.Log($"[NavList] ScanTransitions: {_events[EventCategory.Transitions].Count} transitions (map {_lastMapNo} area {_lastAreaNo})");
@@ -2019,240 +1872,8 @@ namespace DigimonNOAccess
             }
         }
 
-        /// <summary>
-        /// Town transition scanning using the fast travel system (ParameterTownJumpData).
-        /// Each unlocked jump destination is matched to the nearest AreaChangeInfo for walk-to position.
-        /// </summary>
-        private void ScanTransitionsFallback(Vector3 playerPos)
-        {
-            try
-            {
-                var paramMgr = AppMainScript.parameterManager;
-                if (paramMgr == null)
-                {
-                    DebugLogger.Log("[NavList] ScanTransitions town: ParameterManager not available");
-                    return;
-                }
-
-                var townJumpCsvb = paramMgr.townJumpData;
-                if (townJumpCsvb == null)
-                {
-                    DebugLogger.Log("[NavList] ScanTransitions town: townJumpData is null");
-                    return;
-                }
-
-                var allJumps = townJumpCsvb.GetParams();
-                if (allJumps == null || allJumps.Length == 0)
-                {
-                    DebugLogger.Log("[NavList] ScanTransitions town: no town jump entries");
-                    return;
-                }
-
-                // Build destination lookup by iterating all destination entries
-                var destCsvb = paramMgr.townJumpDestinationData;
-                var destLookup = new System.Collections.Generic.Dictionary<uint, ParameterTownJumpDestinationData>();
-                if (destCsvb != null)
-                {
-                    try
-                    {
-                        var allDests = destCsvb.GetParams();
-                        if (allDests != null)
-                        {
-                            foreach (var d in allDests)
-                            {
-                                if (d != null)
-                                    destLookup[d.m_id] = d;
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        DebugLogger.Log($"[NavList] ScanTransitions town: failed to build dest lookup: {ex.Message}");
-                    }
-                }
-
-                // Build lookup from active ACIs in scene (town loads only current area's ACIs)
-                var allAcis = UnityEngine.Object.FindObjectsOfType<AreaChangeInfo>();
-                var aciByDest = new System.Collections.Generic.Dictionary<(int mapNo, int areaNo), System.Collections.Generic.List<AreaChangeInfo>>();
-                foreach (var aci in allAcis)
-                {
-                    if (aci == null || aci.gameObject == null || !aci.gameObject.activeInHierarchy)
-                        continue;
-                    var dest = aci.m_Destination;
-                    if (dest == null) continue;
-                    var key = (dest.m_MapNo, dest.m_AreaNo);
-                    if (!aciByDest.ContainsKey(key))
-                        aciByDest[key] = new System.Collections.Generic.List<AreaChangeInfo>();
-                    aciByDest[key].Add(aci);
-                }
-
-                int added = 0;
-                var addedAreas = new System.Collections.Generic.HashSet<(int, int)>();
-
-                foreach (var jump in allJumps)
-                {
-                    if (jump == null) continue;
-
-                    try
-                    {
-                        if (!jump.IsOnFlagSet())
-                            continue;
-                    }
-                    catch { continue; }
-
-                    // Resolve destination: try base destination first, fall back to grade destination
-                    // The game switches ACIs between destinations as town progresses,
-                    // so we match whichever destination has an actual ACI in the scene
-                    ParameterTownJumpDestinationData destData = null;
-                    if (destLookup.TryGetValue(jump.m_destination_id, out var baseData))
-                        destData = baseData;
-
-                    ParameterTownJumpDestinationData gradeDestData = null;
-                    uint gradeDestId = jump.m_grade_destination_id;
-                    if (gradeDestId != 0 && destLookup.TryGetValue(gradeDestId, out var gData))
-                        gradeDestData = gData;
-
-                    if (destData == null && gradeDestData == null)
-                        continue;
-
-                    // Try to find an ACI for the base destination
-                    var baseKey = destData != null ? ((int)destData.m_mapNo, (int)destData.m_areaNo) : (-1, -1);
-                    var gradeKey = gradeDestData != null ? ((int)gradeDestData.m_mapNo, (int)gradeDestData.m_areaNo) : (-1, -1);
-
-                    AreaChangeInfo bestAci = null;
-                    float bestDist = float.MaxValue;
-                    (int, int) matchedKey = baseKey;
-
-                    // First try grade destination (the upgraded one takes priority if it exists in scene)
-                    if (gradeDestData != null && aciByDest.ContainsKey(gradeKey))
-                    {
-                        foreach (var aci in aciByDest[gradeKey])
-                        {
-                            if (_knownTargets.Contains(aci.gameObject)) continue;
-                            float d = Vector3.Distance(playerPos, aci.transform.position);
-                            if (d < bestDist) { bestDist = d; bestAci = aci; }
-                        }
-                        if (bestAci != null) matchedKey = gradeKey;
-                    }
-
-                    // If no grade ACI found, try base destination
-                    if (bestAci == null && destData != null && aciByDest.ContainsKey(baseKey))
-                    {
-                        foreach (var aci in aciByDest[baseKey])
-                        {
-                            if (_knownTargets.Contains(aci.gameObject)) continue;
-                            float d = Vector3.Distance(playerPos, aci.transform.position);
-                            if (d < bestDist) { bestDist = d; bestAci = aci; }
-                        }
-                        if (bestAci != null) matchedKey = baseKey;
-                    }
-
-                    if (bestAci == null)
-                        continue;
-
-                    int destMap = matchedKey.Item1;
-                    int destArea = matchedKey.Item2;
-
-                    // Skip self-transitions
-                    if (destMap == _lastMapNo && destArea == _lastAreaNo)
-                        continue;
-
-                    // Deduplicate by destination area
-                    var areaKey = (destMap, destArea);
-                    if (addedAreas.Contains(areaKey))
-                        continue;
-
-                    // Get proper area name from the matched ACI's actual destination
-                    string name = null;
-                    try
-                    {
-                        name = ParameterAreaName.GetAreaName((AppInfo.MAP)destMap, (uint)destArea);
-                    }
-                    catch { }
-                    if (string.IsNullOrEmpty(name) || name.Contains("not found"))
-                    {
-                        try { name = jump.GetName(); } catch { }
-                    }
-                    if (string.IsNullOrEmpty(name) || name.Contains("not found"))
-                        name = $"Map {destMap} Area {destArea}";
-
-                    float dist = Vector3.Distance(playerPos, bestAci.transform.position);
-                    _events[EventCategory.Transitions].Add(new NavigationEvent
-                    {
-                        Name = name,
-                        Position = bestAci.transform.position,
-                        Target = bestAci.gameObject,
-                        Category = EventCategory.Transitions,
-                        DistanceToPlayer = dist
-                    });
-                    _knownTargets.Add(bestAci.gameObject);
-                    addedAreas.Add(areaKey);
-                    added++;
-                }
-
-                DebugLogger.Log($"[NavList] ScanTransitions town: {added} transitions (map {_lastMapNo} area {_lastAreaNo})");
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Log($"[NavList] ScanTransitions town error: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Field fallback for dimensions/dungeons and other areas without minimap icon data.
-        /// Scans all active AreaChangeInfo objects and adds non-self transitions.
-        /// </summary>
-        private void ScanTransitionsFieldFallback(Vector3 playerPos)
-        {
-            try
-            {
-                var areaChangeInfos = UnityEngine.Object.FindObjectsOfType<AreaChangeInfo>();
-                var addedAreas = new System.Collections.Generic.HashSet<(int, int)>();
-                int added = 0;
-
-                foreach (var aci in areaChangeInfos)
-                {
-                    if (aci == null || aci.gameObject == null || !aci.gameObject.activeInHierarchy)
-                        continue;
-
-                    var dest = aci.m_Destination;
-                    if (dest == null) continue;
-
-                    if (_knownTargets.Contains(aci.gameObject))
-                        continue;
-
-                    // Skip transitions back to current area
-                    if (dest.m_MapNo == _lastMapNo && dest.m_AreaNo == _lastAreaNo)
-                        continue;
-
-                    // Deduplicate by destination
-                    var areaKey = (dest.m_MapNo, dest.m_AreaNo);
-                    if (addedAreas.Contains(areaKey))
-                        continue;
-
-                    string name = GetTransitionNameFromAreaChange(aci);
-                    float dist = Vector3.Distance(playerPos, aci.transform.position);
-
-                    _events[EventCategory.Transitions].Add(new NavigationEvent
-                    {
-                        Name = name,
-                        Position = aci.transform.position,
-                        Target = aci.gameObject,
-                        Category = EventCategory.Transitions,
-                        DistanceToPlayer = dist
-                    });
-                    _knownTargets.Add(aci.gameObject);
-                    addedAreas.Add(areaKey);
-                    added++;
-                }
-
-                DebugLogger.Log($"[NavList] ScanTransitions field fallback: {added} transitions (map {_lastMapNo} area {_lastAreaNo})");
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Log($"[NavList] ScanTransitions field fallback error: {ex.Message}");
-            }
-        }
+        // ScanTransitionsFallback and ScanTransitionsFieldFallback removed -
+        // AreaChangePatch-based filtering in ScanTransitions now handles all maps uniformly.
 
         /// <summary>
         /// Get transition name from AreaChangeInfo destination data.
