@@ -1986,6 +1986,13 @@ namespace DigimonNOAccess
                         }
                     }
 
+                    // Also accept interactive entrances (m_IsInputWait = button press required)
+                    // These are interior/dungeon entrances with no minimap icon
+                    if (!valid && aci.m_IsInputWait)
+                    {
+                        valid = true;
+                    }
+
                     if (!valid) continue;
 
                     string name = GetTransitionNameFromAreaChange(aci);
