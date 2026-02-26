@@ -1988,7 +1988,8 @@ namespace DigimonNOAccess
 
                     // Also accept interactive entrances (m_IsInputWait = button press required)
                     // These are interior/dungeon entrances with no minimap icon
-                    if (!valid && aci.m_IsInputWait)
+                    // Skip in town - town uses its own ScanTransitionsFallback path
+                    if (!valid && aci.m_IsInputWait && _lastMapNo != (int)AppInfo.MAP.TOWN)
                     {
                         valid = true;
                     }
