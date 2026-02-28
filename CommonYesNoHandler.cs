@@ -17,12 +17,21 @@ namespace DigimonNOAccess
         private int _pollCounter = 0;
         private const int POLL_INTERVAL = 3;
 
+        // Japanese placeholder text that appears when the event system reuses the window
+        // visually but manages text/cursor externally (e.g. first-playthrough egg selection).
+        private const string PLACEHOLDER_TEXT = "メッセージ入力欄";
+
         /// <summary>
         /// Check if the Yes/No dialog is currently open and interactive.
-        /// Must have a callback set to be truly interactive.
+        /// Uses CommonYesNoPatch.IsWindowOpen which hooks the actual Open()/Close() calls,
+        /// so it works regardless of whether m_callback is visible to Il2Cpp interop.
+        /// Skips windows with placeholder text (event system controlling the window externally).
         /// </summary>
         public bool IsOpen()
         {
+            if (!CommonYesNoPatch.IsWindowOpen)
+                return false;
+
             _window = Object.FindObjectOfType<uCommonYesNoWindow>();
 
             if (_window == null)
@@ -30,17 +39,16 @@ namespace DigimonNOAccess
 
             try
             {
-                // Must be active AND have a callback to be truly interactive
                 if (!_window.gameObject.activeInHierarchy)
                     return false;
 
-                // Check if callback is set - this indicates the dialog is truly interactive
-                var callback = _window.m_callback;
-                if (callback == null)
+                if (_window.m_message == null)
                     return false;
 
-                // Also verify the message text component exists and is active
-                if (_window.m_message == null || !_window.m_message.gameObject.activeInHierarchy)
+                // Skip when the event system reuses the window with placeholder text;
+                // those yes/no prompts are handled by the event dialog system instead.
+                string msg = _window.m_message.text;
+                if (string.IsNullOrEmpty(msg) || msg == PLACEHOLDER_TEXT)
                     return false;
 
                 return true;
