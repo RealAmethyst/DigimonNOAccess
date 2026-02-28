@@ -154,6 +154,20 @@ namespace DigimonNOAccess
         }
 
         /// <summary>
+        /// Get only the keyboard or controller display name for an action.
+        /// </summary>
+        public static string GetBindingDisplayName(string actionName, bool controller)
+        {
+            if (_actions.TryGetValue(actionName, out var bindings))
+            {
+                var binding = controller ? bindings.ControllerBinding : bindings.KeyboardBinding;
+                if (binding != null)
+                    return binding.DisplayName;
+            }
+            return "None";
+        }
+
+        /// <summary>
         /// Register all default bindings. These can be overridden by config.
         /// </summary>
         private static void RegisterDefaultBindings()
@@ -874,6 +888,256 @@ ShopCheckBits = L3
             RegisterDefaultBindings();  // Reset to defaults first
             LoadConfig();
             ScreenReader.Say("Hotkey configuration reloaded");
+        }
+
+        // ========== Rebinding Support ==========
+
+        /// <summary>
+        /// Context determines which actions can share bindings.
+        /// Actions in the same context or Global context cannot share bindings.
+        /// </summary>
+        public enum ActionContext { Global, Field, Battle, Training, Shop }
+
+        private static readonly Dictionary<string, ActionContext> _actionContexts = new Dictionary<string, ActionContext>
+        {
+            {"RepeatLast", ActionContext.Global},
+            {"AnnounceStatus", ActionContext.Global},
+            {"ToggleVoicedText", ActionContext.Global},
+            {"CompassDirection", ActionContext.Field},
+            {"Partner1Status", ActionContext.Field},
+            {"Partner2Status", ActionContext.Field},
+            {"NavNextCategory", ActionContext.Field},
+            {"NavPrevCategory", ActionContext.Field},
+            {"NavPrevEvent", ActionContext.Field},
+            {"NavCurrentEvent", ActionContext.Field},
+            {"NavNextEvent", ActionContext.Field},
+            {"NavToEvent", ActionContext.Field},
+            {"ToggleAutoWalk", ActionContext.Field},
+            {"BattleEnemy1", ActionContext.Battle},
+            {"BattleEnemy2", ActionContext.Battle},
+            {"BattleEnemy3", ActionContext.Battle},
+            {"BattleOrderPower", ActionContext.Battle},
+            {"TrainingP1Info", ActionContext.Training},
+            {"TrainingP2Info", ActionContext.Training},
+            {"ShopCheckBits", ActionContext.Shop},
+        };
+
+        // Keys the game uses natively - never offer these as plain keyboard bindings
+        private static readonly HashSet<KeyCode> _blockedKeys = new HashSet<KeyCode>
+        {
+            KeyCode.Space, KeyCode.Backspace, KeyCode.Return, KeyCode.Escape, KeyCode.Tab,
+            KeyCode.C, KeyCode.V, KeyCode.Q, KeyCode.E,
+            KeyCode.W, KeyCode.A, KeyCode.S, KeyCode.D,
+            KeyCode.UpArrow, KeyCode.DownArrow, KeyCode.LeftArrow, KeyCode.RightArrow,
+        };
+
+        // Controller buttons safe without a modifier
+        private static readonly HashSet<ControllerButton> _safeControllerButtons = new HashSet<ControllerButton>
+        {
+            ControllerButton.RStickUp, ControllerButton.RStickDown,
+            ControllerButton.RStickLeft, ControllerButton.RStickRight,
+            ControllerButton.L3, ControllerButton.R3,
+        };
+
+        // Only LT/RT are valid modifiers (they suppress game input when held)
+        private static readonly ControllerButton[] _modifiers =
+        {
+            ControllerButton.LT, ControllerButton.RT,
+        };
+
+        // Buttons that can be used as combo targets with LT/RT
+        private static readonly ControllerButton[] _comboTargets =
+        {
+            ControllerButton.DPadUp, ControllerButton.DPadDown, ControllerButton.DPadLeft, ControllerButton.DPadRight,
+            ControllerButton.A, ControllerButton.B, ControllerButton.X, ControllerButton.Y,
+            ControllerButton.LB, ControllerButton.RB,
+        };
+
+        // Cached allowed binding lists (built once)
+        private static List<InputBinding> _allowedKeyboard;
+        private static List<InputBinding> _allowedController;
+
+        public static ActionContext GetActionContext(string actionName)
+        {
+            return _actionContexts.TryGetValue(actionName, out var ctx) ? ctx : ActionContext.Global;
+        }
+
+        /// <summary>
+        /// Get the current binding for an action (keyboard or controller).
+        /// </summary>
+        public static InputBinding GetBinding(string actionName, bool controller)
+        {
+            if (_actions.TryGetValue(actionName, out var bindings))
+                return controller ? bindings.ControllerBinding : bindings.KeyboardBinding;
+            return null;
+        }
+
+        /// <summary>
+        /// Update a binding at runtime and apply immediately.
+        /// </summary>
+        public static void SetBinding(string actionName, bool controller, InputBinding binding)
+        {
+            if (!_actions.ContainsKey(actionName))
+                _actions[actionName] = new ActionBindings();
+
+            if (controller)
+                _actions[actionName].ControllerBinding = binding;
+            else
+                _actions[actionName].KeyboardBinding = binding;
+        }
+
+        /// <summary>
+        /// Compare two bindings for equality. Both null = equal.
+        /// </summary>
+        public static bool BindingsEqual(InputBinding a, InputBinding b)
+        {
+            if (a == null && b == null) return true;
+            if (a == null || b == null) return false;
+            if (a.IsKeyboard != b.IsKeyboard) return false;
+
+            if (a.IsKeyboard)
+                return a.Key == b.Key && a.RequiresCtrl == b.RequiresCtrl
+                    && a.RequiresAlt == b.RequiresAlt && a.RequiresShift == b.RequiresShift;
+
+            return a.MainButton == b.MainButton && a.ModifierButton == b.ModifierButton;
+        }
+
+        /// <summary>
+        /// Check if a proposed binding would conflict with another action
+        /// in the same or overlapping context.
+        /// </summary>
+        public static bool WouldConflict(string actionName, bool controller, InputBinding proposed)
+        {
+            if (proposed == null) return false; // None never conflicts
+
+            var myContext = GetActionContext(actionName);
+
+            foreach (var kvp in _actions)
+            {
+                if (kvp.Key == actionName) continue;
+
+                var otherBinding = controller ? kvp.Value.ControllerBinding : kvp.Value.KeyboardBinding;
+                if (otherBinding == null) continue;
+                if (!BindingsEqual(proposed, otherBinding)) continue;
+
+                var otherContext = GetActionContext(kvp.Key);
+                // Conflict if either is Global, or same context
+                if (myContext == ActionContext.Global || otherContext == ActionContext.Global || myContext == otherContext)
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Get all valid keyboard binding options for the pick-from-list UI.
+        /// Index 0 is null (None). Built once and cached.
+        /// </summary>
+        public static List<InputBinding> GetAllowedKeyboardBindings()
+        {
+            if (_allowedKeyboard != null) return _allowedKeyboard;
+
+            _allowedKeyboard = new List<InputBinding>();
+            _allowedKeyboard.Add(null); // None
+
+            // F1-F12
+            for (int i = 0; i < 12; i++)
+                _allowedKeyboard.Add(new InputBinding(KeyCode.F1 + i));
+
+            // Safe plain letters
+            KeyCode[] safeLetters =
+            {
+                KeyCode.B, KeyCode.F, KeyCode.G, KeyCode.H, KeyCode.I, KeyCode.J,
+                KeyCode.K, KeyCode.L, KeyCode.M, KeyCode.N, KeyCode.O, KeyCode.P,
+                KeyCode.R, KeyCode.T, KeyCode.U, KeyCode.X, KeyCode.Y, KeyCode.Z,
+            };
+
+            foreach (var key in safeLetters)
+                _allowedKeyboard.Add(new InputBinding(key));
+
+            // Shift + same letters
+            foreach (var key in safeLetters)
+                _allowedKeyboard.Add(new InputBinding(key, false, false, true));
+
+            return _allowedKeyboard;
+        }
+
+        /// <summary>
+        /// Get all valid controller binding options for the pick-from-list UI.
+        /// Index 0 is null (None). Built once and cached.
+        /// </summary>
+        public static List<InputBinding> GetAllowedControllerBindings()
+        {
+            if (_allowedController != null) return _allowedController;
+
+            _allowedController = new List<InputBinding>();
+            _allowedController.Add(null); // None
+
+            // Safe buttons (no modifier needed)
+            foreach (var btn in _safeControllerButtons)
+                _allowedController.Add(new InputBinding(btn));
+
+            // LT/RT + combo targets (face, DPad, LB, RB - all suppressed when LT/RT held)
+            foreach (var mod in _modifiers)
+                foreach (var btn in _comboTargets)
+                    _allowedController.Add(new InputBinding(mod, btn));
+
+            return _allowedController;
+        }
+
+        /// <summary>
+        /// Save current bindings to hotkeys.ini.
+        /// </summary>
+        public static void SaveConfig()
+        {
+            try
+            {
+                // Ordered list of actions for consistent output
+                string[] actionOrder =
+                {
+                    "RepeatLast", "AnnounceStatus", "ToggleVoicedText",
+                    "CompassDirection",
+                    "Partner1Status", "Partner2Status",
+                    "BattleEnemy1", "BattleEnemy2", "BattleEnemy3", "BattleOrderPower",
+                    "NavNextCategory", "NavPrevCategory",
+                    "NavPrevEvent", "NavCurrentEvent", "NavNextEvent",
+                    "NavToEvent", "ToggleAutoWalk",
+                    "TrainingP1Info", "TrainingP2Info",
+                    "ShopCheckBits",
+                };
+
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("; DigimonNOAccess Hotkey Configuration");
+                sb.AppendLine("; Modified by in-game settings menu");
+                sb.AppendLine(";");
+                sb.AppendLine("; KEYBOARD: F1-F12, letters (not game keys), Shift+key");
+                sb.AppendLine("; CONTROLLER: RStick, L3, R3 (solo), or modifier+button (LT/RT/LB/RB + DPad/face)");
+                sb.AppendLine("; Set to 'None' to disable. F8 reloads this file in-game.");
+                sb.AppendLine();
+
+                sb.AppendLine("[Keyboard]");
+                foreach (var action in actionOrder)
+                {
+                    if (!_actions.ContainsKey(action)) continue;
+                    var binding = _actions[action].KeyboardBinding;
+                    sb.AppendLine($"{action} = {(binding != null ? binding.DisplayName : "None")}");
+                }
+
+                sb.AppendLine();
+                sb.AppendLine("[Controller]");
+                foreach (var action in actionOrder)
+                {
+                    if (!_actions.ContainsKey(action)) continue;
+                    var binding = _actions[action].ControllerBinding;
+                    sb.AppendLine($"{action} = {(binding != null ? binding.DisplayName : "None")}");
+                }
+
+                System.IO.File.WriteAllText(_configPath, sb.ToString());
+                DebugLogger.Log("[ModInputManager] Config saved from menu");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error($"[ModInputManager] Error saving config: {ex.Message}");
+            }
         }
     }
 

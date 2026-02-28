@@ -16,6 +16,16 @@ namespace DigimonNOAccess
         private static PadManager.BUTTON _lastInjectedButtons = PadManager.BUTTON._Non;
         private static PadManager.BUTTON _currentInjectedButtons = PadManager.BUTTON._Non;
 
+        // When a mod modifier (LT/RT) is held, suppress face buttons and DPad
+        // from reaching the game so modifier+button combos don't trigger game actions
+        private static PadManager.BUTTON _suppressedButtons = PadManager.BUTTON._Non;
+        private static readonly PadManager.BUTTON SuppressableMask =
+            PadManager.BUTTON.bCircle | PadManager.BUTTON.bCross |
+            PadManager.BUTTON.bSquare | PadManager.BUTTON.bTriangle |
+            PadManager.BUTTON.bL | PadManager.BUTTON.bR |
+            PadManager.BUTTON.dUp | PadManager.BUTTON.dDown |
+            PadManager.BUTTON.dLeft | PadManager.BUTTON.dRight;
+
         // Repeat timing (matches game defaults)
         private static int _repeatCounter = 0;
         private static PadManager.BUTTON _heldButtons = PadManager.BUTTON._Non;
@@ -146,12 +156,15 @@ namespace DigimonNOAccess
         }
 
         // Postfixes for PadManager static methods
+        // All postfixes: inject SDL3 buttons, then strip suppressed buttons
         private static void GetInput_Postfix(ref PadManager.BUTTON __result)
         {
             if (_enabled && SDLController.IsAvailable && Application.isFocused)
             {
                 __result |= _currentInjectedButtons;
             }
+            if (_suppressedButtons != PadManager.BUTTON._Non)
+                __result &= ~_suppressedButtons;
         }
 
         private static void GetTrigger_Postfix(ref PadManager.BUTTON __result)
@@ -161,6 +174,8 @@ namespace DigimonNOAccess
                 PadManager.BUTTON triggerButtons = _currentInjectedButtons & ~_lastInjectedButtons;
                 __result |= triggerButtons;
             }
+            if (_suppressedButtons != PadManager.BUTTON._Non)
+                __result &= ~_suppressedButtons;
         }
 
         private static void GetRepeat_Postfix(ref PadManager.BUTTON __result)
@@ -169,6 +184,8 @@ namespace DigimonNOAccess
             {
                 __result |= _repeatButtons;
             }
+            if (_suppressedButtons != PadManager.BUTTON._Non)
+                __result &= ~_suppressedButtons;
         }
 
         private static void IsTrigger_Postfix(PadManager.BUTTON button, ref bool __result)
@@ -178,18 +195,21 @@ namespace DigimonNOAccess
                 PadManager.BUTTON triggerButtons = _currentInjectedButtons & ~_lastInjectedButtons;
                 __result = (triggerButtons & button) != 0;
             }
+            if (__result && (_suppressedButtons & button) != 0)
+                __result = false;
         }
 
         private static void IsRepeat_Postfix(PadManager.BUTTON button, ref bool __result)
         {
             if (!__result && _enabled && SDLController.IsAvailable && Application.isFocused)
             {
-                // Check if this button should repeat
                 PadManager.BUTTON triggerButtons = _currentInjectedButtons & ~_lastInjectedButtons;
                 bool justTriggered = (triggerButtons & button) != 0;
                 bool isRepeating = (_repeatButtons & button) != 0;
                 __result = justTriggered || isRepeating;
             }
+            if (__result && (_suppressedButtons & button) != 0)
+                __result = false;
         }
 
         private static void IsInput_Postfix(PadManager.BUTTON button, ref bool __result)
@@ -198,6 +218,8 @@ namespace DigimonNOAccess
             {
                 __result = (_currentInjectedButtons & button) != 0;
             }
+            if (__result && (_suppressedButtons & button) != 0)
+                __result = false;
         }
 
         private static void GetLeftStick_Postfix(ref Vector2 __result)
@@ -244,6 +266,13 @@ namespace DigimonNOAccess
                 // Read current button state from SDL3
                 _currentInjectedButtons = ReadSDL3Buttons();
 
+                // Determine if a mod modifier (LT/RT) is held via SDL3.
+                // When held, suppress face buttons and DPad from reaching the game
+                // so modifier+button combos don't trigger game actions (e.g. LT+A won't Confirm).
+                bool ltHeld = SDLController.IsLeftTriggerHeld();
+                bool rtHeld = SDLController.IsRightTriggerHeld();
+                _suppressedButtons = (ltHeld || rtHeld) ? SuppressableMask : PadManager.BUTTON._Non;
+
                 // Debug logging
                 if (_debugMode && _currentInjectedButtons != PadManager.BUTTON._Non)
                 {
@@ -263,6 +292,11 @@ namespace DigimonNOAccess
                             // ALWAYS inject SDL3 buttons (OR with any existing)
                             // This ensures our input is always registered
                             padData.button |= _currentInjectedButtons;
+
+                            // Strip suppressed buttons from pad buffer so game systems
+                            // that read directly from the buffer also don't see them
+                            if (_suppressedButtons != PadManager.BUTTON._Non)
+                                padData.button &= ~_suppressedButtons;
 
                             // During auto-walk, inject camera rotation as right stick buttons
                             if (NavigationListHandler.AutoWalkActive)
@@ -301,6 +335,13 @@ namespace DigimonNOAccess
                     __instance.m_ButtonRelease |= releaseButtons;
                     // Clear held buttons that were released
                     _heldButtons &= ~releaseButtons;
+                }
+
+                // Strip suppressed buttons from trigger and repeat buffers
+                if (_suppressedButtons != PadManager.BUTTON._Non)
+                {
+                    __instance.m_ButtonTrigger &= ~_suppressedButtons;
+                    __instance.m_ButtonRepeat &= ~_suppressedButtons;
                 }
 
                 // Handle button repeat for held buttons (important for D-pad navigation)

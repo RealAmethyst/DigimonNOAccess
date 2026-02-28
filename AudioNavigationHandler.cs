@@ -47,10 +47,6 @@ namespace DigimonNOAccess
         private static float NearestVolume => ModSettings.NearestVolume;
         private static float BackgroundVolume => ModSettings.BackgroundVolume;
 
-        private static float EnemyVolumeMultiplier => ModSettings.EnemyVolumeMultiplier;
-        private static float NpcVolumeMultiplier => ModSettings.NpcVolumeMultiplier;
-        private static float TransitionVolumeMultiplier => ModSettings.TransitionVolumeMultiplier;
-
         // Tracking settings
         private const float TrackingUpdateInterval = 0.5f;
         private float _lastTrackingScan = 0f;
@@ -295,12 +291,13 @@ namespace DigimonNOAccess
                         _ => 3
                     };
 
-                    // Per-type volume multiplier
-                    float typeMultiplier = type switch
+                    float typeVolume = type switch
                     {
-                        PositionalAudio.SoundType.Enemy => EnemyVolumeMultiplier,
-                        PositionalAudio.SoundType.NPC => NpcVolumeMultiplier,
-                        PositionalAudio.SoundType.Transition => TransitionVolumeMultiplier,
+                        PositionalAudio.SoundType.Item => ModSettings.ItemVolume,
+                        PositionalAudio.SoundType.NPC => ModSettings.NpcVolume,
+                        PositionalAudio.SoundType.Enemy => ModSettings.EnemyVolume,
+                        PositionalAudio.SoundType.Transition => ModSettings.TransitionVolume,
+                        PositionalAudio.SoundType.Facility => ModSettings.FacilityVolume,
                         _ => 1.0f
                     };
 
@@ -309,18 +306,15 @@ namespace DigimonNOAccess
                         var audio = _navAudio[list[i].obj].audio;
                         if (i >= maxSounds)
                         {
-                            // Beyond limit - silence
                             audio.SetMaxVolume(0f);
                         }
                         else if (i == 0)
                         {
-                            // Nearest of this type - full volume with type scaling
-                            audio.SetMaxVolume(NearestVolume * typeMultiplier);
+                            audio.SetMaxVolume(NearestVolume * typeVolume);
                         }
                         else
                         {
-                            // Other audible sources - reduced volume with type scaling
-                            audio.SetMaxVolume(BackgroundVolume * typeMultiplier);
+                            audio.SetMaxVolume(BackgroundVolume * typeVolume);
                         }
                     }
                 }

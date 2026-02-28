@@ -36,10 +36,12 @@ namespace DigimonNOAccess
         public static float NearestVolume { get; set; } = 0.8f;
         public static float BackgroundVolume { get; set; } = 0.15f;
 
-        // --- Audio Navigation: Per-type Volume Multipliers ---
-        public static float EnemyVolumeMultiplier { get; set; } = 0.63f;
-        public static float NpcVolumeMultiplier { get; set; } = 0.63f;
-        public static float TransitionVolumeMultiplier { get; set; } = 1.26f;
+        // --- Audio Navigation: Per-type Volumes (0.0 to 1.0) ---
+        public static float ItemVolume { get; set; } = 1.0f;
+        public static float NpcVolume { get; set; } = 1.0f;
+        public static float EnemyVolume { get; set; } = 1.0f;
+        public static float TransitionVolume { get; set; } = 1.0f;
+        public static float FacilityVolume { get; set; } = 1.0f;
 
         // --- Audio Navigation: Per-type Enable/Disable ---
         public static bool ItemsEnabled { get; set; } = true;
@@ -117,9 +119,11 @@ namespace DigimonNOAccess
             NearestVolume = data.NearestVolume;
             BackgroundVolume = data.BackgroundVolume;
 
-            EnemyVolumeMultiplier = data.EnemyVolumeMultiplier;
-            NpcVolumeMultiplier = data.NpcVolumeMultiplier;
-            TransitionVolumeMultiplier = data.TransitionVolumeMultiplier;
+            ItemVolume = data.ItemVolume;
+            NpcVolume = data.NpcVolume;
+            EnemyVolume = data.EnemyVolume;
+            TransitionVolume = data.TransitionVolume;
+            FacilityVolume = data.FacilityVolume;
 
             ItemsEnabled = data.ItemsEnabled;
             NpcsEnabled = data.NpcsEnabled;
@@ -149,9 +153,11 @@ namespace DigimonNOAccess
                 NearestVolume = NearestVolume,
                 BackgroundVolume = BackgroundVolume,
 
-                EnemyVolumeMultiplier = EnemyVolumeMultiplier,
-                NpcVolumeMultiplier = NpcVolumeMultiplier,
-                TransitionVolumeMultiplier = TransitionVolumeMultiplier,
+                ItemVolume = ItemVolume,
+                NpcVolume = NpcVolume,
+                EnemyVolume = EnemyVolume,
+                TransitionVolume = TransitionVolume,
+                FacilityVolume = FacilityVolume,
 
                 ItemsEnabled = ItemsEnabled,
                 NpcsEnabled = NpcsEnabled,
@@ -180,9 +186,11 @@ namespace DigimonNOAccess
             public float NearestVolume { get; set; } = 0.8f;
             public float BackgroundVolume { get; set; } = 0.15f;
 
-            public float EnemyVolumeMultiplier { get; set; } = 0.63f;
-            public float NpcVolumeMultiplier { get; set; } = 0.63f;
-            public float TransitionVolumeMultiplier { get; set; } = 1.26f;
+            public float ItemVolume { get; set; } = 1.0f;
+            public float NpcVolume { get; set; } = 1.0f;
+            public float EnemyVolume { get; set; } = 1.0f;
+            public float TransitionVolume { get; set; } = 1.0f;
+            public float FacilityVolume { get; set; } = 1.0f;
 
             public bool ItemsEnabled { get; set; } = true;
             public bool NpcsEnabled { get; set; } = true;
