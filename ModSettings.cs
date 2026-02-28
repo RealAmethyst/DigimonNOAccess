@@ -57,6 +57,12 @@ namespace DigimonNOAccess
         public static int MaxTransitionSounds { get; set; } = 2;
         public static int MaxFacilitySounds { get; set; } = 2;
 
+        // --- Gameplay: Care Mechanics ---
+        public static bool DisableHunger { get; set; } = false;
+        public static bool DisableToilet { get; set; } = false;
+        public static bool DisableFatigue { get; set; } = false;
+        public static bool DisableSickness { get; set; } = false;
+
         public static void Initialize(string modFolderPath)
         {
             _settingsPath = Path.Combine(modFolderPath, "settings.json");
@@ -136,6 +142,11 @@ namespace DigimonNOAccess
             MaxEnemySounds = data.MaxEnemySounds;
             MaxTransitionSounds = data.MaxTransitionSounds;
             MaxFacilitySounds = data.MaxFacilitySounds;
+
+            DisableHunger = data.DisableHunger;
+            DisableToilet = data.DisableToilet;
+            DisableFatigue = data.DisableFatigue;
+            DisableSickness = data.DisableSickness;
         }
 
         private static SettingsData CreateData()
@@ -170,6 +181,11 @@ namespace DigimonNOAccess
                 MaxEnemySounds = MaxEnemySounds,
                 MaxTransitionSounds = MaxTransitionSounds,
                 MaxFacilitySounds = MaxFacilitySounds,
+
+                DisableHunger = DisableHunger,
+                DisableToilet = DisableToilet,
+                DisableFatigue = DisableFatigue,
+                DisableSickness = DisableSickness,
             };
         }
 
@@ -203,6 +219,11 @@ namespace DigimonNOAccess
             public int MaxEnemySounds { get; set; } = 3;
             public int MaxTransitionSounds { get; set; } = 2;
             public int MaxFacilitySounds { get; set; } = 2;
+
+            public bool DisableHunger { get; set; } = false;
+            public bool DisableToilet { get; set; } = false;
+            public bool DisableFatigue { get; set; } = false;
+            public bool DisableSickness { get; set; } = false;
         }
     }
 }

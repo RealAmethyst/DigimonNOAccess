@@ -70,7 +70,8 @@ namespace DigimonNOAccess
             EventTriggerPatch.Apply();
             QuestItemCounterPatch.Apply();
             OptionPanelPatch.Apply(_harmony);
-            LoggerInstance.Msg("Dialog, battle, area change, event trigger, option panel, and quest item patches applied");
+            CareMechanicsPatch.Apply(_harmony);
+            LoggerInstance.Msg("Dialog, battle, area change, event trigger, option panel, care mechanics, and quest item patches applied");
 
             // Apply gamepad input injection patch for PlayStation controller support
             // Apply if SDL3 is available (even if controller not connected yet)

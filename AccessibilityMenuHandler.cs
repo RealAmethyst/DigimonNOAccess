@@ -819,7 +819,22 @@ namespace DigimonNOAccess
         {
             return new SettingItem[]
             {
-                new ReadOnlySetting("No settings yet", "More coming soon", "Gameplay settings will be added in a future update"),
+                new ToggleSetting("Disable Hunger",
+                    () => ModSettings.DisableHunger,
+                    v => { ModSettings.DisableHunger = v; if (v) CareMechanicsPatch.ResetHunger(); ModSettings.Save(); },
+                    description: "Prevents your partners from getting hungry. They will not ask for food."),
+                new ToggleSetting("Disable Toilet",
+                    () => ModSettings.DisableToilet,
+                    v => { ModSettings.DisableToilet = v; if (v) CareMechanicsPatch.ResetToilet(); ModSettings.Save(); },
+                    description: "Prevents your partners from needing to use the toilet."),
+                new ToggleSetting("Disable Fatigue",
+                    () => ModSettings.DisableFatigue,
+                    v => { ModSettings.DisableFatigue = v; if (v) CareMechanicsPatch.ResetFatigue(); ModSettings.Save(); },
+                    description: "Prevents your partners from getting tired or needing sleep. Also applies during training."),
+                new ToggleSetting("Disable Sickness",
+                    () => ModSettings.DisableSickness,
+                    v => { ModSettings.DisableSickness = v; if (v) CareMechanicsPatch.ResetSickness(); ModSettings.Save(); },
+                    description: "Prevents your partners from getting sick or injured."),
             };
         }
 
