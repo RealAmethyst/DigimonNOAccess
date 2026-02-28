@@ -212,6 +212,7 @@ namespace DigimonNOAccess
                 string state = GamepadInputPatch.DebugMode ? "on" : "off";
                 ScreenReader.Say($"Input debug mode: {state}");
             }
+
         }
 
         private void AnnounceCurrentStatus()

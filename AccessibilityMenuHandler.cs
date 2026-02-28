@@ -9,6 +9,8 @@ namespace DigimonNOAccess
     /// Full accessibility settings menu with category-based navigation.
     /// Activated from the game's options menu via OptionPanelPatch.
     /// TTS-only output with game sound effects for native feel.
+    /// Uses state-change driven announcements matching game menu pattern:
+    /// input handlers change state, CheckStateChange detects differences and speaks once.
     /// </summary>
     public class AccessibilityMenuHandler : IAccessibilityHandler
     {
@@ -26,32 +28,22 @@ namespace DigimonNOAccess
         private int _settingIndex;
         private bool _showControllerBindings = false;
 
+        // State tracking for change-driven announcements (matches game menu pattern)
+        private MenuLevel _lastLevel = MenuLevel.Categories;
+        private int _lastCategoryIndex = -1;
+        private int _lastSettingIndex = -1;
+        private string _lastValue = "";
+        private int _lastItemCount;
+
         // Keybind listen mode
         private bool _isListening;
         private string _listeningAction;
         private bool _listeningController;
         private bool _waitForRelease; // blocks menu input until all buttons released after listen mode
 
-        // Input state with repeat timing to match game feel
-        // Game uses 16-frame initial delay + 4-frame repeat interval at 60fps
-        private const float RepeatFirstDelay = 16f / 60f; // ~267ms
-        private const float RepeatInterval = 4f / 60f;    // ~67ms
-
-        private bool _wasUpPressed;
-        private bool _wasDownPressed;
-        private bool _wasLeftPressed;
-        private bool _wasRightPressed;
+        // Confirm/cancel edge detection (trigger-only, no repeat)
         private bool _wasConfirmPressed;
         private bool _wasCancelPressed;
-
-        private float _upHoldTime;
-        private float _downHoldTime;
-        private float _leftHoldTime;
-        private float _rightHoldTime;
-        private float _upNextRepeat;
-        private float _downNextRepeat;
-        private float _leftNextRepeat;
-        private float _rightNextRepeat;
 
         private readonly SettingsCategory[] _categories;
 
@@ -80,12 +72,14 @@ namespace DigimonNOAccess
             // that triggered this activation (prevents immediately entering first category)
             _wasConfirmPressed = true;
             _wasCancelPressed = true;
-            _wasUpPressed = _wasDownPressed = _wasLeftPressed = _wasRightPressed = false;
 
             PlaySe(CriSoundManager.SE_OpenWindow1);
-            // Match game menu announcement pattern: "MenuName. ItemName, index of total"
+            // Single Say with complete text, matching game menu open pattern
             var firstCat = _categories[0];
             ScreenReader.Say($"Accessibility Settings. {firstCat.Name}, 1 of {_categories.Length}. {firstCat.Description}");
+
+            // Sync state so CheckStateChange doesn't re-announce
+            SyncState();
 
             DebugLogger.Log("[AccessibilityMenu] Activated");
         }
@@ -115,6 +109,7 @@ namespace DigimonNOAccess
             }
 
             HandleInput();
+            CheckStateChange();
         }
 
         public void AnnounceStatus()
@@ -122,7 +117,7 @@ namespace DigimonNOAccess
             if (!_isActive)
                 return;
 
-            AnnounceCurrentItem();
+            ScreenReader.Say(BuildCurrentAnnouncement());
         }
 
         private void HandleInput()
@@ -133,49 +128,39 @@ namespace DigimonNOAccess
                 return;
             }
 
-            bool upPressed = Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.W);
-            bool downPressed = Input.GetKey(KeyCode.DownArrow) || Input.GetKey(KeyCode.S);
-            bool leftPressed = Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.A);
-            bool rightPressed = Input.GetKey(KeyCode.RightArrow) || Input.GetKey(KeyCode.D);
-            bool confirmPressed = Input.GetKey(KeyCode.Return) || Input.GetKey(KeyCode.Space);
-            bool cancelPressed = Input.GetKey(KeyCode.Escape) || Input.GetKey(KeyCode.Backspace);
-
-            if (ModInputManager.IsUsingSDL)
-            {
-                upPressed = upPressed || SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.DPadUp);
-                downPressed = downPressed || SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.DPadDown);
-                leftPressed = leftPressed || SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.DPadLeft);
-                rightPressed = rightPressed || SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.DPadRight);
-                confirmPressed = confirmPressed || SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.A);
-                cancelPressed = cancelPressed || SDLController.IsButtonHeld(SDLController.SDL_GameControllerButton.B);
-            }
-
             // After exiting listen mode, block all input until every button is released.
             // This prevents held DPad/face buttons from leaking into menu navigation.
             if (_waitForRelease)
             {
-                if (!upPressed && !downPressed && !leftPressed && !rightPressed && !confirmPressed && !cancelPressed)
+                bool anyHeld = PadManager.IsInput(PadManager.BUTTON.dUp | PadManager.BUTTON.dDown |
+                    PadManager.BUTTON.dLeft | PadManager.BUTTON.dRight |
+                    PadManager.BUTTON.slUp | PadManager.BUTTON.slDown |
+                    PadManager.BUTTON.slLeft | PadManager.BUTTON.slRight |
+                    PadManager.BUTTON.bOK | PadManager.BUTTON.bCANCEL);
+                if (!anyHeld)
                 {
                     _waitForRelease = false;
-                    _wasUpPressed = _wasDownPressed = _wasLeftPressed = _wasRightPressed = false;
                     _wasConfirmPressed = _wasCancelPressed = false;
                 }
                 return;
             }
 
-            float dt = Time.unscaledDeltaTime;
-
-            // Directional inputs use repeat timing to match game feel
-            if (CheckRepeat(upPressed, ref _wasUpPressed, ref _upHoldTime, ref _upNextRepeat, dt))
+            // Directional inputs use PadManager.IsRepeat() — the exact same repeat
+            // pipeline every game menu uses. Covers keyboard, dpad, and left stick
+            // with identical timing (SetRepeatTiming defaults: 16 frame delay, 4 frame interval).
+            if (PadManager.IsRepeat(PadManager.BUTTON.dUp) || PadManager.IsRepeat(PadManager.BUTTON.slUp))
                 HandleUp();
-            if (CheckRepeat(downPressed, ref _wasDownPressed, ref _downHoldTime, ref _downNextRepeat, dt))
+            if (PadManager.IsRepeat(PadManager.BUTTON.dDown) || PadManager.IsRepeat(PadManager.BUTTON.slDown))
                 HandleDown();
-            if (CheckRepeat(leftPressed, ref _wasLeftPressed, ref _leftHoldTime, ref _leftNextRepeat, dt))
+            if (PadManager.IsRepeat(PadManager.BUTTON.dLeft) || PadManager.IsRepeat(PadManager.BUTTON.slLeft))
                 HandleLeft();
-            if (CheckRepeat(rightPressed, ref _wasRightPressed, ref _rightHoldTime, ref _rightNextRepeat, dt))
+            if (PadManager.IsRepeat(PadManager.BUTTON.dRight) || PadManager.IsRepeat(PadManager.BUTTON.slRight))
                 HandleRight();
 
             // Confirm and cancel are edge-only (no repeat)
+            bool confirmPressed = PadManager.IsTrigger(PadManager.BUTTON.bOK);
+            bool cancelPressed = PadManager.IsTrigger(PadManager.BUTTON.bCANCEL);
+
             if (confirmPressed && !_wasConfirmPressed)
                 HandleConfirm();
             if (cancelPressed && !_wasCancelPressed)
@@ -185,38 +170,7 @@ namespace DigimonNOAccess
             _wasCancelPressed = cancelPressed;
         }
 
-        /// <summary>
-        /// Checks if a directional input should fire, matching the game's repeat timing:
-        /// fires on first press, waits RepeatFirstDelay, then repeats every RepeatInterval.
-        /// </summary>
-        private bool CheckRepeat(bool pressed, ref bool wasPressed, ref float holdTime, ref float nextRepeat, float dt)
-        {
-            if (!pressed)
-            {
-                wasPressed = false;
-                holdTime = 0f;
-                return false;
-            }
-
-            // First frame pressed — fire immediately
-            if (!wasPressed)
-            {
-                wasPressed = true;
-                holdTime = 0f;
-                nextRepeat = RepeatFirstDelay;
-                return true;
-            }
-
-            // Held — accumulate time and check for repeat
-            holdTime += dt;
-            if (holdTime >= nextRepeat)
-            {
-                nextRepeat += RepeatInterval;
-                return true;
-            }
-
-            return false;
-        }
+        // ========== Input Handlers (state change only, no speech) ==========
 
         private void HandleUp()
         {
@@ -236,7 +190,6 @@ namespace DigimonNOAccess
                     _settingIndex = items.Length - 1;
             }
             PlaySe(CriSoundManager.SE_MoveCursor1);
-            AnnounceCurrentItem();
         }
 
         private void HandleDown()
@@ -257,7 +210,6 @@ namespace DigimonNOAccess
                     _settingIndex = 0;
             }
             PlaySe(CriSoundManager.SE_MoveCursor1);
-            AnnounceCurrentItem();
         }
 
         private void HandleLeft()
@@ -269,7 +221,6 @@ namespace DigimonNOAccess
                 var item = items[_settingIndex];
                 if (item is ToggleSetting || item is ReadOnlySetting || item is KeybindSetting) return;
                 item.OnLeft();
-                AnnounceAfterChange(item);
             }
         }
 
@@ -282,7 +233,6 @@ namespace DigimonNOAccess
                 var item = items[_settingIndex];
                 if (item is ToggleSetting || item is ReadOnlySetting || item is KeybindSetting) return;
                 item.OnRight();
-                AnnounceAfterChange(item);
             }
         }
 
@@ -292,12 +242,8 @@ namespace DigimonNOAccess
             {
                 _level = MenuLevel.Settings;
                 _settingIndex = 0;
+                _categories[_categoryIndex].InvalidateItems();
                 PlaySe(CriSoundManager.SE_OK);
-
-                var cat = _categories[_categoryIndex];
-                var items = cat.Items;
-                ScreenReader.Say(cat.Name);
-                QueueAnnounceCurrentItem();
             }
             else
             {
@@ -316,40 +262,18 @@ namespace DigimonNOAccess
                 }
 
                 item.OnConfirm();
+                if (item is ToggleSetting)
+                    _categories[_categoryIndex].InvalidateItems();
                 PlaySe(CriSoundManager.SE_OK);
-                AnnounceAfterChange(item);
             }
-        }
-
-        private void AnnounceAfterChange(SettingItem changedItem)
-        {
-            // Re-fetch items in case a toggle changed the list
-            var items = _categories[_categoryIndex].Items;
-            ClampSettingIndex(items);
-            var currentItem = items[_settingIndex];
-            string val = currentItem.GetValueText();
-            if (val != null)
-                ScreenReader.Say(val);
-        }
-
-        private void ClampSettingIndex(SettingItem[] items)
-        {
-            if (_settingIndex >= items.Length)
-                _settingIndex = items.Length - 1;
-            if (_settingIndex < 0)
-                _settingIndex = 0;
         }
 
         private void HandleCancel()
         {
             if (_level == MenuLevel.Settings)
             {
-                // Back to categories
                 _level = MenuLevel.Categories;
                 PlaySe(CriSoundManager.SE_Cancel);
-                var cat = _categories[_categoryIndex];
-                ScreenReader.Say("Accessibility Settings.");
-                QueueAnnounceCurrentItem();
             }
             else
             {
@@ -360,6 +284,130 @@ namespace DigimonNOAccess
                 PlaySe(CriSoundManager.SE_Cancel);
                 _pendingDeactivate = true;
             }
+        }
+
+        // ========== State-Change Detection (matches game menu pattern) ==========
+
+        /// <summary>
+        /// Compares current state against last-known state and announces changes.
+        /// Called once per frame after input handling, producing at most one Say() call.
+        /// This matches how game menus work: poll state, detect change, speak once.
+        /// </summary>
+        private void CheckStateChange()
+        {
+            // Don't announce during listen mode or button release wait
+            if (_isListening || _waitForRelease)
+                return;
+
+            // Level transition takes priority (entering/leaving a category)
+            if (_level != _lastLevel)
+            {
+                if (_level == MenuLevel.Settings)
+                {
+                    // Entered a category — announce category name + first item
+                    var cat = _categories[_categoryIndex];
+                    var items = cat.Items;
+                    ClampSettingIndex(items);
+                    var item = items[_settingIndex];
+                    string val = item.GetValueText();
+                    string announcement = $"{cat.Name}. {item.Name}";
+                    if (val != null)
+                        announcement += $": {val}";
+                    announcement += $", {_settingIndex + 1} of {items.Length}";
+                    if (item.Description != null)
+                        announcement += $". {item.Description}";
+                    ScreenReader.Say(announcement);
+                }
+                else
+                {
+                    // Returned to categories
+                    var cat = _categories[_categoryIndex];
+                    string announcement = $"Accessibility Settings. {cat.Name}, {_categoryIndex + 1} of {_categories.Length}";
+                    if (cat.Description != null)
+                        announcement += $". {cat.Description}";
+                    ScreenReader.Say(announcement);
+                }
+                SyncState();
+                return;
+            }
+
+            // Category-level cursor change
+            if (_level == MenuLevel.Categories)
+            {
+                if (_categoryIndex != _lastCategoryIndex)
+                {
+                    var cat = _categories[_categoryIndex];
+                    string announcement = $"{cat.Name}, {_categoryIndex + 1} of {_categories.Length}";
+                    if (cat.Description != null)
+                        announcement += $". {cat.Description}";
+                    ScreenReader.Say(announcement);
+                    SyncState();
+                }
+                return;
+            }
+
+            // Settings level
+            var currentItems = _categories[_categoryIndex].Items;
+            ClampSettingIndex(currentItems);
+
+            // Setting cursor moved
+            if (_settingIndex != _lastSettingIndex)
+            {
+                var item = currentItems[_settingIndex];
+                string val = item.GetValueText();
+                string announcement = item.Name;
+                if (val != null)
+                    announcement += $": {val}";
+                announcement += $", {_settingIndex + 1} of {currentItems.Length}";
+                if (item.Description != null)
+                    announcement += $". {item.Description}";
+                ScreenReader.Say(announcement);
+                SyncState();
+                return;
+            }
+
+            // Value change on current item (slider adjust or toggle confirm)
+            var currentItem = currentItems[_settingIndex];
+            string currentVal = currentItem.GetValueText() ?? "";
+            if (currentVal != _lastValue)
+            {
+                string announcement = currentVal;
+                if (currentItems.Length != _lastItemCount)
+                    announcement += $", {currentItems.Length} settings in this category";
+                ScreenReader.Say(announcement);
+                SyncState();
+            }
+        }
+
+        /// <summary>
+        /// Syncs all tracking fields to current state.
+        /// Call after announcing to prevent re-announcing the same state.
+        /// </summary>
+        private void SyncState()
+        {
+            _lastLevel = _level;
+            _lastCategoryIndex = _categoryIndex;
+            _lastSettingIndex = _settingIndex;
+            if (_level == MenuLevel.Settings)
+            {
+                var items = _categories[_categoryIndex].Items;
+                ClampSettingIndex(items);
+                _lastValue = items[_settingIndex].GetValueText() ?? "";
+                _lastItemCount = items.Length;
+            }
+            else
+            {
+                _lastValue = "";
+                _lastItemCount = 0;
+            }
+        }
+
+        private void ClampSettingIndex(SettingItem[] items)
+        {
+            if (_settingIndex >= items.Length)
+                _settingIndex = items.Length - 1;
+            if (_settingIndex < 0)
+                _settingIndex = 0;
         }
 
         // ========== Keybind Listen Mode ==========
@@ -391,7 +439,8 @@ namespace DigimonNOAccess
             {
                 ExitListenMode();
                 PlaySe(CriSoundManager.SE_Cancel);
-                AnnounceCurrentItem();
+                ScreenReader.Say(BuildCurrentAnnouncement());
+                SyncState();
                 return;
             }
 
@@ -438,8 +487,8 @@ namespace DigimonNOAccess
             {
                 ExitListenMode();
                 PlaySe(CriSoundManager.SE_Cancel);
-                ScreenReader.Say($"{binding.DisplayName} is not allowed. Try a function key or a safe letter.");
-                QueueAnnounceCurrentItem();
+                ScreenReader.Say($"{binding.DisplayName} is not allowed. Try a function key or a safe letter. {BuildCurrentAnnouncement()}");
+                SyncState();
                 return;
             }
 
@@ -449,8 +498,8 @@ namespace DigimonNOAccess
                 string conflict = FindConflictingAction(_listeningAction, false, binding);
                 ExitListenMode();
                 PlaySe(CriSoundManager.SE_Cancel);
-                ScreenReader.Say($"{binding.DisplayName} is already used by {conflict}.");
-                QueueAnnounceCurrentItem();
+                ScreenReader.Say($"{binding.DisplayName} is already used by {conflict}. {BuildCurrentAnnouncement()}");
+                SyncState();
                 return;
             }
 
@@ -459,8 +508,8 @@ namespace DigimonNOAccess
             ModInputManager.SaveConfig();
             ExitListenMode();
             PlaySe(CriSoundManager.SE_OK);
-            ScreenReader.Say($"{_listeningAction} set to {binding.DisplayName}");
-            QueueAnnounceCurrentItem();
+            ScreenReader.Say($"{_listeningAction} set to {binding.DisplayName}. {BuildCurrentAnnouncement()}");
+            SyncState();
         }
 
         private void ListenForControllerBinding()
@@ -527,8 +576,8 @@ namespace DigimonNOAccess
             {
                 ExitListenMode();
                 PlaySe(CriSoundManager.SE_Cancel);
-                ScreenReader.Say($"{binding.DisplayName} is not allowed. Use right stick, L3, R3, or hold LT or RT with another button.");
-                QueueAnnounceCurrentItem();
+                ScreenReader.Say($"{binding.DisplayName} is not allowed. Use right stick, L3, R3, or hold LT or RT with another button. {BuildCurrentAnnouncement()}");
+                SyncState();
                 return;
             }
 
@@ -538,8 +587,8 @@ namespace DigimonNOAccess
                 string conflict = FindConflictingAction(_listeningAction, true, binding);
                 ExitListenMode();
                 PlaySe(CriSoundManager.SE_Cancel);
-                ScreenReader.Say($"{binding.DisplayName} is already used by {conflict}.");
-                QueueAnnounceCurrentItem();
+                ScreenReader.Say($"{binding.DisplayName} is already used by {conflict}. {BuildCurrentAnnouncement()}");
+                SyncState();
                 return;
             }
 
@@ -548,8 +597,8 @@ namespace DigimonNOAccess
             ModInputManager.SaveConfig();
             ExitListenMode();
             PlaySe(CriSoundManager.SE_OK);
-            ScreenReader.Say($"{_listeningAction} set to {binding.DisplayName}");
-            QueueAnnounceCurrentItem();
+            ScreenReader.Say($"{_listeningAction} set to {binding.DisplayName}. {BuildCurrentAnnouncement()}");
+            SyncState();
         }
 
         private static bool IsBindingAllowed(InputBinding proposed, bool controller)
@@ -595,6 +644,8 @@ namespace DigimonNOAccess
             return "another action";
         }
 
+        // ========== Announcement Helpers ==========
+
         private string BuildCurrentAnnouncement()
         {
             if (_level == MenuLevel.Categories)
@@ -608,6 +659,7 @@ namespace DigimonNOAccess
             else
             {
                 var items = _categories[_categoryIndex].Items;
+                ClampSettingIndex(items);
                 var item = items[_settingIndex];
                 string val = item.GetValueText();
                 string announcement = item.Name;
@@ -618,16 +670,6 @@ namespace DigimonNOAccess
                     announcement += $". {item.Description}";
                 return announcement;
             }
-        }
-
-        private void AnnounceCurrentItem()
-        {
-            ScreenReader.Say(BuildCurrentAnnouncement());
-        }
-
-        private void QueueAnnounceCurrentItem()
-        {
-            ScreenReader.SayQueued(BuildCurrentAnnouncement());
         }
 
         private static void PlaySe(string seName)
@@ -846,8 +888,11 @@ namespace DigimonNOAccess
             public string Name { get; }
             public string Description { get; }
             private readonly Func<SettingItem[]> _itemsBuilder;
+            private SettingItem[] _cachedItems;
 
-            public SettingItem[] Items => _itemsBuilder();
+            public SettingItem[] Items => _cachedItems ??= _itemsBuilder();
+
+            public void InvalidateItems() => _cachedItems = null;
 
             public SettingsCategory(string name, string description, Func<SettingItem[]> itemsBuilder)
             {
