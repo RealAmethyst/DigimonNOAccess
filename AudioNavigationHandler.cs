@@ -31,29 +31,25 @@ namespace DigimonNOAccess
         /// </summary>
         public void AnnounceStatus() { }
 
-        // Detection ranges (in Unity units - roughly 1 unit = 1 step)
-        private const float ItemRange = 80f;
-        private const float NpcRange = 80f;
-        private const float EnemyRange = 100f;
-        private const float TransitionRange = 60f;
-        private const float FacilityRange = 80f;
+        // All tunable values come from ModSettings (persisted to settings.json)
+        private static float ItemRange => ModSettings.ItemRange;
+        private static float NpcRange => ModSettings.NpcRange;
+        private static float EnemyRange => ModSettings.EnemyRange;
+        private static float TransitionRange => ModSettings.TransitionRange;
+        private static float FacilityRange => ModSettings.FacilityRange;
 
-        // Max simultaneous sounds per type (nearest N only, rest are silent)
-        private const int MaxItemSounds = 3;
-        private const int MaxNpcSounds = 3;
-        private const int MaxEnemySounds = 3;
-        private const int MaxTransitionSounds = 2;
-        private const int MaxFacilitySounds = 2;
+        private static int MaxItemSounds => ModSettings.MaxItemSounds;
+        private static int MaxNpcSounds => ModSettings.MaxNpcSounds;
+        private static int MaxEnemySounds => ModSettings.MaxEnemySounds;
+        private static int MaxTransitionSounds => ModSettings.MaxTransitionSounds;
+        private static int MaxFacilitySounds => ModSettings.MaxFacilitySounds;
 
-        // Volume levels (base)
-        private const float NearestVolume = 0.8f;
-        private const float BackgroundVolume = 0.15f;
+        private static float NearestVolume => ModSettings.NearestVolume;
+        private static float BackgroundVolume => ModSettings.BackgroundVolume;
 
-        // Per-type volume multipliers (applied on top of nearest/background)
-        // Enemy and NPC: -4dB (~0.63x), Transition: +2dB (~1.26x)
-        private const float EnemyVolumeMultiplier = 0.63f;
-        private const float NpcVolumeMultiplier = 0.63f;
-        private const float TransitionVolumeMultiplier = 1.26f;
+        private static float EnemyVolumeMultiplier => ModSettings.EnemyVolumeMultiplier;
+        private static float NpcVolumeMultiplier => ModSettings.NpcVolumeMultiplier;
+        private static float TransitionVolumeMultiplier => ModSettings.TransitionVolumeMultiplier;
 
         // Tracking settings
         private const float TrackingUpdateInterval = 0.5f;
@@ -354,89 +350,101 @@ namespace DigimonNOAccess
             var results = new List<(GameObject, PositionalAudio.SoundType, float)>();
 
             // Items
-            try
+            if (ModSettings.ItemsEnabled)
             {
-                var itemManager = ItemPickPointManager.m_instance;
-                if (itemManager != null && itemManager.m_itemPickPoints != null)
+                try
                 {
-                    foreach (var point in itemManager.m_itemPickPoints)
+                    var itemManager = ItemPickPointManager.m_instance;
+                    if (itemManager != null && itemManager.m_itemPickPoints != null)
                     {
-                        if (point == null || point.gameObject == null || !point.gameObject.activeInHierarchy)
-                            continue;
+                        foreach (var point in itemManager.m_itemPickPoints)
+                        {
+                            if (point == null || point.gameObject == null || !point.gameObject.activeInHierarchy)
+                                continue;
 
-                        float dist = Vector3.Distance(playerPos, point.transform.position);
-                        if (dist < ItemRange && dist > 1f)
-                            results.Add((point.gameObject, PositionalAudio.SoundType.Item, dist));
+                            float dist = Vector3.Distance(playerPos, point.transform.position);
+                            if (dist < ItemRange && dist > 1f)
+                                results.Add((point.gameObject, PositionalAudio.SoundType.Item, dist));
+                        }
                     }
                 }
+                catch { }
             }
-            catch { }
 
             // Transitions + Fishing spots + Toilets (all are MapTriggerScript subtypes)
-            try
+            if (ModSettings.TransitionsEnabled || ModSettings.FacilitiesEnabled)
             {
-                var mapTriggers = UnityEngine.Object.FindObjectsOfType<MapTriggerScript>();
-                foreach (var trigger in mapTriggers)
+                try
                 {
-                    if (trigger == null || trigger.gameObject == null || !trigger.gameObject.activeInHierarchy)
-                        continue;
+                    var mapTriggers = UnityEngine.Object.FindObjectsOfType<MapTriggerScript>();
+                    foreach (var trigger in mapTriggers)
+                    {
+                        if (trigger == null || trigger.gameObject == null || !trigger.gameObject.activeInHierarchy)
+                            continue;
 
-                    if (trigger.enterID == MapTriggerManager.EVENT.MapChange)
-                    {
-                        float dist = Vector3.Distance(playerPos, trigger.transform.position);
-                        if (dist < TransitionRange && dist > 1f)
-                            results.Add((trigger.gameObject, PositionalAudio.SoundType.Transition, dist));
-                    }
-                    else if (_facilityWavExists &&
-                             (trigger.enterID == MapTriggerManager.EVENT.Fishing ||
-                              trigger.enterID == MapTriggerManager.EVENT.Toilet))
-                    {
-                        float dist = Vector3.Distance(playerPos, trigger.transform.position);
-                        if (dist < FacilityRange && dist > 1f)
-                            results.Add((trigger.gameObject, PositionalAudio.SoundType.Facility, dist));
+                        if (ModSettings.TransitionsEnabled && trigger.enterID == MapTriggerManager.EVENT.MapChange)
+                        {
+                            float dist = Vector3.Distance(playerPos, trigger.transform.position);
+                            if (dist < TransitionRange && dist > 1f)
+                                results.Add((trigger.gameObject, PositionalAudio.SoundType.Transition, dist));
+                        }
+                        else if (ModSettings.FacilitiesEnabled && _facilityWavExists &&
+                                 (trigger.enterID == MapTriggerManager.EVENT.Fishing ||
+                                  trigger.enterID == MapTriggerManager.EVENT.Toilet))
+                        {
+                            float dist = Vector3.Distance(playerPos, trigger.transform.position);
+                            if (dist < FacilityRange && dist > 1f)
+                                results.Add((trigger.gameObject, PositionalAudio.SoundType.Facility, dist));
+                        }
                     }
                 }
+                catch { }
             }
-            catch { }
 
             // Enemies
-            try
+            if (ModSettings.EnemiesEnabled)
             {
-                if (_enemyManager != null && _enemyManager.m_EnemyCtrlArray != null)
+                try
                 {
-                    foreach (var enemy in _enemyManager.m_EnemyCtrlArray)
+                    if (_enemyManager != null && _enemyManager.m_EnemyCtrlArray != null)
                     {
-                        if (!GameStateService.IsEnemyAlive(enemy))
-                            continue;
+                        foreach (var enemy in _enemyManager.m_EnemyCtrlArray)
+                        {
+                            if (!GameStateService.IsEnemyAlive(enemy))
+                                continue;
 
-                        float dist = Vector3.Distance(playerPos, enemy.transform.position);
-                        if (dist < EnemyRange && dist > 1f)
-                            results.Add((enemy.gameObject, PositionalAudio.SoundType.Enemy, dist));
+                            float dist = Vector3.Distance(playerPos, enemy.transform.position);
+                            if (dist < EnemyRange && dist > 1f)
+                                results.Add((enemy.gameObject, PositionalAudio.SoundType.Enemy, dist));
+                        }
                     }
                 }
+                catch { }
             }
-            catch { }
 
             // NPCs
-            try
+            if (ModSettings.NpcsEnabled)
             {
-                if (_npcManager != null && _npcManager.m_NpcCtrlArray != null)
+                try
                 {
-                    foreach (var npc in _npcManager.m_NpcCtrlArray)
+                    if (_npcManager != null && _npcManager.m_NpcCtrlArray != null)
                     {
-                        if (npc == null || npc.gameObject == null || !npc.gameObject.activeInHierarchy)
-                            continue;
+                        foreach (var npc in _npcManager.m_NpcCtrlArray)
+                        {
+                            if (npc == null || npc.gameObject == null || !npc.gameObject.activeInHierarchy)
+                                continue;
 
-                        float dist = Vector3.Distance(playerPos, npc.transform.position);
-                        if (dist < NpcRange && dist > 1f)
-                            results.Add((npc.gameObject, PositionalAudio.SoundType.NPC, dist));
+                            float dist = Vector3.Distance(playerPos, npc.transform.position);
+                            if (dist < NpcRange && dist > 1f)
+                                results.Add((npc.gameObject, PositionalAudio.SoundType.NPC, dist));
+                        }
                     }
                 }
+                catch { }
             }
-            catch { }
 
             // Facilities (training, shops, restaurants, storage, etc.)
-            if (_facilityWavExists)
+            if (ModSettings.FacilitiesEnabled && _facilityWavExists)
             {
                 try
                 {

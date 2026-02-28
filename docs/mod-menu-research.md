@@ -1,376 +1,390 @@
-# Mod Menu UI Research
+# Mod Menu Research: In-Game Accessibility Settings
 
-This document contains extensive research on how the game's options menu system works and how we could potentially create a mod settings menu integrated into the game.
+## Executive Summary
 
-## 1. Options Menu Architecture
+The game's options menu uses a state-machine architecture with array-indexed panels. Adding a new "Accessibility" tab requires hooking into the existing `uOptionPanel` system. Three approaches exist, each with different trade-offs. The recommended approach is a **hybrid injection** - hooking the game's menu to add a new top-level entry, then rendering our own TTS-based panel when selected.
 
-### 1.1 Core Classes
+---
 
-The game's options menu is built around a hierarchical panel system:
+## Game's Options Menu Architecture
 
-**uOptionPanel** - Root controller for the entire options menu
-- Controls overall state machine
-- States: NONE, MAIN_SETTING, CLOSE, SAVE, APPLICATION_QUIT, AGREE, END
-- Sub-states (MainSettingState): TOP, OPTION, GRAPHICS, KEYCONFIG, APPLICATION_QUIT, AGREE
-- Contains references to multiple command panels (uOptionPanelCommand array)
-- Handles opening/closing animations, state transitions, and save/load callbacks
-- Manages system data saving via SystemDataSaveLoad
+### State Machine
 
-**Panel Hierarchy:**
+`uOptionPanel` drives the entire options screen with two enums:
+
+- **State** (overall lifecycle): NONE, MAIN_SETTING, CLOSE, SAVE, APPLICATION_QUIT, AGREE, AGREE_POST, AGREE_POST_WAIT, END
+- **MainSettingState** (which tab is active): TOP, OPTION, GRAPHICS, KEYCONFIG, APPLICATION_QUIT, AGREE
+
+### Flow
+
 ```
-uOptionPanel (Main Controller)
-- uOptionPanelHeadLine (Title/Header)
-- uOptionPanelCaption (Description/Help Text)
-- uOptionPanelCommand[] (Main Options Panel array)
-- uOptionTopPanelCommand (Top-level menu selector - tabs)
-- uOptionGraphicsPanelCommand (Graphics settings)
-- uOptionKeyConfigPanelCommand (Key configuration)
+Open() -> State = MAIN_SETTING, MainSettingState = TOP
+
+TOP state: Category list (4 items: Option, Graphics, Key Config, Quit)
+  -> User selects -> SetMainSettingState(OPTION|GRAPHICS|KEYCONFIG|...)
+  -> Activates m_uOptionPanelCommand[index]
+  -> Updates m_uOptionPanelHeadLine.ChangeText(state)
+
+Subpanel state: Individual settings
+  -> Back button -> SetMainSettingState(TOP)
+
+Close() -> Save -> End
 ```
 
-### 1.2 Command Panel Base Classes
+### Key Classes
 
-**uOptionPanelCommandBase** - Abstract base for all option panels
-- Inherits from uPanelBase (which inherits from MonoBehaviour)
+- `uOptionPanel` - Main controller, holds the state machine and panel array
+- `uOptionTopPanelCommand` - The TOP menu (category list). Has `m_CommandInfoArray[]` (CommandInfo structs with GameObject, Text, cursor position)
+- `uOptionPanelCommandBase` - Base for all subpanels. Virtual methods: Initialize, Update, LoadOptionSaveData, SaveCurrentData, SetCursor
+- `uOptionPanelHeadLine` - Displays tab name. Uses `m_HeadlineList[]` indexed by MainSettingState
+- `uOptionPanelItemBase` - Base for individual option items (toggle, slider, etc.)
 
-Key fields:
-- `m_Caption` - Reference to uOptionPanelCaption for displaying option descriptions
-- `m_MainCursor` - Visual cursor/highlight GameObject
-- `m_KeyCursorController` - Handles navigation input between items
-- `OptionPanel` - Back-reference to parent uOptionPanel
-- `m_State` - Panel state (NONE, MAIN, CLOSE, HYDE)
-- `EnableInput` - Property controlling whether panel accepts input
+### Critical Detail: Array Indexing
 
-Virtual methods to override:
-- `Initialize()` - Called during setup
-- `Update()`, `LateUpdate()` - Per-frame updates
-- `enablePanel(bool enable, bool finished_disable)` - Show/activate panel
-- `disablePanel()` - Hide/deactivate panel
-- `UpdateKeyInfo()` - Update caption based on current selection
-- `LoadOptionSaveData()` - Load saved settings
-- `SaveCurrentData()` - Save current settings
-- `SetCursor(int index)` - Set which item is selected
+The system uses **direct enum-to-array indexing**:
+- `m_uOptionPanelCommand[MainSettingState]` -> the panel for that state
+- `m_HeadlineList[MainSettingState]` -> the headline text
+- `m_CommandInfoArray[index]` -> the top menu item
 
-**uOptionPanelCommand** - Main options panel (Sound, Camera, etc.)
-- Extends uOptionPanelCommandBase
+This means adding a new category requires either:
+1. Extending/replacing these arrays at runtime
+2. Hijacking an existing state
+3. Working outside the array system entirely
 
-Key fields:
-- `m_CommandInfoArray` - Array of CommandInfo structs describing each menu item
-- `m_optionItemRoot` - Transform parent for spawning option items
-- `m_items` - List<uOptionPanelItemBase> containing all option items
+---
 
-**CommandInfo struct:**
-- `m_CommandObject` - The actual UI GameObject for this menu entry
-- `m_CommandCursorPos` - Position for cursor when item is selected
-- `m_CommandName` - Text component showing option name
-- `m_CommandNum` - Text component showing current value
-- `m_Slider` - Optional slider UI component
-- `m_ContentsCursor` - Visual cursor for this item
+## Current Mod Settings System
 
-### 1.3 Specialized Panels
+### ModSettingsHandler (F10 menu)
+- Standalone TTS-only menu (no visual UI)
+- Currently 1 setting: "Read Voiced Text"
+- Uses abstract `SettingItem` base with `ToggleSetting` subclass
+- Input: keyboard arrows + Enter/Space, controller DPad + A/B
+- Priority 5 (runs before other handlers)
 
-**uOptionTopPanelCommand** - Menu selector (Option, Graphics, Key Config tabs)
-- Displays the main category tabs at the top
-- Has `m_dustBox` Transform for hidden items
+### OptionsMenuHandler (game menu reader)
+- Reads and announces the game's native options menu
+- Tracks uOptionPanel state, cursor position, item values
+- Three-tier item reading: specific type casting -> CommandInfo fallback -> generic
+- Priority 40
 
-**uOptionGraphicsPanelCommand** - Graphics-specific panel
-- Resolution, ScreenMode, Antialiasing, DepthOfField options
+### Current Config Storage
+- `hotkeys.ini` - Keybindings only (Keyboard + Controller sections)
+- No persistent storage for other settings (all hardcoded or in-memory)
 
-**uOptionKeyConfigPanelCommand** - Key configuration panel
-- Complex state machine for key binding (MAIN, KEY_CHECK, KEY_END)
-- Manages keyboard and mouse configuration separately
-- Has scrollbar for long key lists
+---
 
-## 2. UI Item System
+## Three Approaches
 
-### 2.1 Item Base Class
+### Approach A: Full Game Menu Injection
 
-**uOptionPanelItemBase** - Base for all menu items (MonoBehaviour)
+**Concept:** Add a new MainSettingState (ACCESSIBILITY), create a real uOptionPanelCommandBase subclass, resize the panel arrays.
 
-Key fields:
-- `m_itemTitle` - GameObject container for item
-- `m_contentsCursor` - Visual cursor for this item
-- `m_headCursor` - Highlight cursor GameObject
-- `m_headMinScale`, `m_headMaxScale` - Cursor animation scales
-- `m_IndexId` - Numeric index of this item
-- `m_caption` - Reference to caption panel
-- `m_command` - Back-reference to parent command panel
-- `Value` - Property for getting/setting item's current value (int)
-
-Virtual methods:
-- `Setup(GameObject headCursor, float minScale, float maxScale, uOptionPanelCaption caption, int index, uOptionPanelCommandBase command)` - Initialize item
-- `Select` property - Set whether item is currently selected
-- `_Update()` - Returns bool (true if item changed), handles input processing
-- `Load()` - Load saved value for this item
-- `Save()` - Save current value
-- `captionKind` property - Returns CaptionKind for caption system
-
-### 2.2 Item Variants
-
-**uOptionPanelItemSlider** - For slider controls
-- `m_sliderObject` - Reference to UnityEngine.UI.Slider component
-- `m_sliderNum` - Text display showing current value
-- Overrides `_Update()` to handle slider input
-
-**uOptionPanelItemToggle** - For on/off toggles
-- Overrides `_Update()` to toggle boolean state
-- `OnToggle(bool toggle)` - Virtual callback for toggle changed
-
-**uOptionPanelItemVoid** - Special item for navigation/section headers
-- `m_settingState` - Which menu section this item navigates to
-- Used for menu navigation, not actual values
-
-**Specialized Volume/Camera Items:**
-- `uOptionPanelItemBgmVolume` - BGM volume slider (0-100)
-- `uOptionPanelItemSeVolume` - SE volume slider (0-100)
-- `uOptionPanelItemVoiceVolume` - Voice volume slider (0-100)
-- `uOptionPanelItemCameraH` - Horizontal camera sensitivity
-- `uOptionPanelItemCameraV` - Vertical camera sensitivity
-- `uOptionPanelItemSensitivity` - General sensitivity slider
-- `uOptionPanelItemVoiceLanguage` - Language selector dropdown
-
-## 3. State Management and Persistence
-
-### 3.1 Option Data Classes
-
-**OptionData** - Container for all user settings
-
-Enums defined:
-- `VolumeKind`: BGM, VOICE, SE, CAMERA_SENSITIVITY, MAX
-- `CameraMoveKind`: CAMERA_UD, CAMERA_LR, MAX
-- `OptionDataKind`: BGM, VOICE, SE, CAMERA_UPDOWN, CAMERA_LEFTRIGHT, CAMERA_SENSITIVITY, MAX
-- `GraphicOptionDataKind`: Resolution, ScreenMode, Antialiasing, DepthOfField, MAX
-- `KeyConfigDataKind`: A through MAX (20+ key mappings)
-
-Key fields:
-- `m_BgmVolume`, `m_VoiceVolume`, `m_SeVolume` - Float values (0-1 range)
-- `m_CameraUpDown`, `m_CameraLeftRight`, `m_CameraSensitivity` - Camera settings
-- `m_IsSavedFlag` - Boolean indicating if settings have been saved
-- `m_Resolution`, `m_ScreenMode`, `m_Antialiasing`, `m_DepthOfField` - Graphics
-- `m_Key[]`, `m_Mouse[]` - Key configuration arrays
-
-**OptionDataAccess** - Helper class for accessing OptionData
-
-Methods:
-- `ReadSaveData(BinaryReader)` - Load from binary save file
-- `WriteSaveData(BinaryWriter)` - Save to binary file
-- `GetVolume(VolumeKind)` - Get volume by type
-- `IsCameraMoveReverse(CameraMoveKind)` - Get camera inversion
-- `SetSavedFlag(bool)` - Mark as saved/unsaved
-- `ResetValue()` - Reset to defaults
-- `GetKeyConfig(KeyConfigDataKind)` - Get key binding
-- `SetKeyConfig(KeyConfigDataKind, KeyCode)` - Set key binding
-
-### 3.2 Save/Load System
-
-**SystemDataSaveLoad** - Manages option data persistence
-
-States: Idle, ErrorMsg, Load, RetryLoad, Save, RetrySave, Delete
-
-Key methods:
-- `SaveStartSystemData(Action<bool> callback)` - Start async save with callback
-- `LoadStartSystemData(Action<bool> callback)` - Start async load with callback
-- `Update()` - Process save/load state machine (must be called each frame)
-- `IsBusy()` - Returns true if operation in progress
-
-**Save Workflow:**
-1. User changes options in uOptionPanelCommand
-2. User presses confirm/save button
-3. uOptionPanel.SaveCurrentData() calls each panel's SaveCurrentData()
-4. Panel's SaveCurrentData() updates the OptionData fields
-5. uOptionPanel calls m_SystemDataSaveLoader.SaveStartSystemData(callback)
-6. SystemDataSaveLoad handles async file I/O
-7. Callback is invoked when complete
-
-## 4. Input and Navigation
-
-### 4.1 Cursor Control
-
-**KeyCursorController** - Manages menu navigation
-- Updates `m_MainCursor` position based on item selection
-- Applies smooth animation/scaling to cursor
-- Listens for up/down/left/right input to move between items
-
-### 4.2 Caption System
-
-When an item is selected:
-1. `SetCursor(int index)` is called on the command panel
-2. Panel finds corresponding item in `m_items` list
-3. Panel calls `item.Select = true`
-4. Item's Select setter calls caption system
-5. `m_caption.ChangeCaption(item.captionKind)` displays appropriate description
-
-**CaptionKind enum:**
-- NORMAL, REVERSE, CUSTOM_SOUND, VOICE, VOID, GRAPHIC, YES_NO, KEY_CONFIG, MAX
-
-## 5. Potential Implementation Approaches
-
-### Approach 1: Hook into Existing Menu (Recommended)
-
-Add a new tab to the existing options menu using Harmony patches.
-
-**Steps:**
-1. Patch `uOptionTopPanelCommand` to add a new "Mod Settings" tab
-2. Add a new `MainSettingState` enum value (e.g., MOD_SETTINGS)
-3. Create a custom panel class extending `uOptionPanelCommandBase`
-4. Patch `uOptionPanel` to instantiate and manage the new panel
-5. Handle state transitions to activate the mod panel
+**How it would work:**
+1. Hook `uOptionPanel.Initialize()` / `IEInitialize()`
+2. After original init, resize `m_uOptionPanelCommand[]` to add our panel
+3. Hook `uOptionTopPanelCommand.ItemSetUp()` to add a new CommandInfo entry
+4. Extend `m_HeadlineList[]` with "Accessibility" text
+5. Hook `SetMainSettingState()` to handle our new state value
+6. Create a real MonoBehaviour panel with uOptionPanelItemBase children
 
 **Pros:**
-- Fully integrated with game's menu system
-- Same visual style and navigation
-- Settings saved with game options (if extended properly)
+- Looks and behaves exactly like native menus
+- Game's cursor system handles navigation
+- Consistent with existing UI
 
 **Cons:**
-- Complex to implement
-- Requires multiple Harmony patches
-- Risk of breaking if game updates
+- Very fragile: enum values are compiled as integers in Il2Cpp, array resizing is risky
+- Must create real Unity GameObjects that match the game's prefab structure
+- Extensive hooking (5+ methods to patch)
+- If game updates, patches break
+- Creating proper uOptionPanelItemBase instances requires replicating prefab hierarchy (child GameObjects, Text components, cursors, sliders, etc.)
 
-### Approach 2: Custom Standalone Panel
+**Risk: HIGH** - The array-indexed enum system is hostile to injection.
 
-Create a separate panel that appears when a hotkey is pressed.
+---
 
-**Steps:**
-1. Inherit from `uPanelBase` directly
-2. Create UI programmatically or from prefab
-3. Show as overlay when hotkey pressed
-4. Handle input separately from game menus
+### Approach B: Hybrid Injection (RECOMMENDED)
+
+**Concept:** Add "Accessibility" as a menu item in the TOP panel, but when selected, take over rendering with our own TTS-based system (similar to current ModSettingsHandler but triggered from the game menu).
+
+**How it would work:**
+1. Hook `uOptionTopPanelCommand` to add one more item to the category list
+2. Hook `SetMainSettingState()` - when our custom state is selected, suppress the game's panel switching and activate our handler
+3. Our handler uses ScreenReader for all output (no visual UI needed for a blind user)
+4. Navigation uses the game's existing input (or our ModInputManager)
+5. Back button returns to TOP state normally
+
+**Implementation detail - Adding the menu item:**
+- `m_CommandInfoArray` is a serialized array on the MonoBehaviour
+- We can clone an existing CommandInfo's GameObject, rename its Text to "Accessibility"
+- Insert it into the array (or add after last item)
+- The TOP panel's cursor system uses `m_CommandInfoArray.Length` for bounds
+
+**Implementation detail - State hijacking:**
+- We don't need a real MainSettingState enum value
+- Hook `SetMainSettingState()`: if cursor index matches our item, set a mod flag and suppress the game's transition
+- While our flag is set, our handler takes over Update/input
+- On back/cancel, clear flag and call `SetMainSettingState(TOP)`
 
 **Pros:**
-- Simpler to implement
-- Less coupling with game code
-- Can be opened anytime (not just in options)
+- Menu item appears in the real game menu (feels native)
+- No need to create complex Unity UI (TTS-only output works perfectly for a blind user)
+- Much less fragile than full injection
+- Leverages existing ModSettingsHandler patterns
+- Settings categories and subcategories are easy to add
 
 **Cons:**
-- Separate from game's option menu
-- Need to create UI from scratch
-- Different visual style unless carefully matched
+- Visual menu item exists but the submenu is TTS-only (no visual controls)
+- Still requires hooking the TOP panel to add the item
+- Sighted helpers can't see the accessibility settings visually
 
-### Approach 3: Simple INI-Based Config (Current)
+**Risk: MEDIUM** - Limited hooking, graceful degradation if hooks fail.
 
-Continue using hotkeys.ini with F8 to reload.
+---
+
+### Approach C: Separate Menu with Game Menu Entry Point
+
+**Concept:** Keep ModSettingsHandler as a standalone TTS menu, but make it accessible from the game's options menu instead of (or in addition to) F10.
+
+**How it would work:**
+1. In OptionsMenuHandler, detect when user is on TOP panel
+2. Add a virtual "Accessibility" item that only exists in TTS (not visually)
+3. When cursor goes past the last real item, announce "Accessibility"
+4. On confirm, open ModSettingsHandler
+5. ModSettingsHandler handles everything from there
 
 **Pros:**
-- Already implemented
-- No UI code needed
-- Easy to edit externally
+- Minimal code changes
+- No game hooks needed
+- Very robust (nothing to break)
 
 **Cons:**
-- Not accessible in-game
-- Requires exiting game to change settings
+- "Ghost" menu item (announced but not visible) is confusing
+- Doesn't feel like a real menu integration
+- Navigation is weird (going past the end of a list)
 
-## 6. Key Classes for Implementation
+**Risk: LOW** but **user experience is poor**.
 
-### For Approach 1 (Integrated Menu):
+---
 
-```csharp
-// Classes to patch:
-uOptionPanel - Add new MainSettingState, instantiate mod panel
-uOptionTopPanelCommand - Add new tab item
-uOptionPanelCommand - Reference for creating similar panel
+## Why Approach B is Recommended
 
-// Classes to extend:
-uOptionPanelCommandBase - Base for mod settings panel
-uOptionPanelItemBase - Base for mod setting items
-uOptionPanelItemSlider - For slider settings
-uOptionPanelItemToggle - For toggle settings
+For a blind user, the visual panel contents don't matter - TTS is the interface. What matters is:
+1. "Accessibility" shows up as a real menu item when navigating the options menu
+2. Selecting it enters a familiar settings navigation (up/down, confirm, back)
+3. Settings persist across sessions
+4. Keybinds are manageable from within the game
+
+Approach B gives us the real menu entry (native feel) without the massive complexity of creating full Unity UI panels. The TTS-only submenu is actually an advantage: we control the entire experience and aren't limited by the game's widget types.
+
+---
+
+## Detailed Design for Approach B
+
+### 1. New Patch: OptionPanelPatch.cs
+
+```
+Hook: uOptionTopPanelCommand.Initialize() [postfix]
+  -> Clone last CommandInfo GameObject
+  -> Set text to "Accessibility"
+  -> Add to m_CommandInfoArray
+  -> Update cursor bounds
+
+Hook: uOptionPanel.SetMainSettingState() [prefix]
+  -> If state index == our item index:
+    -> Suppress original method
+    -> Set AccessibilityMenuActive = true
+    -> Hide all native subpanels
+    -> Return false (skip original)
+
+Hook: uOptionPanel.CheckInputKey() [prefix]
+  -> If AccessibilityMenuActive:
+    -> Route input to AccessibilityMenuHandler
+    -> Return false (skip original)
 ```
 
-### For Approach 2 (Standalone):
+### 2. New Handler: AccessibilityMenuHandler.cs
 
-```csharp
-// Classes to extend:
-uPanelBase - Base for custom panel
-MonoBehaviour - For custom items
+Categories:
+- General (Read Voiced Text, Announcement Verbosity, etc.)
+- Audio Navigation (ranges, volumes, per-type enable/disable)
+- Keybindings (show current bindings, allow rebinding)
+- About (mod version, credits)
 
-// Unity UI to use:
-UnityEngine.UI.Canvas
-UnityEngine.UI.Text
-UnityEngine.UI.Slider
-UnityEngine.UI.Toggle
-UnityEngine.UI.Button
+Navigation model:
+- Top level: category list (Up/Down to browse, Confirm to enter)
+- Inside category: setting list (Up/Down, Left/Right for values, Confirm to toggle)
+- Back: return to category list or to game's TOP menu
+
+### 3. Settings Persistence
+
+Two options for saving:
+
+**Option 1: MelonPreferences (if available in Il2Cpp build)**
+```
+File: UserData/DigimonNOAccess.cfg
+Format: INI (MelonLoader managed)
+
+[General]
+ReadVoicedText = false
+
+[AudioNavigation]
+ItemRange = 80
+NpcRange = 80
+EnemyRange = 100
+NearestVolume = 0.8
 ```
 
-## 7. UI Hierarchy Example
+MelonPreferences handles auto-save, type safety, defaults, file creation.
 
-Typical panel structure in hierarchy:
+**Option 2: Custom JSON/INI file**
 ```
-Canvas
-- OptionPanelRoot (Panel container)
-  - Background Image
-  - TopCommands (uOptionTopPanelCommand)
-    - Command Item 0 (Button, Text)
-    - Command Item 1 (Button, Text)
-    - Cursor (m_MainCursor GameObject)
-  - OptionCommand (uOptionPanelCommand)
-    - Item Root (m_optionItemRoot)
-      - OptionItem 0
-      - OptionItem 1
-      - ...
-    - Cursor
-  - Caption (uOptionPanelCaption)
-    - Text Component
-  - Animators (for open/close animations)
+File: Mods/DigimonNOAccess/settings.json
 ```
 
-## 8. Important Implementation Notes
+Manual read/write with System.Text.Json or simple INI parser (already have one for hotkeys.ini).
 
-1. **Item Update Order**: Items must implement `_Update()` returning bool to indicate if value changed. This controls caption updates.
+### 4. Keybind Rebinding (Future Phase)
 
-2. **Cursor Management**: Each item has its own headCursor GameObject. The parent command panel manages the main visual cursor (m_MainCursor).
+The game's KEYCONFIG panel has a key capture system:
+- State machine: MAIN -> KEY_CHECK -> KEY_END
+- Listens for next key press, stores as new binding
 
-3. **Animation Waiting**: uOptionPanel has `waitAnimation()` coroutine that waits for animation completion before changing states.
+We can replicate this for mod keybinds:
+- Announce "Press new key for [ActionName]"
+- Wait for keypress via ModInputManager
+- Store in hotkeys.ini or settings file
 
-4. **Panel Enable/Disable Pattern**:
-   - `enablePanel(bool, bool finished_disable)` - Show panel
-   - `disablePanel()` - Hide panel
+---
 
-5. **Async Save**: SystemDataSaveLoad must be updated each frame. Callback won't fire if Update() isn't called.
+## Settings Inventory (What Goes in the Menu)
 
-6. **Sound Effects**: Each panel can have open/close sound effects via SetOpenCloseSE().
+### General
+- Read Voiced Text (toggle) - currently the only ModSettings item
+- Announcement verbosity (Low/Medium/High)
 
-## 9. Mod Settings We Could Expose
+### Audio Navigation
+- Master audio nav volume (slider 0-100)
+- Per-type enable: Items, NPCs, Enemies, Transitions, Facilities (toggles)
+- Per-type range: Items, NPCs, Enemies, Transitions (slider)
+- Per-type volume multiplier (slider)
+- HRTF / Stereo pan mode (toggle, if Steam Audio unavailable)
 
-Potential settings for the mod menu:
+### Navigation
+- Auto-walk speed modifier
+- Pathfinding final approach distance
+- Compass direction format (Cardinal / Degrees)
 
-**Speech Settings:**
-- Read voiced text (toggle) - currently F5
-- Speech rate (if Tolk supports it)
-- Interrupt mode (always interrupt vs queue)
+### Keybindings
+- List all current bindings (read-only initially)
+- Phase 2: interactive rebinding
 
-**Audio Navigation:**
-- Enable/disable positional audio (toggle)
-- Wall detection (toggle)
-- Detection ranges (sliders): Items, NPCs, Enemies, Transitions
-- Volume levels (sliders): Positional audio, Wall sounds
+---
 
-**Controller Settings:**
-- Enable SDL3 (toggle)
-- Button layout preview
+## Key Files Reference
 
-**Hotkeys:**
-- Display current bindings (read-only initially)
-- Future: rebind in-game
+### Decompiled (read-only reference)
+- `decompiled/Il2Cpp/uOptionPanel.cs` - Main controller + state machine
+- `decompiled/Il2Cpp/uOptionTopPanelCommand.cs` - Category list panel
+- `decompiled/Il2Cpp/uOptionPanelCommandBase.cs` - Panel base class
+- `decompiled/Il2Cpp/uOptionPanelHeadLine.cs` - Tab headline display
+- `decompiled/Il2Cpp/uOptionPanelItemBase.cs` - Item base class
+- `decompiled/Il2Cpp/uOptionPanelItemToggle.cs` - Toggle control
+- `decompiled/Il2Cpp/uOptionPanelItemSlider.cs` - Slider control
+- `decompiled/Il2Cpp/OptionData.cs` - Settings data structure
 
-## 10. Recommended Next Steps
+### Mod files (to modify/create)
+- `OptionsMenuHandler.cs` - Extend to handle accessibility state
+- `ModSettingsHandler.cs` - Refactor into AccessibilityMenuHandler
+- `Main.cs` - Register new handler, init preferences
+- NEW: `OptionPanelPatch.cs` - Harmony patches for menu injection
+- NEW: `AccessibilityMenuHandler.cs` - Full settings menu handler
+- NEW: `ModPreferences.cs` - Settings persistence wrapper
 
-1. **Start with Approach 2** (Standalone Panel) for simplicity
-2. Create basic panel with a few toggle/slider items
-3. Test accessibility with screen reader
-4. If successful, consider migrating to Approach 1 for full integration
+---
 
-The standalone approach lets us validate the concept before investing in the more complex integrated approach.
+## Implementation Phases
 
-## 11. Files to Reference
+### Phase 1: Foundation
+- Create settings persistence (MelonPreferences or custom)
+- Migrate "Read Voiced Text" from in-memory to persistent
+- Create AccessibilityMenuHandler with category navigation (TTS-only)
+- Keep F10 as entry point initially
 
-Decompiled code locations:
-- `decompiled/Il2Cpp/uOptionPanel.cs`
-- `decompiled/Il2Cpp/uOptionPanelCommand.cs`
-- `decompiled/Il2Cpp/uOptionPanelCommandBase.cs`
-- `decompiled/Il2Cpp/uOptionPanelItemBase.cs`
-- `decompiled/Il2Cpp/uOptionPanelItemSlider.cs`
-- `decompiled/Il2Cpp/uOptionPanelItemToggle.cs`
-- `decompiled/Il2Cpp/uOptionTopPanelCommand.cs`
-- `decompiled/Il2Cpp/OptionData.cs`
-- `decompiled/Il2Cpp/OptionDataAccess.cs`
-- `decompiled/Il2Cpp/SystemDataSaveLoad.cs`
-- `decompiled/Il2Cpp/uPanelBase.cs`
+### Phase 2: Menu Injection
+- Write OptionPanelPatch hooks
+- Add "Accessibility" item to TOP panel
+- Wire up state hijacking so selecting it activates our handler
+- Keep F10 as alternative entry point
+
+### Phase 3: Settings Population
+- Add all audio navigation settings
+- Add all general settings
+- Wire settings to actual mod behavior (replace hardcoded constants)
+
+### Phase 4: Keybind Management
+- Show current keybinds in menu
+- Add interactive rebinding
+- Persist to hotkeys.ini or migrate to settings file
+
+---
+
+## Sound Effects (Confirmed)
+
+The game exposes menu sounds via `CriSoundManager` static methods. All use `PlayCommonSe(string cueName)`:
+
+- **Cursor move:** `CriSoundManager.PlayCommonSe(CriSoundManager.SE_MoveCursor1)`
+- **Confirm/OK:** `CriSoundManager.PlayCommonSe(CriSoundManager.SE_OK)`
+- **Cancel/Back:** `CriSoundManager.PlayCommonSe(CriSoundManager.SE_Cancel)`
+- **Window open:** `CriSoundManager.PlayCommonSe(CriSoundManager.SE_OpenWindow1)`
+- **Window close:** `CriSoundManager.PlayCommonSe(CriSoundManager.SE_CloseWindow1)`
+- **Error:** `CriSoundManager.PlayCommonSe(CriSoundManager.SE_Error)`
+
+All static, no instance needed, no extra parameters. Playing these at the right moments makes TTS-only menus feel native.
+
+---
+
+## Settings Persistence (Confirmed)
+
+**MelonPreferences is NOT available** in MelonLoader 0.7.1 (removed in 0.7.x).
+
+**Solution: Newtonsoft.Json** (already bundled with MelonLoader 0.7.1 as a dependency).
+
+```
+File: {ModFolder}/settings.json
+
+{
+  "General": {
+    "ReadVoicedText": false,
+    "AnnouncementVerbosity": "Medium"
+  },
+  "AudioNavigation": {
+    "ItemRange": 80,
+    "NpcRange": 80,
+    "EnemyRange": 100,
+    "TransitionRange": 60,
+    "NearestVolume": 0.8,
+    "BackgroundVolume": 0.15,
+    "ItemsEnabled": true,
+    "NpcsEnabled": true,
+    "EnemiesEnabled": true,
+    "TransitionsEnabled": true,
+    "FacilitiesEnabled": true
+  }
+}
+```
+
+- Load on startup (with defaults if file missing)
+- Save on every setting change (immediate, prevents loss)
+- Same folder as hotkeys.ini: `Path.GetDirectoryName(MelonAssembly.Location)`
+- Newtonsoft.Json handles serialization/deserialization automatically
+
+---
+
+## Open Questions
+
+1. **Il2Cpp array handling:** Il2CppReferenceArray may not support standard C# array resize. May need Il2Cpp interop methods or create a new array and reassign the field.
+2. **GameObject cloning:** `Object.Instantiate()` should work for cloning CommandInfo GameObjects, but need to verify the clone gets proper parent transform and layout.
+3. **Headline text injection:** `m_HeadlineList` is a string array on the MonoBehaviour - same Il2Cpp array concern.
+4. **Input conflict:** While our handler is active in the options menu, we must suppress the game's input handling for that panel to prevent double-processing.

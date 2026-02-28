@@ -643,11 +643,11 @@ namespace DigimonNOAccess
                         continue;
                     }
 
-                    bool enabled = false;
-                    try { enabled = et.enabled; } catch { }
-                    if (!enabled)
+                    uint etParamId = 0;
+                    try { etParamId = et.m_EventParamId; } catch { }
+                    if (etParamId != 0 && EventTriggerPatch.IsDisabled(etParamId))
                     {
-                        if (_debugQuestScan) DebugLogger.Log($"[QuestRescan] SKIP disabled: {goName} paramId={et.m_EventParamId}");
+                        if (_debugQuestScan) DebugLogger.Log($"[QuestRescan] SKIP disabled: {goName} paramId={etParamId}");
                         continue;
                     }
                     if (_knownTargets.Contains(et.gameObject))
@@ -680,9 +680,9 @@ namespace DigimonNOAccess
                         if (_debugQuestScan) DebugLogger.Log($"[QuestRescan] SKIP facility: {goName} cmd={cmdBlock}");
                         continue;
                     }
-                    if (cmdBlock.StartsWith("VENDOR_") || cmdBlock.StartsWith("EVENT."))
+                    if (cmdBlock.StartsWith("VENDOR_") || cmdBlock.StartsWith("EVENT.") || cmdBlock.StartsWith("PIT"))
                     {
-                        if (_debugQuestScan) DebugLogger.Log($"[QuestRescan] SKIP vendor/event: {goName} cmd={cmdBlock}");
+                        if (_debugQuestScan) DebugLogger.Log($"[QuestRescan] SKIP vendor/event/pit: {goName} cmd={cmdBlock}");
                         continue;
                     }
                     try
@@ -699,17 +699,7 @@ namespace DigimonNOAccess
                     }
                     catch { }
 
-                    if (_debugQuestScan) DebugLogger.Log($"[QuestRescan] Passed filters: {goName} cmd={cmdBlock} paramId={et.m_EventParamId} enabled={enabled}");
-
-                    // For non-PICK_ triggers, use et.enabled as quest acceptance gate.
-                    // The game toggles EventTriggerScript.enabled via ActiveTalkEventTrigger
-                    // when quests are accepted/completed. This works for both icon and no-icon triggers.
-                    // PICK_ triggers already check enabled above, so this only applies to ST_SUB_ etc.
-                    if (!cmdBlock.StartsWith("PICK_") && !enabled)
-                    {
-                        if (_debugQuestScan) DebugLogger.Log($"[QuestRescan] SKIP disabled non-PICK: {goName} cmd={cmdBlock}");
-                        continue;
-                    }
+                    if (_debugQuestScan) DebugLogger.Log($"[QuestRescan] Passed filters: {goName} cmd={cmdBlock} paramId={etParamId}");
 
                     if (cmdBlock.StartsWith("PICK_"))
                     {
@@ -2653,12 +2643,12 @@ namespace DigimonNOAccess
                     if (et == null || et.gameObject == null || !et.gameObject.activeInHierarchy)
                         continue;
 
-                    bool enabled = false;
-                    try { enabled = et.enabled; } catch { }
-                    if (!enabled) continue;
-
                     uint paramId = 0;
                     try { paramId = et.m_EventParamId; } catch { continue; }
+
+                    // Skip pitfalls deactivated by the game (e.g. after story progression)
+                    if (paramId != 0 && EventTriggerPatch.IsDisabled(paramId))
+                        continue;
 
                     string cmdBlock = null;
                     ParameterPlacementNpc placement = null;

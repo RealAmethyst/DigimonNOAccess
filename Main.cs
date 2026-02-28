@@ -23,6 +23,7 @@ namespace DigimonNOAccess
         private EvolutionHandler _evolutionHandler;
         private NavigationListHandler _navigationListHandler;
         private AudioNavigationHandler _audioNavigationHandler;
+        private AccessibilityMenuHandler _accessibilityMenuHandler;
 
         private HarmonyLib.Harmony _harmony;
         private bool _initialized = false;
@@ -36,6 +37,10 @@ namespace DigimonNOAccess
 
             // Initialize debug file logger
             DebugLogger.Initialize();
+
+            // Initialize settings persistence (before any handler reads settings)
+            ModSettings.Initialize(_modFolderPath);
+            LoggerInstance.Msg("Settings loaded");
 
             // Initialize Steam Audio HRTF (before any PositionalAudio instances are created)
             SteamAudioManager.Initialize();
@@ -62,7 +67,10 @@ namespace DigimonNOAccess
             DialogTextPatch.Apply(_harmony);
             BattleDamagePopPatch.Apply(_harmony);
             AreaChangePatch.Apply();
-            LoggerInstance.Msg("Dialog, battle, and area change patches applied");
+            EventTriggerPatch.Apply();
+            QuestItemCounterPatch.Apply();
+            OptionPanelPatch.Apply(_harmony);
+            LoggerInstance.Msg("Dialog, battle, area change, event trigger, option panel, and quest item patches applied");
 
             // Apply gamepad input injection patch for PlayStation controller support
             // Apply if SDL3 is available (even if controller not connected yet)
@@ -80,11 +88,12 @@ namespace DigimonNOAccess
             _evolutionHandler = new EvolutionHandler();
             _navigationListHandler = new NavigationListHandler();
             _audioNavigationHandler = new AudioNavigationHandler();
+            _accessibilityMenuHandler = new AccessibilityMenuHandler();
 
             // Create all handlers and add to registry
             _handlers = new List<IAccessibilityHandler>
             {
-                new ModSettingsHandler(),
+                _accessibilityMenuHandler,
                 new CommonYesNoHandler(),
                 new DialogChoiceHandler(),
                 new DifficultyDialogHandler(),
@@ -182,13 +191,6 @@ namespace DigimonNOAccess
             if (ModInputManager.IsActionTriggered("AnnounceStatus"))
             {
                 AnnounceCurrentStatus();
-            }
-
-            if (ModInputManager.IsActionTriggered("ToggleVoicedText"))
-            {
-                DialogTextPatch.AlwaysReadText = !DialogTextPatch.AlwaysReadText;
-                string state = DialogTextPatch.AlwaysReadText ? "on" : "off";
-                ScreenReader.Say($"Read voiced text: {state}");
             }
 
             if (ModInputManager.IsActionTriggered("CompassDirection"))

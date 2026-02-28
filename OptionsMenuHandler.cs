@@ -36,9 +36,13 @@ namespace DigimonNOAccess
 
         /// <summary>
         /// Check if options panel is currently open and in main settings mode.
+        /// Yields to AccessibilityMenuHandler when it's active.
         /// </summary>
         public bool IsOpen()
         {
+            if (AccessibilityMenuHandler.Instance != null && AccessibilityMenuHandler.Instance.IsOpen())
+                return false;
+
             return IsPanelActive() && _optionPanel.m_State == uOptionPanel.State.MAIN_SETTING;
         }
 
@@ -257,8 +261,9 @@ namespace DigimonNOAccess
                         var info = GetTopPanelItem(topPanel, dataIndex);
                         itemName = info.name;
                         itemValue = info.value;
-                        if (topPanel.m_items != null)
-                            totalItems = topPanel.m_items.Count;
+                        // Use m_DataMax for total (includes our injected Accessibility item)
+                        // m_items.Count only has game items, m_DataMax has game + ours
+                        totalItems = cursorController.m_DataMax;
                     }
                 }
                 else if (state == uOptionPanel.MainSettingState.OPTION)
@@ -330,6 +335,10 @@ namespace DigimonNOAccess
         {
             string name = "";
             string value = "";
+
+            // Handle our injected Accessibility item
+            if (dataIndex == OptionPanelPatch.AccessibilityItemIndex && OptionPanelPatch.AccessibilityItemIndex >= 0)
+                return ("Accessibility", "");
 
             try
             {
