@@ -193,7 +193,7 @@ namespace DigimonNOAccess
                 AnnounceCurrentStatus();
             }
 
-            if (ModInputManager.IsActionTriggered("CompassDirection"))
+            if (ModInputManager.IsActionTriggered("CompassDirection") && GameStateService.IsPlayerInField())
             {
                 string direction = _audioNavigationHandler?.GetCameraCompassDirection() ?? "unknown";
                 ScreenReader.Say($"Facing {direction}");

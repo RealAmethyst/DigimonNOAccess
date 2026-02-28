@@ -188,11 +188,11 @@ namespace DigimonNOAccess
             // === Field - Partner Status ===
             RegisterAction("Partner1Status",
                 keyboard: new InputBinding(KeyCode.F3),
-                controller: new InputBinding(ControllerButton.RB, ControllerButton.DPadUp));
+                controller: new InputBinding(ControllerButton.RT, ControllerButton.DPadRight));
 
             RegisterAction("Partner2Status",
                 keyboard: new InputBinding(KeyCode.F4),
-                controller: new InputBinding(ControllerButton.LB, ControllerButton.DPadUp));
+                controller: new InputBinding(ControllerButton.RT, ControllerButton.DPadLeft));
 
             // === Battle - Per-Enemy Info ===
             RegisterAction("BattleEnemy1",
@@ -215,15 +215,15 @@ namespace DigimonNOAccess
             // === Navigation List ===
             RegisterAction("NavNextCategory",
                 keyboard: new InputBinding(KeyCode.O),
-                controller: null);
+                controller: new InputBinding(ControllerButton.LT, ControllerButton.DPadRight));
 
             RegisterAction("NavPrevCategory",
                 keyboard: new InputBinding(KeyCode.I),
-                controller: null);
+                controller: new InputBinding(ControllerButton.LT, ControllerButton.DPadLeft));
 
             RegisterAction("NavPrevEvent",
                 keyboard: new InputBinding(KeyCode.J),
-                controller: null);
+                controller: new InputBinding(ControllerButton.LT, ControllerButton.DPadUp));
 
             RegisterAction("NavCurrentEvent",
                 keyboard: new InputBinding(KeyCode.K),
@@ -231,34 +231,34 @@ namespace DigimonNOAccess
 
             RegisterAction("NavNextEvent",
                 keyboard: new InputBinding(KeyCode.L),
-                controller: null);
+                controller: new InputBinding(ControllerButton.LT, ControllerButton.DPadDown));
 
             RegisterAction("NavToEvent",
                 keyboard: new InputBinding(KeyCode.P),
-                controller: null);
+                controller: new InputBinding(ControllerButton.L3));
 
             RegisterAction("ToggleAutoWalk",
                 keyboard: new InputBinding(KeyCode.P, false, false, true),
-                controller: null);
+                controller: new InputBinding(ControllerButton.R3));
 
             // === Compass Direction ===
             RegisterAction("CompassDirection",
                 keyboard: new InputBinding(KeyCode.C),
-                controller: new InputBinding(ControllerButton.R3));
+                controller: new InputBinding(ControllerButton.RT, ControllerButton.DPadUp));
 
             // === Shop/Trade/Restaurant Menus ===
             RegisterAction("ShopCheckBits",
                 keyboard: new InputBinding(KeyCode.F10),
-                controller: new InputBinding(ControllerButton.RT, ControllerButton.DPadDown));
+                controller: new InputBinding(ControllerButton.L3));
 
             // === Training Menu ===
             RegisterAction("TrainingP1Info",
                 keyboard: new InputBinding(KeyCode.F3),
-                controller: new InputBinding(ControllerButton.RB, ControllerButton.DPadUp));
+                controller: new InputBinding(ControllerButton.RT, ControllerButton.DPadRight));
 
             RegisterAction("TrainingP2Info",
                 keyboard: new InputBinding(KeyCode.F4),
-                controller: new InputBinding(ControllerButton.LB, ControllerButton.DPadUp));
+                controller: new InputBinding(ControllerButton.RT, ControllerButton.DPadLeft));
         }
 
         private static void RegisterAction(string actionName, InputBinding keyboard, InputBinding controller)
@@ -888,6 +888,16 @@ ShopCheckBits = L3
             RegisterDefaultBindings();  // Reset to defaults first
             LoadConfig();
             ScreenReader.Say("Hotkey configuration reloaded");
+        }
+
+        /// <summary>
+        /// Reset all bindings to their original defaults and save.
+        /// Unlike ReloadConfig, this ignores the saved config file.
+        /// </summary>
+        public static void ResetToDefaults()
+        {
+            RegisterDefaultBindings();
+            SaveConfig();
         }
 
         // ========== Rebinding Support ==========

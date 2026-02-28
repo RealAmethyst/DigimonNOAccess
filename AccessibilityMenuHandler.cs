@@ -41,6 +41,18 @@ namespace DigimonNOAccess
         private bool _listeningController;
         private bool _waitForRelease; // blocks menu input until all buttons released after listen mode
 
+        // Inline yes/no confirmation (clear binding / reset defaults)
+        private bool _isConfirming;
+        private bool _confirmCursorOnYes = true;
+        private ConfirmAction _confirmAction;
+        private string _confirmMessage;
+
+        private enum ConfirmAction
+        {
+            ClearBinding,
+            ResetDefaults
+        }
+
         // Confirm/cancel edge detection (trigger-only, no repeat)
         private bool _wasConfirmPressed;
         private bool _wasCancelPressed;
@@ -128,6 +140,12 @@ namespace DigimonNOAccess
                 return;
             }
 
+            if (_isConfirming)
+            {
+                HandleConfirmInput();
+                return;
+            }
+
             // After exiting listen mode, block all input until every button is released.
             // This prevents held DPad/face buttons from leaking into menu navigation.
             if (_waitForRelease)
@@ -168,6 +186,27 @@ namespace DigimonNOAccess
 
             _wasConfirmPressed = confirmPressed;
             _wasCancelPressed = cancelPressed;
+
+            // Square (X on Xbox) = clear binding, Triangle (Y on Xbox) = reset all defaults
+            // Only available in Keybindings category at settings level
+            if (_level == MenuLevel.Settings && _categories[_categoryIndex].Name == "Keybindings")
+            {
+                if (PadManager.IsTrigger(PadManager.BUTTON.bSquare))
+                {
+                    var items = _categories[_categoryIndex].Items;
+                    ClampSettingIndex(items);
+                    if (items[_settingIndex] is KeybindSetting keybind)
+                    {
+                        var current = ModInputManager.GetBinding(keybind.ActionName, keybind.IsController);
+                        if (current != null)
+                            EnterConfirmation(ConfirmAction.ClearBinding, $"Clear binding for {keybind.ActionName}?");
+                    }
+                }
+                else if (PadManager.IsTrigger(PadManager.BUTTON.bTriangle))
+                {
+                    EnterConfirmation(ConfirmAction.ResetDefaults, "Reset all keybindings to defaults?");
+                }
+            }
         }
 
         // ========== Input Handlers (state change only, no speech) ==========
@@ -220,7 +259,8 @@ namespace DigimonNOAccess
                 ClampSettingIndex(items);
                 var item = items[_settingIndex];
                 if (item is ToggleSetting || item is ReadOnlySetting || item is KeybindSetting) return;
-                item.OnLeft();
+                if (item.OnLeft())
+                    PlaySe(CriSoundManager.SE_MoveCursor1);
             }
         }
 
@@ -232,7 +272,8 @@ namespace DigimonNOAccess
                 ClampSettingIndex(items);
                 var item = items[_settingIndex];
                 if (item is ToggleSetting || item is ReadOnlySetting || item is KeybindSetting) return;
-                item.OnRight();
+                if (item.OnRight())
+                    PlaySe(CriSoundManager.SE_MoveCursor1);
             }
         }
 
@@ -286,6 +327,83 @@ namespace DigimonNOAccess
             }
         }
 
+        // ========== Inline Yes/No Confirmation ==========
+
+        private void EnterConfirmation(ConfirmAction action, string message)
+        {
+            _isConfirming = true;
+            _confirmAction = action;
+            _confirmMessage = message;
+            _confirmCursorOnYes = false;
+            PlaySe(CriSoundManager.SE_OpenWindow1);
+            ScreenReader.Say($"{message} Yes or No. Currently on: No");
+        }
+
+        private void HandleConfirmInput()
+        {
+            // Left/Right navigate between Yes and No
+            if (PadManager.IsRepeat(PadManager.BUTTON.dLeft) || PadManager.IsRepeat(PadManager.BUTTON.slLeft) ||
+                PadManager.IsRepeat(PadManager.BUTTON.dRight) || PadManager.IsRepeat(PadManager.BUTTON.slRight))
+            {
+                _confirmCursorOnYes = !_confirmCursorOnYes;
+                PlaySe(CriSoundManager.SE_MoveCursor1);
+                ScreenReader.Say(_confirmCursorOnYes ? "Yes" : "No");
+            }
+
+            // Confirm selection
+            if (PadManager.IsTrigger(PadManager.BUTTON.bOK))
+            {
+                _isConfirming = false;
+                if (_confirmCursorOnYes)
+                {
+                    PlaySe(CriSoundManager.SE_OK);
+                    PlaySe(CriSoundManager.SE_CloseWindow1);
+                    ExecuteConfirmAction();
+                }
+                else
+                {
+                    PlaySe(CriSoundManager.SE_Cancel);
+                    PlaySe(CriSoundManager.SE_CloseWindow1);
+                    ScreenReader.Say(BuildCurrentAnnouncement());
+                    SyncState();
+                }
+                return;
+            }
+
+            // Cancel always exits without action
+            if (PadManager.IsTrigger(PadManager.BUTTON.bCANCEL))
+            {
+                _isConfirming = false;
+                PlaySe(CriSoundManager.SE_Cancel);
+                PlaySe(CriSoundManager.SE_CloseWindow1);
+                ScreenReader.Say(BuildCurrentAnnouncement());
+                SyncState();
+            }
+        }
+
+        private void ExecuteConfirmAction()
+        {
+            if (_confirmAction == ConfirmAction.ClearBinding)
+            {
+                var items = _categories[_categoryIndex].Items;
+                ClampSettingIndex(items);
+                if (items[_settingIndex] is KeybindSetting keybind)
+                {
+                    ModInputManager.SetBinding(keybind.ActionName, keybind.IsController, null);
+                    ModInputManager.SaveConfig();
+                    ScreenReader.Say($"{keybind.ActionName} cleared. {BuildCurrentAnnouncement()}");
+                    SyncState();
+                }
+            }
+            else if (_confirmAction == ConfirmAction.ResetDefaults)
+            {
+                ModInputManager.ResetToDefaults();
+                _categories[_categoryIndex].InvalidateItems();
+                ScreenReader.Say($"All keybindings reset to defaults. {BuildCurrentAnnouncement()}");
+                SyncState();
+            }
+        }
+
         // ========== State-Change Detection (matches game menu pattern) ==========
 
         /// <summary>
@@ -295,8 +413,8 @@ namespace DigimonNOAccess
         /// </summary>
         private void CheckStateChange()
         {
-            // Don't announce during listen mode or button release wait
-            if (_isListening || _waitForRelease)
+            // Don't announce during listen mode, confirmation, or button release wait
+            if (_isListening || _isConfirming || _waitForRelease)
                 return;
 
             // Level transition takes priority (entering/leaving a category)
@@ -915,8 +1033,8 @@ namespace DigimonNOAccess
 
             public abstract string GetValueText();
             public virtual void OnConfirm() { }
-            public virtual void OnLeft() { }
-            public virtual void OnRight() { }
+            public virtual bool OnLeft() { return false; }
+            public virtual bool OnRight() { return false; }
         }
 
         private class ToggleSetting : SettingItem
@@ -964,16 +1082,22 @@ namespace DigimonNOAccess
 
             public override string GetValueText() => _getter().ToString();
 
-            public override void OnLeft()
+            public override bool OnLeft()
             {
-                int val = Math.Max(_min, _getter() - _step);
+                int old = _getter();
+                int val = Math.Max(_min, old - _step);
+                if (val == old) return false;
                 _setter(val);
+                return true;
             }
 
-            public override void OnRight()
+            public override bool OnRight()
             {
-                int val = Math.Min(_max, _getter() + _step);
+                int old = _getter();
+                int val = Math.Min(_max, old + _step);
+                if (val == old) return false;
                 _setter(val);
+                return true;
             }
 
             public override void OnConfirm() { }
@@ -1002,16 +1126,22 @@ namespace DigimonNOAccess
                 return $"{(int)Math.Round(_getter() * 100)}%";
             }
 
-            public override void OnLeft()
+            public override bool OnLeft()
             {
-                float val = Math.Max(_min, _getter() - _step);
+                float old = _getter();
+                float val = Math.Max(_min, old - _step);
+                if (Math.Abs(val - old) < 0.001f) return false;
                 _setter((float)Math.Round(val, 2));
+                return true;
             }
 
-            public override void OnRight()
+            public override bool OnRight()
             {
-                float val = Math.Min(_max, _getter() + _step);
+                float old = _getter();
+                float val = Math.Min(_max, old + _step);
+                if (Math.Abs(val - old) < 0.001f) return false;
                 _setter((float)Math.Round(val, 2));
+                return true;
             }
 
             public override void OnConfirm() { }
