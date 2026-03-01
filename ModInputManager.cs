@@ -246,6 +246,11 @@ namespace DigimonNOAccess
                 keyboard: new InputBinding(KeyCode.C),
                 controller: new InputBinding(ControllerButton.RT, ControllerButton.DPadUp));
 
+            // === Time Info ===
+            RegisterAction("TimeInfo",
+                keyboard: new InputBinding(KeyCode.M),
+                controller: new InputBinding(ControllerButton.RT, ControllerButton.DPadDown));
+
             // === Shop/Trade/Restaurant Menus ===
             RegisterAction("ShopCheckBits",
                 keyboard: new InputBinding(KeyCode.F10),
@@ -914,6 +919,7 @@ ShopCheckBits = L3
             {"AnnounceStatus", ActionContext.Global},
             {"ToggleVoicedText", ActionContext.Global},
             {"CompassDirection", ActionContext.Field},
+            {"TimeInfo", ActionContext.Global},
             {"Partner1Status", ActionContext.Field},
             {"Partner2Status", ActionContext.Field},
             {"NavNextCategory", ActionContext.Field},

@@ -1,6 +1,8 @@
 using HarmonyLib;
+using Il2Cpp;
 using MelonLoader;
 using UnityEngine;
+using System;
 using System.Collections.Generic;
 using System.IO;
 
@@ -200,6 +202,11 @@ namespace DigimonNOAccess
                 ScreenReader.Say($"Facing {direction}");
             }
 
+            if (ModInputManager.IsActionTriggered("TimeInfo") && (GameStateService.IsPlayerInField() || GameStateService.IsInBattle()))
+            {
+                AnnounceTimeInfo();
+            }
+
             // F8 = Reload hotkey config (always F8, not configurable)
             if (Input.GetKeyDown(KeyCode.F8))
             {
@@ -214,6 +221,79 @@ namespace DigimonNOAccess
                 ScreenReader.Say($"Input debug mode: {state}");
             }
 
+        }
+
+        private void AnnounceTimeInfo()
+        {
+            try
+            {
+                var mgr = MainGameManager.Ref;
+                if (mgr == null) return;
+
+                // Check if the dimension timer HUD is active
+                var timerPanel = mgr.timerUI;
+                if (timerPanel != null && timerPanel.m_mode == uTimerPanel.TimerMode.ExDungeon)
+                {
+                    float timeLeft = timerPanel.GetTimer();
+                    int totalSeconds = (int)Math.Ceiling(timeLeft);
+                    int mins = totalSeconds / 60;
+                    int secs = totalSeconds % 60;
+                    if (mins > 0)
+                        ScreenReader.Say($"{mins} minutes {secs} seconds remaining");
+                    else
+                        ScreenReader.Say($"{secs} seconds remaining");
+                    return;
+                }
+
+                // Normal time announcement
+                var worldData = StorageData.m_saveData?.m_worldData;
+                if (worldData == null)
+                {
+                    ScreenReader.Say("Time info not available");
+                    return;
+                }
+
+                int hour = worldData.GetHour();
+                int minutes = worldData.GetMinutes();
+                WorldData.DAY dayOfWeek = worldData.day;
+                WorldData.SEASON season = worldData.season;
+                WorldData.TIMESLOT slot = worldData.timeSlot;
+
+                string dayName = dayOfWeek switch
+                {
+                    WorldData.DAY.Sun => "Sunday",
+                    WorldData.DAY.Mon => "Monday",
+                    WorldData.DAY.Tues => "Tuesday",
+                    WorldData.DAY.Wed => "Wednesday",
+                    WorldData.DAY.Turs => "Thursday",
+                    WorldData.DAY.Fri => "Friday",
+                    WorldData.DAY.Sat => "Saturday",
+                    _ => "Unknown"
+                };
+
+                string slotName = slot switch
+                {
+                    WorldData.TIMESLOT.Noon => "Noon",
+                    WorldData.TIMESLOT.Evening => "Evening",
+                    WorldData.TIMESLOT.Night => "Night",
+                    _ => "Unknown"
+                };
+
+                string seasonName = season switch
+                {
+                    WorldData.SEASON.Spring => "Spring",
+                    WorldData.SEASON.Summer => "Summer",
+                    WorldData.SEASON.Autumn => "Autumn",
+                    WorldData.SEASON.Winter => "Winter",
+                    _ => "Unknown"
+                };
+
+                ScreenReader.Say($"{dayName}, {seasonName}, {slotName}, {hour}:{minutes:D2}");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[TimeInfo] Error: {ex.Message}");
+            }
         }
 
         private void AnnounceCurrentStatus()

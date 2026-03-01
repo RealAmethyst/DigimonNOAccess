@@ -982,6 +982,8 @@ namespace DigimonNOAccess
                 "Announce detailed stats for partner 2 in field and battles"));
             items.Add(new KeybindSetting("CompassDirection", _showControllerBindings,
                 "Announce the direction the camera is facing"));
+            items.Add(new KeybindSetting("TimeInfo", _showControllerBindings,
+                "Announce the current day, season and time. In dimensions, announces seconds remaining"));
             items.Add(new KeybindSetting("NavNextCategory", _showControllerBindings,
                 "Switch to the next navigation category"));
             items.Add(new KeybindSetting("NavPrevCategory", _showControllerBindings,
