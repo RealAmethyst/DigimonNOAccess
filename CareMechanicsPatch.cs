@@ -17,19 +17,18 @@ namespace DigimonNOAccess
     /// </summary>
     public static class CareMechanicsPatch
     {
-        // Real native implementation RVAs (found via Ghidra decompilation of thunks)
-        // 0x291420/0x294FE0 are managed wrappers; these are the actual functions they call.
+        // Real native implementation RVA for _AddPartnerFatigue (found via Ghidra).
+        // 0x291420 is the managed wrapper thunk; 0x593260 is the actual function it calls.
+        // Only hooking Add (35 bytes, safe trampoline). NOT hooking Set at 0x5957C0 (only 24 bytes,
+        // trampoline corrupts m_lifetime causing instant death / rebirth loops).
         // Signature: void(IntPtr partnerDataPtr, int value)
         private const int AddPartnerFatigue_RVA = 0x593260;
-        private const int SetPartnerFatigue_RVA = 0x5957c0;
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate void d_PartnerFatigueReal(IntPtr partnerDataPtr, int value);
 
         private static NativeHook<d_PartnerFatigueReal> _addFatigueHook;
-        private static NativeHook<d_PartnerFatigueReal> _setFatigueHook;
         private static d_PartnerFatigueReal _addFatigueDetour;
-        private static d_PartnerFatigueReal _setFatigueDetour;
 
         public static void Apply(HarmonyLib.Harmony harmony)
         {
@@ -151,21 +150,12 @@ namespace DigimonNOAccess
                     return;
                 }
 
-                // Hook real _AddPartnerFatigue implementation
                 IntPtr addAddr = module.BaseAddress + AddPartnerFatigue_RVA;
                 _addFatigueDetour = new d_PartnerFatigueReal(Hook_AddPartnerFatigue);
                 IntPtr addDetourPtr = Marshal.GetFunctionPointerForDelegate(_addFatigueDetour);
                 _addFatigueHook = new NativeHook<d_PartnerFatigueReal>(addAddr, addDetourPtr);
                 _addFatigueHook.Attach();
                 DebugLogger.Log($"[CareMechanicsPatch] Native hook: _AddPartnerFatigue_REAL at GameAssembly.dll+0x{AddPartnerFatigue_RVA:X}");
-
-                // Hook real _SetPartnerFatigue implementation
-                IntPtr setAddr = module.BaseAddress + SetPartnerFatigue_RVA;
-                _setFatigueDetour = new d_PartnerFatigueReal(Hook_SetPartnerFatigue);
-                IntPtr setDetourPtr = Marshal.GetFunctionPointerForDelegate(_setFatigueDetour);
-                _setFatigueHook = new NativeHook<d_PartnerFatigueReal>(setAddr, setDetourPtr);
-                _setFatigueHook.Attach();
-                DebugLogger.Log($"[CareMechanicsPatch] Native hook: _SetPartnerFatigue_REAL at GameAssembly.dll+0x{SetPartnerFatigue_RVA:X}");
             }
             catch (Exception ex)
             {
@@ -178,13 +168,6 @@ namespace DigimonNOAccess
             if (ModSettings.DisableFatigue && value > 0)
                 return;
             _addFatigueHook.Trampoline(partnerDataPtr, value);
-        }
-
-        private static void Hook_SetPartnerFatigue(IntPtr partnerDataPtr, int value)
-        {
-            if (ModSettings.DisableFatigue && value > 0)
-                return;
-            _setFatigueHook.Trampoline(partnerDataPtr, value);
         }
 
         private static int TryPatch(HarmonyLib.Harmony harmony, Type targetType, string methodName,
