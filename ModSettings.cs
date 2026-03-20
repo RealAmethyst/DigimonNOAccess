@@ -25,6 +25,8 @@ namespace DigimonNOAccess
             }
         }
 
+        public static bool SpeakMovieSubtitles { get; set; } = true;
+
         // --- Audio Navigation: Detection Ranges ---
         public static float ItemRange { get; set; } = 80f;
         public static float NpcRange { get; set; } = 80f;
@@ -115,6 +117,7 @@ namespace DigimonNOAccess
         private static void ApplyFromData(SettingsData data)
         {
             ReadVoicedText = data.ReadVoicedText;
+            SpeakMovieSubtitles = data.SpeakMovieSubtitles;
 
             ItemRange = data.ItemRange;
             NpcRange = data.NpcRange;
@@ -154,6 +157,7 @@ namespace DigimonNOAccess
             return new SettingsData
             {
                 ReadVoicedText = ReadVoicedText,
+                SpeakMovieSubtitles = SpeakMovieSubtitles,
 
                 ItemRange = ItemRange,
                 NpcRange = NpcRange,
@@ -192,6 +196,7 @@ namespace DigimonNOAccess
         private class SettingsData
         {
             public bool ReadVoicedText { get; set; } = false;
+            public bool SpeakMovieSubtitles { get; set; } = true;
 
             public float ItemRange { get; set; } = 80f;
             public float NpcRange { get; set; } = 80f;

@@ -97,6 +97,7 @@ namespace DigimonNOAccess
             _handlers = new List<IAccessibilityHandler>
             {
                 _accessibilityMenuHandler,
+                new MovieSubtitleHandler(),
                 new CommonYesNoHandler(),
                 new DialogChoiceHandler(),
                 new DifficultyDialogHandler(),

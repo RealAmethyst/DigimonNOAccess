@@ -959,6 +959,10 @@ namespace DigimonNOAccess
                     () => ModSettings.ReadVoicedText,
                     v => { ModSettings.ReadVoicedText = v; ModSettings.Save(); },
                     description: "When on, the screen reader also reads dialog text that has voice acting"),
+                new ToggleSetting("Speak Movie Subtitles",
+                    () => ModSettings.SpeakMovieSubtitles,
+                    v => { ModSettings.SpeakMovieSubtitles = v; ModSettings.Save(); },
+                    description: "When on, the screen reader reads subtitles during movie cutscenes"),
             };
         }
 

@@ -233,6 +233,47 @@ namespace DigimonNOAccess
         }
 
         /// <summary>
+        /// Check if the field's internal step is in a playable state (Main or Idle).
+        /// Returns false during Start (loading), Warp (area transition), Evolution,
+        /// RestartLose/RestartEscape (death recovery), etc.
+        /// </summary>
+        public static bool IsFieldInPlayableState()
+        {
+            try
+            {
+                var mgc = MainGameComponent.m_instance;
+                if (mgc == null) return false;
+
+                if (mgc.m_CurStep != Il2CppMainGame.STEP.Field)
+                    return false;
+
+                var stepProc = mgc.m_StepProc;
+                if (stepProc == null || stepProc.Length == 0)
+                    return false;
+
+                var fieldIF = stepProc[0]; // Index 0 = Field
+                if (fieldIF == null)
+                    return false;
+
+                var mainGameField = fieldIF.TryCast<MainGameField>();
+                if (mainGameField == null)
+                    return false;
+
+                var stepProg = mainGameField.m_Step;
+                if (stepProg == null)
+                    return false;
+
+                var fieldStep = stepProg.step;
+                // Only Main and Idle are playable states
+                return fieldStep == MainGameField.STEP.Main || fieldStep == MainGameField.STEP.Idle;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Check if player action state indicates they cannot move.
         /// Includes death states, events, battles, damage, and recovery sequences.
         /// </summary>

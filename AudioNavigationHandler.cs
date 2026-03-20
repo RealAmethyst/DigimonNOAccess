@@ -592,6 +592,11 @@ namespace DigimonNOAccess
             {
                 if (_playerCtrl == null) return false;
 
+                // Field must be in a playable state (Main/Idle).
+                // Blocks during Start (loading), Warp, Evolution, RestartLose/Escape.
+                if (!GameStateService.IsFieldInPlayableState())
+                    return false;
+
                 // actionState must be Idle (walking around). Everything else
                 // (Event, Battle, Care, Dead, etc.) = not in control.
                 if (_playerCtrl.actionState != UnitCtrlBase.ActionState.ActionState_Idle)
