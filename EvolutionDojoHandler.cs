@@ -14,6 +14,7 @@ namespace DigimonNOAccess
         private int _lastCursorY = -1;
         private int _lastSelectPartner = -1;
         private uGenelogyUI.Type _lastType = uGenelogyUI.Type.None;
+        private bool _lastEvoAfter = false;
         private string _lastAnnouncedName = "";
 
         private static readonly string[] GrowthNames =
@@ -54,6 +55,7 @@ namespace DigimonNOAccess
             _lastCursorY = -1;
             _lastSelectPartner = -1;
             _lastType = uGenelogyUI.Type.None;
+            _lastEvoAfter = false;
             _lastAnnouncedName = "";
 
             var genelogy = GetGenelogy();
@@ -120,6 +122,14 @@ namespace DigimonNOAccess
                     _lastType = currentType;
                 }
 
+                // Check evo after state change (entering/exiting future evolution view)
+                bool evoAfter = genelogy.m_SelectEvoAfter;
+                if (evoAfter != _lastEvoAfter)
+                {
+                    _lastEvoAfter = evoAfter;
+                    _lastAnnouncedName = "";
+                }
+
                 // Check cursor movement
                 int cx = genelogy.m_CursorX;
                 int cy = genelogy.m_CursorY;
@@ -138,9 +148,22 @@ namespace DigimonNOAccess
 
         private void AnnounceCursorItem(uGenelogyUI genelogy, bool queued = false)
         {
-            string name = GetInfoPanelName();
-            if (string.IsNullOrEmpty(name))
+            bool evoAfter = genelogy.m_SelectEvoAfter;
+
+            // When viewing future evolutions, read evo name; otherwise read current name
+            string name;
+            if (evoAfter)
+            {
                 name = GetInfoPanelEvoName();
+                if (string.IsNullOrEmpty(name))
+                    name = GetInfoPanelName();
+            }
+            else
+            {
+                name = GetInfoPanelName();
+                if (string.IsNullOrEmpty(name))
+                    name = GetInfoPanelEvoName();
+            }
 
             // Avoid repeating the exact same announcement
             if (name == _lastAnnouncedName && !string.IsNullOrEmpty(name))
@@ -175,10 +198,29 @@ namespace DigimonNOAccess
             if (maxX > 0 || maxY > 0)
                 announcement += $", {_lastCursorX + 1} of {maxX + 1}";
 
-            // Add description after index
-            string description = GetInfoPanelText("m_Description");
-            if (!string.IsNullOrEmpty(description))
-                announcement += ", " + description;
+            // Add description after index (only for past/current forms - not for future evos)
+            if (!evoAfter)
+            {
+                string description = GetInfoPanelText("m_Description");
+                if (!string.IsNullOrEmpty(description))
+                    announcement += ", " + description;
+            }
+
+            // For future evolutions, add nature/attribute and conditions
+            if (evoAfter)
+            {
+                string nature = GetInfoPanelText("m_Nature_Evo");
+                if (!string.IsNullOrEmpty(nature))
+                    announcement += ", Nature: " + nature;
+
+                string property = GetInfoPanelText("m_Property_Evo");
+                if (!string.IsNullOrEmpty(property))
+                    announcement += ", Attribute: " + property;
+
+                string conditions = GetConditionsText();
+                if (!string.IsNullOrEmpty(conditions))
+                    announcement += ", Conditions: " + conditions;
+            }
 
             if (queued)
                 ScreenReader.SayQueued(announcement);
@@ -428,6 +470,13 @@ namespace DigimonNOAccess
 
                         title = TextUtilities.StripRichTextTags(title);
                         value = TextUtilities.StripRichTextTags(value);
+
+                        // Replace universal visual symbols with speech-friendly text
+                        if (value == "???" || value == "？？？")
+                            value = "not met";
+                        else if (value == "—" || value == "－" || value == "-" || value == "―")
+                            value = "met";
+
                         parts.Add($"{title} {value}");
                     }
                     catch { }

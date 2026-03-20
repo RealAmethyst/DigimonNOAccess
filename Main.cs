@@ -118,6 +118,7 @@ namespace DigimonNOAccess
                 new FieldItemPanelHandler(),
                 new SavePanelHandler(),
                 new ColosseumPanelHandler(),
+                new CardGalleryHandler(),
                 new IjigenBoxPanelHandler(),
                 new FarmPanelHandler(),
                 new RestaurantPanelHandler(),

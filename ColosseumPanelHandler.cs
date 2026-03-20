@@ -46,17 +46,25 @@ namespace DigimonNOAccess
                 return;
 
             var state = _panel.m_state;
-            string stateText = GetStateText(state);
-            int cursor = GetCursorPosition();
-            string itemText = GetMenuItemText(cursor);
-            int total = GetMenuItemCount();
-
-            string announcement = AnnouncementBuilder.MenuOpenWithState("Colosseum", stateText, itemText, cursor, total);
-            ScreenReader.Say(announcement);
-
-            DebugLogger.Log($"{LogTag} Panel opened, state={state}, cursor={cursor}");
             _lastState = state;
-            _lastCursor = cursor;
+
+            if (state == uColosseumPanelCommand.State.Wait)
+            {
+                DebugLogger.Log($"{LogTag} Panel opened, state=Wait (silent, waiting for Main)");
+            }
+            else
+            {
+                string stateText = GetStateText(state);
+                int cursor = GetCursorPosition();
+                string itemText = GetMenuItemText(cursor);
+                int total = GetMenuItemCount();
+
+                string announcement = AnnouncementBuilder.MenuOpenWithState("Colosseum", stateText, itemText, cursor, total);
+                ScreenReader.Say(announcement);
+
+                DebugLogger.Log($"{LogTag} Panel opened, state={state}, cursor={cursor}");
+                _lastCursor = cursor;
+            }
         }
 
         protected override void OnClose()
@@ -79,17 +87,32 @@ namespace DigimonNOAccess
             var state = _panel.m_state;
             if (state != _lastState)
             {
-                string stateText = GetStateText(state);
-                ScreenReader.Say(stateText);
-                DebugLogger.Log($"{LogTag} State changed to {state}");
                 _lastState = state;
-                _lastCursor = -1; // Reset cursor on state change
+
+                if (state == uColosseumPanelCommand.State.Main)
+                {
+                    int cursor = GetCursorPosition();
+                    string itemText = GetMenuItemText(cursor);
+                    int total = GetMenuItemCount();
+                    string stateText = GetStateText(state);
+                    string announcement = AnnouncementBuilder.MenuOpenWithState("Colosseum", stateText, itemText, cursor, total);
+                    ScreenReader.Say(announcement);
+                    DebugLogger.Log($"{LogTag} State changed to Main, cursor={cursor}");
+                    _lastCursor = cursor;
+                }
+                else
+                {
+                    DebugLogger.Log($"{LogTag} State changed to {state}");
+                }
             }
         }
 
         private void CheckCursorChange()
         {
             if (_panel == null)
+                return;
+
+            if (_panel.m_state != uColosseumPanelCommand.State.Main)
                 return;
 
             int cursor = GetCursorPosition();
@@ -113,45 +136,160 @@ namespace DigimonNOAccess
             {
                 var scrollView = _panel?.m_colosseumScrollView;
                 if (scrollView != null)
-                {
-                    // ColosseumScrollView extends uItemBase which has m_selectNo
                     return scrollView.m_selectNo;
+            }
+            catch { }
+            return 0;
+        }
+
+        private uint GetSelectedColosseumId(int index)
+        {
+            try
+            {
+                var scrollView = _panel?.m_colosseumScrollView;
+                if (scrollView == null)
+                    return uint.MaxValue;
+
+                var selectItem = scrollView.GetSelectItemData();
+                if (selectItem != null)
+                    return selectItem.m_itemID;
+
+                var itemList = scrollView.m_itemList;
+                if (itemList != null && index < itemList.Count)
+                {
+                    var item = itemList[index];
+                    if (item != null)
+                        return item.m_itemID;
                 }
             }
-            catch (System.Exception ex)
+            catch { }
+
+            try
             {
-                DebugLogger.Log($"{LogTag} Error getting cursor: {ex.Message}");
+                var colosseumPanel = _panel?.m_colosseumPanel;
+                if (colosseumPanel != null)
+                {
+                    var datas = colosseumPanel.GetParameterColosseumDatas();
+                    if (datas != null && index < datas.Length)
+                        return datas[index].m_id;
+                }
             }
-            return 0;
+            catch { }
+
+            return uint.MaxValue;
         }
 
         private string GetMenuItemText(int index)
         {
             try
             {
-                // Try to get the description caption text
+                var colosseumPanel = _panel?.m_colosseumPanel;
+                if (colosseumPanel == null)
+                    return FallbackMenuItemText(index);
+
+                uint id = GetSelectedColosseumId(index);
+                if (id == uint.MaxValue)
+                    return FallbackMenuItemText(index);
+
+                var paramData = colosseumPanel.GetParameterColosseumData(id);
+                if (paramData == null)
+                {
+                    paramData = ParameterColosseumData.GetParam(id);
+                    if (paramData == null)
+                        return FallbackMenuItemText(index);
+                }
+
+                var parts = new System.Collections.Generic.List<string>();
+
+                string name = paramData.GetName();
+                if (!string.IsNullOrEmpty(name))
+                    parts.Add(TextUtilities.StripRichTextTags(name));
+
+                string rank = paramData.GetRank();
+                if (!string.IsNullOrEmpty(rank))
+                    parts.Add($"Rank {rank}");
+
+                string desc = paramData.GetDescription();
+                if (!string.IsNullOrEmpty(desc))
+                    parts.Add(TextUtilities.StripRichTextTags(desc));
+
+                string ruleText = null;
+                try
+                {
+                    var ruleData = colosseumPanel.GetParameterColosseumRuleData(paramData.m_rule_id);
+                    if (ruleData != null)
+                        ruleText = ruleData.GetName();
+                }
+                catch { }
+                if (string.IsNullOrEmpty(ruleText))
+                {
+                    var descUI = _panel.m_colosseumDescription;
+                    if (descUI?.m_ruleValue != null)
+                        ruleText = descUI.m_ruleValue.text;
+                }
+                if (!string.IsNullOrEmpty(ruleText))
+                    parts.Add($"Rule: {TextUtilities.StripRichTextTags(ruleText)}");
+
+                var descPanel = _panel.m_colosseumDescription;
+                if (descPanel != null)
+                {
+                    var limitValue = descPanel.m_limitValue;
+                    if (limitValue != null && !string.IsNullOrEmpty(limitValue.text))
+                    {
+                        string limitText = TextUtilities.StripRichTextTags(limitValue.text);
+                        var limitTitle = descPanel.m_limitTitle;
+                        if (limitTitle != null && !string.IsNullOrEmpty(limitTitle.text))
+                        {
+                            string titleText = TextUtilities.StripRichTextTags(limitTitle.text).TrimEnd(':');
+                            parts.Add($"{titleText}: {limitText}");
+                        }
+                        else
+                        {
+                            parts.Add($"Limit: {limitText}");
+                        }
+                    }
+                }
+
+                if (paramData.m_coin_num > 0)
+                    parts.Add($"{paramData.m_coin_num} coins");
+
+                try
+                {
+                    var saveData = colosseumPanel.GetColosseumData(id);
+                    if (saveData != null)
+                    {
+                        if (saveData.m_is_clear_today)
+                            parts.Add("Cleared today");
+                        else if (saveData.m_is_clear)
+                            parts.Add("Cleared");
+                    }
+                }
+                catch { }
+
+                if (parts.Count > 0)
+                    return string.Join(", ", parts);
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Error reading match data: {ex.Message}");
+            }
+
+            return FallbackMenuItemText(index);
+        }
+
+        private string FallbackMenuItemText(int index)
+        {
+            try
+            {
                 var description = _panel?.m_colosseumDescription;
                 if (description != null)
                 {
                     var captionText = description.m_caption;
                     if (captionText != null && !string.IsNullOrEmpty(captionText.text))
-                    {
-                        string text = captionText.text;
-
-                        // Also try to get rule info
-                        var ruleValue = description.m_ruleValue;
-                        if (ruleValue != null && !string.IsNullOrEmpty(ruleValue.text))
-                        {
-                            return $"{text}, {ruleValue.text}";
-                        }
-                        return text;
-                    }
+                        return TextUtilities.StripRichTextTags(captionText.text);
                 }
             }
-            catch (System.Exception ex)
-            {
-                DebugLogger.Log($"{LogTag} Error reading text: {ex.Message}");
-            }
+            catch { }
 
             return AnnouncementBuilder.FallbackItem("Battle", index);
         }
@@ -163,12 +301,9 @@ namespace DigimonNOAccess
                 var scrollView = _panel?.m_colosseumScrollView;
                 if (scrollView != null)
                 {
-                    // Use m_itemList from uItemBase parent class
                     var itemList = scrollView.m_itemList;
                     if (itemList != null)
-                    {
                         return itemList.Count;
-                    }
                 }
             }
             catch { }

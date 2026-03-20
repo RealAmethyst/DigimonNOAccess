@@ -19,6 +19,7 @@ namespace DigimonNOAccess
         private int _lastBlockIndex = -1;
         private int _lastContentIndex = -1;
         private uConstructionPanelGradeUp.State _lastGradeUpState = uConstructionPanelGradeUp.State.None;
+        private bool _pendingDialogReannounce;
 
         // Material panel tracking
         private int _lastKindIndex = -1;
@@ -79,10 +80,21 @@ namespace DigimonNOAccess
             else if (state == uConstructionPanel.State.Wait)
             {
                 // Detect which sub-panel is active by checking which one exists
+                // But skip announcement if sub-panel is in a transitional state (closing)
                 if (_panel.m_gradeUpPanel != null)
                 {
                     _lastParentState = uConstructionPanel.State.GradeUpMain;
-                    AnnounceGradeUpOpen();
+                    var gradeState = _panel.m_gradeUpPanel.m_state;
+                    if (gradeState != uConstructionPanelGradeUp.State.Wait &&
+                        gradeState != uConstructionPanelGradeUp.State.Close &&
+                        gradeState != uConstructionPanelGradeUp.State.None)
+                    {
+                        AnnounceGradeUpOpen();
+                    }
+                    else
+                    {
+                        DebugLogger.Log($"{LogTag} Panel opened in transitional GradeUp state={gradeState}, silent");
+                    }
                 }
                 else if (_panel.m_materialPanel != null)
                 {
@@ -231,18 +243,30 @@ namespace DigimonNOAccess
                 if (gradeUp == null) return;
 
                 var gradeState = gradeUp.m_state;
-                if (gradeState != _lastGradeUpState)
+                bool stateChanged = gradeState != _lastGradeUpState;
+                var prevState = _lastGradeUpState;
+                if (stateChanged)
                 {
                     _lastGradeUpState = gradeState;
                     DebugLogger.Log($"{LogTag} GradeUp state: {gradeState}");
                 }
 
-                // Skip cursor tracking in terminal states
-                if (gradeState == uConstructionPanelGradeUp.State.None ||
-                    gradeState == uConstructionPanelGradeUp.State.Close ||
-                    gradeState == uConstructionPanelGradeUp.State.GradeUpConfirm ||
+                // Track dialog states for re-announce on return
+                if (gradeState == uConstructionPanelGradeUp.State.GradeUpConfirm ||
                     gradeState == uConstructionPanelGradeUp.State.GradeUpConfirmWait)
+                    _pendingDialogReannounce = true;
+
+                // Only track cursors in Main state
+                if (gradeState != uConstructionPanelGradeUp.State.Main)
                     return;
+
+                // Re-announce current item when returning to Main from dialog
+                if (_pendingDialogReannounce)
+                {
+                    _pendingDialogReannounce = false;
+                    _lastBlockIndex = -1;
+                    _lastContentIndex = -1;
+                }
 
                 int blockIdx = gradeUp.m_constructionBlockCursor?.index ?? 0;
                 int contentIdx = gradeUp.m_constructionContentCursor?.index ?? 0;

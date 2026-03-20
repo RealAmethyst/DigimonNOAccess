@@ -26,17 +26,26 @@ namespace DigimonNOAccess
         public override bool IsOpen()
         {
             // Check town jump first (asset-loaded via MainGameManager)
+            // Skip if construction panel is active (town jump UI briefly appears during confirmations)
             try
             {
                 var mgm = MainGameManager.m_instance;
                 if (mgm != null)
                 {
-                    var tjPanel = mgm.townJumpUI;
-                    if (tjPanel != null && tjPanel.m_state == uTownJumpPanel.State.CommandMain)
+                    var constructionPanel = Object.FindObjectOfType<uConstructionPanel>();
+                    if (constructionPanel != null && constructionPanel.m_state != uConstructionPanel.State.None)
                     {
-                        _townJumpPanel = tjPanel;
-                        _townJumpActive = true;
-                        return true;
+                        // Construction is open, don't detect town jump
+                    }
+                    else
+                    {
+                        var tjPanel = mgm.townJumpUI;
+                        if (tjPanel != null && tjPanel.m_state == uTownJumpPanel.State.CommandMain)
+                        {
+                            _townJumpPanel = tjPanel;
+                            _townJumpActive = true;
+                            return true;
+                        }
                     }
                 }
             }
@@ -164,6 +173,14 @@ namespace DigimonNOAccess
         {
             try
             {
+                var datas = _townJumpPanel?.GetParameterTownJumpDatas();
+                if (datas != null && datas.Length > 0)
+                    return datas.Length;
+            }
+            catch { }
+
+            try
+            {
                 if (_townJumpCommand != null)
                     return _townJumpCommand.m_itemMaxNum;
             }
@@ -173,7 +190,27 @@ namespace DigimonNOAccess
 
         private string GetTownJumpDestinationName(int index)
         {
-            // Primary: read from UI text
+            // Primary: use data API via selectPointId for reliable name
+            try
+            {
+                if (_townJumpCommand != null && _townJumpPanel != null)
+                {
+                    uint pointId = _townJumpCommand.selectPointId;
+                    if (pointId > 0)
+                    {
+                        var jumpData = _townJumpPanel.GetParameterTownJumpData(pointId);
+                        if (jumpData != null)
+                        {
+                            string dataName = jumpData.GetName();
+                            if (!string.IsNullOrEmpty(dataName))
+                                return TextUtilities.StripRichTextTags(dataName);
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            // Fallback: read from UI text parts
             try
             {
                 if (_townJumpCommand != null)
@@ -193,7 +230,7 @@ namespace DigimonNOAccess
             }
             catch { }
 
-            // Fallback: headline text
+            // Last fallback: headline text
             try
             {
                 var headline = _townJumpPanel?.m_townJumpPanelHeadLine;

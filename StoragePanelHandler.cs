@@ -14,7 +14,7 @@ namespace DigimonNOAccess
         private bool _wasActive = false;
         private int _lastCursorL = -1;
         private int _lastCursorR = -1;
-        private ItemStorageData.StorageType _lastActivePanel = (ItemStorageData.StorageType)(-1);
+        private uStoragePanelInfo.Type _lastArrowType = uStoragePanelInfo.Type.MAX;
 
         public bool IsOpen()
         {
@@ -53,13 +53,35 @@ namespace DigimonNOAccess
         {
             _lastCursorL = -1;
             _lastCursorR = -1;
-            _lastActivePanel = (ItemStorageData.StorageType)(-1);
+            _lastArrowType = uStoragePanelInfo.Type.MAX;
 
             if (_panel == null)
                 return;
 
-            string announcement = BuildFullAnnouncement();
-            ScreenReader.Say(announcement);
+            ScreenReader.Say("Storage");
+
+            // Determine which side is initially focused and announce it
+            try
+            {
+                var infoPanel = _panel.m_infoPanel;
+                if (infoPanel != null)
+                    _lastArrowType = infoPanel.m_arrowType;
+            }
+            catch { }
+
+            bool leftFocused = _lastArrowType == uStoragePanelInfo.Type.RIGHT;
+            var focusedPanel = leftFocused ? _panel.m_itemPanelL : _panel.m_itemPanelR;
+            if (focusedPanel != null)
+            {
+                string sectionName = GetStorageTypeName(focusedPanel.m_storageType);
+                string itemInfo = GetItemInfo(focusedPanel);
+                int cursor = focusedPanel.m_selectNo;
+                int total = GetItemCount(focusedPanel);
+                string itemAnnouncement = total > 0
+                    ? $"{sectionName}, {AnnouncementBuilder.CursorPosition(itemInfo, cursor, total)}"
+                    : $"{sectionName}, empty";
+                ScreenReader.SayQueued(itemAnnouncement);
+            }
 
             UpdateLastCursors();
             DebugLogger.Log($"[StoragePanel] Opened");
@@ -70,7 +92,7 @@ namespace DigimonNOAccess
             _panel = null;
             _lastCursorL = -1;
             _lastCursorR = -1;
-            _lastActivePanel = (ItemStorageData.StorageType)(-1);
+            _lastArrowType = uStoragePanelInfo.Type.MAX;
             DebugLogger.Log("[StoragePanel] Closed");
         }
 
@@ -82,29 +104,53 @@ namespace DigimonNOAccess
             var leftPanel = _panel.m_itemPanelL;
             var rightPanel = _panel.m_itemPanelR;
 
-            // Check which panel is active and announce changes
+            // Detect side switch via info panel arrow direction
+            bool sideSwitched = false;
+            try
+            {
+                var infoPanel = _panel.m_infoPanel;
+                if (infoPanel != null)
+                {
+                    var arrowType = infoPanel.m_arrowType;
+                    if (arrowType != _lastArrowType)
+                    {
+                        sideSwitched = true;
+                        _lastArrowType = arrowType;
+                    }
+                }
+            }
+            catch { }
+
+            // Check left panel
             if (leftPanel != null)
             {
                 int cursorL = leftPanel.m_selectNo;
-                if (cursorL != _lastCursorL)
+                bool leftChanged = cursorL != _lastCursorL;
+                bool leftJustFocused = sideSwitched && _lastArrowType == uStoragePanelInfo.Type.RIGHT;
+
+                if (leftChanged || leftJustFocused)
                 {
-                    AnnounceItemChange(leftPanel, "Left");
+                    AnnounceItemChange(leftPanel, "Left", leftJustFocused);
                     _lastCursorL = cursorL;
                 }
             }
 
+            // Check right panel
             if (rightPanel != null)
             {
                 int cursorR = rightPanel.m_selectNo;
-                if (cursorR != _lastCursorR)
+                bool rightChanged = cursorR != _lastCursorR;
+                bool rightJustFocused = sideSwitched && _lastArrowType == uStoragePanelInfo.Type.LEFT;
+
+                if (rightChanged || rightJustFocused)
                 {
-                    AnnounceItemChange(rightPanel, "Right");
+                    AnnounceItemChange(rightPanel, "Right", rightJustFocused);
                     _lastCursorR = cursorR;
                 }
             }
         }
 
-        private void AnnounceItemChange(uStoragePanelItem panel, string side)
+        private void AnnounceItemChange(uStoragePanelItem panel, string side, bool includeSectionName)
         {
             if (panel == null)
                 return;
@@ -113,13 +159,17 @@ namespace DigimonNOAccess
             {
                 int cursor = panel.m_selectNo;
                 int total = GetItemCount(panel);
-                string storageType = GetStorageTypeName(panel.m_storageType);
+                string sectionName = GetStorageTypeName(panel.m_storageType);
                 string itemInfo = GetItemInfo(panel);
 
                 string announcement;
                 if (total == 0)
                 {
-                    announcement = $"{side}, {storageType}, empty";
+                    announcement = $"{sectionName}, empty";
+                }
+                else if (includeSectionName)
+                {
+                    announcement = $"{sectionName}, {AnnouncementBuilder.CursorPosition(itemInfo, cursor, total)}";
                 }
                 else
                 {
