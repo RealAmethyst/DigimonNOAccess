@@ -39,9 +39,9 @@ namespace DigimonNOAccess
         private static readonly Dictionary<string, string> _psNames = new Dictionary<string, string>
         {
             { "\u25CB", "Cross" },     // ○ confirm icon → Cross button
-            { "\u00D7", "Circle" },    // × cancel icon → Circle button
-            { "\u25B3", "Triangle" },
-            { "\u25A1", "Square" },
+            { "\u00D7", "Triangle" },    // × cancel icon → Circle button
+            { "\u25B3", "Square" },
+            { "\u25A1", "Triangle" },
             { "L", "L" },
             { "R", "R" },
             { "LS", "Left Stick" },
@@ -53,8 +53,8 @@ namespace DigimonNOAccess
         {
             { "\u25CB", "A" },         // ○ confirm icon → A button
             { "\u00D7", "B" },         // × cancel icon → B button
-            { "\u25B3", "Y" },
-            { "\u25A1", "X" },
+            { "\u25B3", "X" },
+            { "\u25A1", "Y" },
             { "L", "LB" },
             { "R", "RB" },
             { "LS", "Left Stick" },
