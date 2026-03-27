@@ -97,18 +97,26 @@ namespace DigimonNOAccess
 
         private string GetCommandName(int commandIndex)
         {
-            return commandIndex switch
+            try
             {
-                0 => "Partner",
-                1 => "Tamer",
-                2 => "Item",
-                3 => "Map",
-                4 => "Digi Messenger",
-                5 => "Library",
-                6 => "System",
-                7 => "Save",
-                _ => AnnouncementBuilder.FallbackItem("Option", commandIndex)
-            };
+                var command = _panel?.m_Command;
+                if (command?.m_items != null && commandIndex >= 0 && commandIndex < command.m_items.Length)
+                {
+                    var item = command.m_items[commandIndex];
+                    if (item?.m_headText != null)
+                    {
+                        string text = item.m_headText.text;
+                        if (!string.IsNullOrEmpty(text))
+                            return TextUtilities.StripRichTextTags(text);
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Error getting command name: {ex.Message}");
+            }
+
+            return AnnouncementBuilder.FallbackItem("Option", commandIndex);
         }
 
         public override void AnnounceStatus()

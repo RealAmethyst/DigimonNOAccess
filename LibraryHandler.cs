@@ -92,7 +92,7 @@ namespace DigimonNOAccess
                     string name = GetGridItemName();
                     int cursor = GetGridCursor();
                     int total = GetGridTotal();
-                    ScreenReader.Say(AnnouncementBuilder.MenuOpen("Library", name, cursor, total));
+                    ScreenReader.Say(AnnouncementBuilder.MenuOpen(GetHeaderTitle(), name, cursor, total));
                 }
                 else if (state == uDigiviceLibraryPanel.State.Detail)
                 {
@@ -176,7 +176,7 @@ namespace DigimonNOAccess
                 var state = _libraryPanel.GetState();
                 if (state != uDigiviceLibraryPanel.State.Top)
                 {
-                    ScreenReader.Say("Library");
+                    ScreenReader.Say(GetHeaderTitle());
                     return;
                 }
 
@@ -186,12 +186,12 @@ namespace DigimonNOAccess
                 int total = GetGridTotal();
                 _lastGridCursor = cursor;
 
-                ScreenReader.Say(AnnouncementBuilder.MenuOpen("Library", name, cursor, total));
+                ScreenReader.Say(AnnouncementBuilder.MenuOpen(GetHeaderTitle(), name, cursor, total));
                 DebugLogger.Log($"{LogTag} First item: {name}, cursor={cursor}, {cursor + 1} of {total}");
             }
             catch (System.Exception ex)
             {
-                ScreenReader.Say("Library");
+                ScreenReader.Say(GetHeaderTitle());
                 DebugLogger.Warning($"{LogTag} Open error: {ex.Message}");
             }
         }
@@ -622,6 +622,22 @@ namespace DigimonNOAccess
             if (string.IsNullOrEmpty(name) || name == "???")
                 return "Unknown";
             return name;
+        }
+
+        private string GetHeaderTitle()
+        {
+            try
+            {
+                var headLine = _libraryPanel?.m_HeadLine;
+                if (headLine?.m_Text != null)
+                {
+                    string text = headLine.m_Text.text;
+                    if (!string.IsNullOrEmpty(text))
+                        return TextUtilities.StripRichTextTags(text).Trim();
+                }
+            }
+            catch { }
+            return "Field Guide";
         }
 
         private uDigiviceLibraryDetailPanel.State GetDetailState()

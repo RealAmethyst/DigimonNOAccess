@@ -144,6 +144,7 @@ namespace DigimonNOAccess
                 new BattleResultHandler(),
                 new BattleHudHandler(),
                 new BattleMonitorHandler(),
+                new FishingHandler(),
                 new ItemPickPanelHandler(),
                 _audioNavigationHandler,
                 new FieldHudHandler(),

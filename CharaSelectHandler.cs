@@ -1,10 +1,13 @@
 using Il2Cpp;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace DigimonNOAccess
 {
     /// <summary>
     /// Handles accessibility for the character/gender selection screen in New Game.
+    /// Reads gender label and character name from the game's own UI text components,
+    /// and reads caption/instructions from the scene's uCaptionBase panel.
     /// </summary>
     public class CharaSelectHandler : HandlerBase<uCharaSelectPanel>
     {
@@ -30,14 +33,12 @@ namespace DigimonNOAccess
                 return;
 
             int gender = _panel.Gender;
-            string genderName = GetGenderName(gender);
+            string characterInfo = GetCharacterInfo();
 
-            // Use hardcoded English - the game's caption is in Japanese even for English version
-            string announcement = $"Choose your character. Left and right to change gender. {genderName} selected";
+            ScreenReader.Say(HEADER);
+            ScreenReader.SayQueued(characterInfo);
 
-            ScreenReader.Say(announcement);
-            DebugLogger.Log($"{LogTag} Opened: gender={gender}");
-
+            DebugLogger.Log($"{LogTag} Opened: gender={gender}, info={characterInfo}");
             _lastGender = gender;
         }
 
@@ -49,47 +50,81 @@ namespace DigimonNOAccess
 
         protected override void OnUpdate()
         {
-            CheckSelectionChange();
-        }
-
-        private void CheckSelectionChange()
-        {
-            if (_panel == null)
-                return;
+            if (_panel == null) return;
 
             int gender = _panel.Gender;
             if (gender != _lastGender)
             {
-                string genderName = GetGenderName(gender);
-                ScreenReader.Say(genderName);
-                DebugLogger.Log($"{LogTag} Selection changed: {gender} = {genderName}");
+                string characterInfo = GetCharacterInfo();
+                ScreenReader.Say(characterInfo);
+                DebugLogger.Log($"{LogTag} Selection changed: {gender}, info={characterInfo}");
                 _lastGender = gender;
             }
         }
 
-        private string GetGenderName(int gender)
-        {
-            switch (gender)
-            {
-                case 0: return "Male";
-                case 1: return "Female";
-                default: return AnnouncementBuilder.FallbackItem("Option", gender);
-            }
-        }
-
-        /// <summary>
-        /// Announce current status.
-        /// </summary>
         public override void AnnounceStatus()
         {
-            if (!IsOpen())
-                return;
+            if (!IsOpen()) return;
 
-            int gender = _panel.Gender;
-            string genderName = GetGenderName(gender);
-
-            string announcement = $"Character Selection. {genderName} selected";
-            ScreenReader.Say(announcement);
+            string characterInfo = GetCharacterInfo();
+            ScreenReader.Say(HEADER);
+            ScreenReader.SayQueued(characterInfo);
         }
+
+        // Caption text is a texture in the title screen, not a readable text component.
+        private const string HEADER = "Choose your character. Left and right to change";
+
+        /// <summary>
+        /// Builds character info string from child Text components.
+        /// </summary>
+        private string GetCharacterInfo()
+        {
+            try
+            {
+                var texts = _panel.GetComponentsInChildren<Text>(true);
+                if (texts == null) return GetFallbackInfo();
+
+                string panelCaptionText = _panel.m_captionText?.text?.Trim() ?? "";
+                string genderLabel = null;
+                string characterName = null;
+
+                foreach (var text in texts)
+                {
+                    if (text == null) continue;
+                    string val = text.text;
+                    if (string.IsNullOrEmpty(val)) continue;
+
+                    val = val.Trim();
+                    if (val.Length < 2) continue;
+
+                    // Skip the panel's own Japanese caption text
+                    if (!string.IsNullOrEmpty(panelCaptionText) && val == panelCaptionText)
+                        continue;
+
+                    if (genderLabel == null)
+                        genderLabel = TextUtilities.StripRichTextTags(val).Trim();
+                    else if (characterName == null)
+                        characterName = TextUtilities.StripRichTextTags(val).Trim().Trim('"', '\u201C', '\u201D', ' ');
+                }
+
+                if (genderLabel != null && characterName != null)
+                    return $"{genderLabel}, {characterName}";
+                if (genderLabel != null)
+                    return genderLabel;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Error reading character info: {ex.Message}");
+            }
+
+            return GetFallbackInfo();
+        }
+
+        private string GetFallbackInfo()
+        {
+            int gender = _panel?.Gender ?? 0;
+            return gender == 0 ? "Male, Takuto" : "Female, Shiki";
+        }
+
     }
 }
