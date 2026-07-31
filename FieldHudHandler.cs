@@ -82,24 +82,45 @@ namespace DigimonNOAccess
                         sb.Append($", {statusText}");
                 }
 
-                // Care stats
-                uint mood = ss._GetPartnerMood(partnerNo);
-                sb.Append($", Mood {mood}");
-
-                uint discipline = ss._GetPartnerUpbringing(partnerNo);
-                sb.Append($", Discipline {discipline}");
+                // Care gauges, spoken as a proportion of their bar. Each of these has a
+                // real slider on uPartnerStatusPanelStatus, so a percentage is what a
+                // sighted player reads off the bar.
+                //
+                // Deliberately NOT spoken: hunger as a number, bond, trust and lifespan.
+                // The status panel has no field for any of them - hunger surfaces only as
+                // a sign icon, and bond and trust are hidden evolution inputs. Speaking
+                // them would hand over information the sighted view does not give.
+                var pd = StorageData.GetPartnerData(partnerNo);
 
                 uint tiredness = ss._GetPartnerFatigue(partnerNo);
-                sb.Append($", Tiredness {tiredness}");
+                sb.Append($", {PartnerUtilities.FormatGauge("Tiredness", tiredness, PartnerUtilities.FatigueMin, PartnerUtilities.FatigueMax)}");
+
+                uint mood = ss._GetPartnerMood(partnerNo);
+                sb.Append($", {PartnerUtilities.FormatGauge("Mood", mood, PartnerUtilities.MoodMin, PartnerUtilities.MoodMax)}");
+
+                uint discipline = ss._GetPartnerUpbringing(partnerNo);
+                sb.Append($", {PartnerUtilities.FormatGauge("Discipline", discipline, PartnerUtilities.DisciplineMin, PartnerUtilities.DisciplineMax)}");
 
                 uint curse = ss._GetPartnerCurse(partnerNo);
-                sb.Append($", Curse {curse}");
+                sb.Append($", {PartnerUtilities.FormatGauge("Curse", curse, PartnerUtilities.CurseMin, PartnerUtilities.CurseMax)}");
 
+                // Counts, not gauges - a percentage would be meaningless for these.
                 uint weight = ss._GetPartnerWeight(partnerNo);
                 sb.Append($", Weight {weight}");
 
                 uint age = ss._GetPartnerAge(partnerNo);
                 sb.Append($", Age {age}");
+
+                // The three care requests. These are the sign icons the game floats over
+                // the Digimon and shows on the status panel, so they are genuinely part
+                // of the sighted view - unlike the raw values behind them. Only spoken
+                // when actually set.
+                if (pd != null)
+                {
+                    if (pd.m_isReqMeal) sb.Append(", hungry");
+                    if (pd.m_isReqToilet) sb.Append(", needs toilet");
+                    if (pd.m_isReqSleep) sb.Append(", needs sleep");
+                }
 
                 ScreenReader.Say(sb.ToString());
             }

@@ -113,8 +113,20 @@ namespace DigimonNOAccess
             }
         }
 
+        /// <summary>
+        /// The title of the agreement being shown.
+        ///
+        /// Read from the window's own header, so it matches what is on screen in
+        /// whatever language the player is running. The English names are a fallback
+        /// for the frame before the header is populated - these screens appear before
+        /// the player has chosen a language, so getting them right matters.
+        /// </summary>
         private string GetWindowTypeName(uAgreeWindow.AgreeWindowType type)
         {
+            string header = GetHeaderText();
+            if (!string.IsNullOrWhiteSpace(header))
+                return TextUtilities.StripRichTextTags(header).Trim();
+
             switch (type)
             {
                 case uAgreeWindow.AgreeWindowType.Eula:
@@ -125,6 +137,41 @@ namespace DigimonNOAccess
                     return "Data Analysis Consent";
                 default:
                     return "Agreement";
+            }
+        }
+
+        /// <summary>
+        /// The rendered header text, or null if it is not reachable yet. Each hop logs
+        /// its own reason so a chain broken by a game update is visible in the log
+        /// rather than silently reverting everyone to English.
+        /// </summary>
+        private string GetHeaderText()
+        {
+            try
+            {
+                if (_window == null)
+                    return null;
+
+                var header = _window.m_Header;
+                if (header == null)
+                {
+                    DebugLogger.Log("[AgreeWindow] Header: window has no header component");
+                    return null;
+                }
+
+                var text = header.m_headerText;
+                if (text == null)
+                {
+                    DebugLogger.Log("[AgreeWindow] Header: header component has no Text");
+                    return null;
+                }
+
+                return text.text;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[AgreeWindow] Header read failed: {ex.Message}");
+                return null;
             }
         }
 

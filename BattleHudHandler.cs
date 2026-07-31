@@ -48,6 +48,14 @@ namespace DigimonNOAccess
             {
                 _cachedBattlePanel = null;
                 _loggedBattleActive = false;
+                // Forget buff state on leaving battle, so the next fight does not open
+                // by announcing everything that was active when the last one ended.
+                _buffState[0] = default;
+                _buffState[1] = default;
+                _buffStateKnown[0] = _buffStateKnown[1] = false;
+                // Forget which status signs were showing, so the next battle does not
+                // open by announcing conditions that ended with the last one.
+                BattleAbnormalPatch.Reset();
                 return;
             }
 
@@ -60,8 +68,68 @@ namespace DigimonNOAccess
                 DebugLogger.Log("[BattleHudHandler] Battle panel active, D-pad status checks enabled");
             }
 
+            CheckBuffChanges();
+
             // Handle keyboard input (F3/F4/F6/F7)
             HandleKeyboardInput();
+        }
+
+        // Last seen buff state per partner, for change detection. Known is tracked per
+        // partner: one partner's data being unavailable says nothing about the other's.
+        private readonly BattleBuffReader.BuffState[] _buffState = new BattleBuffReader.BuffState[2];
+        private readonly bool[] _buffStateKnown = new bool[2];
+
+        // Buff polling costs 24 interop calls per pass, so it runs a few times a
+        // second rather than every frame. Still far faster than a player can react.
+        private const float BuffPollInterval = 0.1f;
+        private float _nextBuffPoll;
+
+        /// <summary>
+        /// Announces stat boosts landing and wearing off as they happen.
+        ///
+        /// This polls rather than hooking: the natural anchor,
+        /// uDigimonHpBarBase.SetActiveBuf, is virtual with no managed callers, so it
+        /// is not a proven hook. Comparing a cheap bitmask each frame costs three
+        /// predicate calls per stat and only speaks on an actual edge.
+        ///
+        /// The first pass after a battle starts only records the state - otherwise
+        /// walking into a fight with a buff already running would announce it as if
+        /// it had just landed.
+        /// </summary>
+        private void CheckBuffChanges()
+        {
+            if (!ModSettings.AnnounceBattleBuffs)
+            {
+                _buffStateKnown[0] = _buffStateKnown[1] = false;
+                return;
+            }
+
+            if (Time.time < _nextBuffPoll)
+                return;
+            _nextBuffPoll = Time.time + BuffPollInterval;
+
+            for (int i = 0; i < 2; i++)
+            {
+                // An unreadable partner is not the same as a partner with no buffs.
+                // Keep the last known state so a one-frame gap in the data does not
+                // announce everything wearing off and then coming back.
+                if (!BattleBuffReader.TryRead(i, out var current))
+                    continue;
+
+                if (_buffStateKnown[i])
+                {
+                    string change = BattleBuffReader.DescribeChange(_buffState[i], current);
+                    if (change != null)
+                    {
+                        string name = MainGameManager.GetPartnerCtrl(i)?.Name
+                                      ?? PartnerUtilities.GetPartnerLabel(i);
+                        ScreenReader.SayQueued($"{name}, {change}");
+                    }
+                }
+
+                _buffState[i] = current;
+                _buffStateKnown[i] = true;
+            }
         }
 
         private bool IsInSubMenu()
@@ -238,7 +306,11 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[BattleHudHandler] Error reading order/power: {ex.Message}");
             }
 
+            string buffs = BattleBuffReader.Describe(BattleBuffReader.Read(partnerIndex));
+
             string announcement = $"{name}: HP {hpText}, MP {mpText}";
+            if (buffs != null)
+                announcement += $", {buffs}";
             if (!string.IsNullOrWhiteSpace(order))
             {
                 announcement += $", Order: {order}";

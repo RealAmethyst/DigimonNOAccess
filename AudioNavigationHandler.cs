@@ -16,12 +16,6 @@ namespace DigimonNOAccess
         public int Priority => 999;
 
         /// <summary>
-        /// When true, all positional audio and wall detection is suspended.
-        /// Used by PathfindingBeacon to silence other navigation sounds during pathfinding.
-        /// </summary>
-        public static bool Suspended { get; set; }
-
-        /// <summary>
         /// Background handler - never owns the status announce.
         /// </summary>
         public bool IsOpen() => false;
@@ -78,7 +72,6 @@ namespace DigimonNOAccess
         private int _lastAreaNo = -1;
 
         // Camera mode tracking for diagnostic logging
-        private int _lastLoggedCameraMode = -99;
 
         // Cooldown after training result to allow evolution detection
         private const float PostTrainingCooldown = 0.5f;
@@ -170,7 +163,7 @@ namespace DigimonNOAccess
 
                 // Use full camera orientation for audio (matching the game's AudioListener).
                 // Includes pitch and zoom so HRTF matches what the player perceives.
-                GetCameraVectors(out Vector3 camFwd, out Vector3 camUp);
+                CameraOrientation.GetVectors(out Vector3 camFwd, out Vector3 camUp);
                 float currentTime = Time.time;
 
                 // Detect map/area change and force immediate rescan
@@ -524,7 +517,7 @@ namespace DigimonNOAccess
         {
             try
             {
-                GetCameraVectors(out Vector3 camFwd, out Vector3 camUp);
+                CameraOrientation.GetVectors(out Vector3 camFwd, out Vector3 camUp);
 
                 // Project camera forward to horizontal plane
                 float fwdX = camFwd.x;
@@ -573,7 +566,7 @@ namespace DigimonNOAccess
                 if (_playerCtrl != null)
                 {
                     Vector3 pos = _playerCtrl.transform.position;
-                    GetCameraVectors(out Vector3 envFwd, out Vector3 envUp);
+                    CameraOrientation.GetVectors(out Vector3 envFwd, out Vector3 envUp);
                     SteamAudioEnvironment.UpdateListener(pos, envFwd, envUp);
                 }
 
@@ -621,59 +614,6 @@ namespace DigimonNOAccess
             catch
             {
                 return false;
-            }
-        }
-
-        /// <summary>
-        /// Gets the camera's full 3D orientation vectors for audio spatialization.
-        /// Uses CameraManager.Ref (same object that holds the game's AudioListener).
-        /// Returns forward and up vectors without any horizontal projection -
-        /// HRTF needs the real camera orientation including pitch and zoom.
-        /// </summary>
-        private void GetCameraVectors(out Vector3 camForward, out Vector3 camUp)
-        {
-            camForward = Vector3.forward;
-            camUp = Vector3.up;
-
-            try
-            {
-                var camMgr = CameraManager.Ref;
-                if (camMgr != null && camMgr.m_mainCameraObject != null)
-                {
-                    var t = camMgr.m_mainCameraObject.transform;
-                    camForward = t.forward;
-                    camUp = t.up;
-
-                    // Log camera mode changes for diagnostics
-                    int currentMode = (int)camMgr.modeID;
-                    if (currentMode != _lastLoggedCameraMode)
-                    {
-                        _lastLoggedCameraMode = currentMode;
-                        DebugLogger.Log($"[AudioNav] Camera mode: {camMgr.modeID}, fwd: ({camForward.x:F2}, {camForward.y:F2}, {camForward.z:F2}), up: ({camUp.x:F2}, {camUp.y:F2}, {camUp.z:F2})");
-                    }
-                }
-                else
-                {
-                    Camera cam = Camera.main;
-                    if (cam != null)
-                    {
-                        camForward = cam.transform.forward;
-                        camUp = cam.transform.up;
-                    }
-                }
-            }
-            catch
-            {
-                try
-                {
-                    Camera cam = Camera.main;
-                    if (cam != null)
-                    {
-                        camForward = cam.transform.forward;
-                        camUp = cam.transform.up;
-                    }
-                }
-                catch { }
             }
         }
 

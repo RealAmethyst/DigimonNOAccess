@@ -183,9 +183,18 @@ namespace DigimonNOAccess
             {
                 _wasInField = false;
 
-                // Pause pathfinding beacon audio when leaving field (auto-walk pauses naturally since Update stops)
+                // Pause pathfinding beacon audio when leaving the field.
                 if (_isPathfinding && _pathfindingBeacon != null && _pathfindingBeacon.IsActive)
                     _pathfindingBeacon.Stop();
+
+                // Auto-walk does NOT pause on its own. GamepadInputPatch reads
+                // AutoWalkActive from the game's own input path, which keeps running
+                // while this Update is short-circuited - so leaving the field mid-walk
+                // used to leave a stale stick value jammed on through battles, menus and
+                // events. Clear the injection flag here, but leave _isAutoWalking set so
+                // ResumePathfinding picks the route back up on return.
+                AutoWalkActive = false;
+                AutoWalkCameraStickX = 0;
 
                 return;
             }
@@ -2848,9 +2857,11 @@ namespace DigimonNOAccess
                 if (_pathfindingBeacon == null)
                     _pathfindingBeacon = new PathfindingBeacon();
 
+                CameraOrientation.GetVectors(out Vector3 startCamFwd, out Vector3 startCamUp);
                 _pathfindingBeacon.UpdatePlayerPosition(
                     playerPos.x, playerPos.y, playerPos.z,
-                    _playerCtrl.transform.forward.x, _playerCtrl.transform.forward.z);
+                    startCamFwd.x, startCamFwd.y, startCamFwd.z,
+                    startCamUp.x, startCamUp.y, startCamUp.z);
                 _pathfindingBeacon.Start(navTargetPos.x, navTargetPos.y, navTargetPos.z, cx, cy, cz);
 
                 _pathfindingDestination = navTargetPos;
@@ -2867,8 +2878,6 @@ namespace DigimonNOAccess
                     StartAutoWalk(corners);
                 }
 
-                // Suspend other navigation audio
-                AudioNavigationHandler.Suspended = true;
 
                 string modeText = _isAutoWalking ? "Auto walking" : "Pathfinding";
                 ScreenReader.Say($"{modeText} to {navEvent.Name}");
@@ -2926,12 +2935,13 @@ namespace DigimonNOAccess
                 }
 
                 Vector3 playerPos = _playerCtrl.transform.position;
-                Vector3 playerForward = _playerCtrl.transform.forward;
 
-                // Update beacon with current player position every frame
+                // Update beacon with current player position and camera facing every frame
+                CameraOrientation.GetVectors(out Vector3 beaconCamFwd, out Vector3 beaconCamUp);
                 _pathfindingBeacon.UpdatePlayerPosition(
                     playerPos.x, playerPos.y, playerPos.z,
-                    playerForward.x, playerForward.z);
+                    beaconCamFwd.x, beaconCamFwd.y, beaconCamFwd.z,
+                    beaconCamUp.x, beaconCamUp.y, beaconCamUp.z);
 
                 // Distance-based arrival for NPCs, Enemies, Facilities, and Quest triggers.
                 // Transitions need to walk into the zone trigger (map change stops pathfinding).
@@ -3052,9 +3062,11 @@ namespace DigimonNOAccess
                 }
 
                 // Restart beacon
+                CameraOrientation.GetVectors(out Vector3 resumeCamFwd, out Vector3 resumeCamUp);
                 _pathfindingBeacon.UpdatePlayerPosition(
                     playerPos.x, playerPos.y, playerPos.z,
-                    _playerCtrl.transform.forward.x, _playerCtrl.transform.forward.z);
+                    resumeCamFwd.x, resumeCamFwd.y, resumeCamFwd.z,
+                    resumeCamUp.x, resumeCamUp.y, resumeCamUp.z);
                 _pathfindingBeacon.Start(
                     _pathfindingDestination.x, _pathfindingDestination.y, _pathfindingDestination.z,
                     cx, cy, cz);
@@ -3075,7 +3087,6 @@ namespace DigimonNOAccess
                 }
 
                 // Ensure other audio stays suspended
-                AudioNavigationHandler.Suspended = true;
                 _lastPathRecalcTime = Time.time;
 
                 DebugLogger.Log("[NavList] Pathfinding resumed");
@@ -3153,7 +3164,6 @@ namespace DigimonNOAccess
                 _pathfindingBeacon.Stop();
             }
 
-            AudioNavigationHandler.Suspended = false;
 
             // Turn player to face the target so the correct one gets interacted with
             if ((category == EventCategory.NPCs || category == EventCategory.Facilities) && _playerCtrl != null)

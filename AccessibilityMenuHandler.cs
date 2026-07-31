@@ -260,7 +260,17 @@ namespace DigimonNOAccess
                 var item = items[_settingIndex];
                 if (item is ToggleSetting || item is ReadOnlySetting || item is KeybindSetting) return;
                 if (item.OnLeft())
+                {
+                    if (item.RebuildOnChange)
+                    {
+                        // Rebuild in place so the rows that depend on this setting
+                        // appear or disappear immediately, then keep the cursor on
+                        // the same row rather than dumping the player at the top.
+                        _categories[_categoryIndex].InvalidateItems();
+                        ClampSettingIndex(_categories[_categoryIndex].Items);
+                    }
                     PlaySe(CriSoundManager.SE_MoveCursor1);
+                }
             }
         }
 
@@ -273,7 +283,17 @@ namespace DigimonNOAccess
                 var item = items[_settingIndex];
                 if (item is ToggleSetting || item is ReadOnlySetting || item is KeybindSetting) return;
                 if (item.OnRight())
+                {
+                    if (item.RebuildOnChange)
+                    {
+                        // Rebuild in place so the rows that depend on this setting
+                        // appear or disappear immediately, then keep the cursor on
+                        // the same row rather than dumping the player at the top.
+                        _categories[_categoryIndex].InvalidateItems();
+                        ClampSettingIndex(_categories[_categoryIndex].Items);
+                    }
                     PlaySe(CriSoundManager.SE_MoveCursor1);
+                }
             }
         }
 
@@ -819,6 +839,10 @@ namespace DigimonNOAccess
         {
             return new SettingItem[]
             {
+                new ToggleSetting("Announce Battle Buffs",
+                    () => ModSettings.AnnounceBattleBuffs,
+                    v => { ModSettings.AnnounceBattleBuffs = v; ModSettings.Save(); },
+                    description: "When on, stat boosts and their wearing off are announced during battle as they happen"),
                 new ToggleSetting("Disable Hunger",
                     () => ModSettings.DisableHunger,
                     v => { ModSettings.DisableHunger = v; if (v) CareMechanicsPatch.ResetHunger(); ModSettings.Save(); },
@@ -870,6 +894,11 @@ namespace DigimonNOAccess
                 v => { ModSettings.BackgroundVolume = v; ModSettings.Save(); },
                 0f, 1f, 0.05f,
                 "Volume of objects beyond the nearest one"));
+            items.Add(new PercentSliderSetting("Pathfinder Beep Volume",
+                () => ModSettings.PathfinderVolume,
+                v => { ModSettings.PathfinderVolume = v; ModSettings.Save(); },
+                0f, 1f, 0.05f,
+                "Volume of the pathfinding tracker beep. Distance is shown by how fast it repeats, not how loud it is"));
 
             // Per-type settings only shown when that type is enabled
             if (ModSettings.ItemsEnabled)
@@ -953,17 +982,104 @@ namespace DigimonNOAccess
 
         private SettingItem[] BuildSpeechItems()
         {
-            return new SettingItem[]
+            var items = new List<SettingItem>();
+
+            // Engine and voice first: they decide whether the rest of this page even
+            // applies, and they are what a player comes here to change.
+            var backends = ScreenReader.EnumerateBackends();
+            if (backends.Count > 1)
             {
-                new ToggleSetting("Read Voiced Text",
-                    () => ModSettings.ReadVoicedText,
-                    v => { ModSettings.ReadVoicedText = v; ModSettings.Save(); },
-                    description: "When on, the screen reader also reads dialog text that has voice acting"),
-                new ToggleSetting("Speak Movie Subtitles",
-                    () => ModSettings.SpeakMovieSubtitles,
-                    v => { ModSettings.SpeakMovieSubtitles = v; ModSettings.Save(); },
-                    description: "When on, the screen reader reads subtitles during movie cutscenes"),
-            };
+                items.Add(new ChoiceSetting("Speech Engine",
+                    backends.ConvertAll(b => b.Name),
+                    () => backends.FindIndex(b => b.Id == ScreenReader.BackendId),
+                    i =>
+                    {
+                        if (i < 0 || i >= backends.Count) return;
+                        if (ScreenReader.SwitchBackend(backends[i].Id))
+                        {
+                            ModSettings.SpeechEngineId = backends[i].Id;
+                            ModSettings.Save();
+                        }
+                        else
+                        {
+                            ScreenReader.Say($"{backends[i].Name} is not available");
+                        }
+                    },
+                    "Which speech engine the mod talks through. Only engines that work on this computer are listed",
+                    rebuildOnChange: true));
+            }
+
+            // Voice, rate and volume only exist on engines that accept them. Screen
+            // readers deliberately do not, and use your own screen reader settings.
+            if (ScreenReader.SupportsVoice)
+            {
+                var voices = ScreenReader.EnumerateVoices();
+                if (voices.Count > 1)
+                {
+                    items.Add(new ChoiceSetting("Voice", voices,
+                        () =>
+                        {
+                            // Resolved live on every read, not captured when the page
+                            // was built. Capturing it meant the row kept reporting the
+                            // voice from page-open forever, so it showed "not set" and
+                            // every press re-selected the first voice instead of moving.
+                            string current = !string.IsNullOrEmpty(ModSettings.SpeechVoice)
+                                ? ModSettings.SpeechVoice
+                                : ScreenReader.CurrentVoiceName;
+
+                            int index = string.IsNullOrEmpty(current) ? -1 : voices.IndexOf(current);
+
+                            // Some engines will not report their active voice. Start at
+                            // the first one so the row still works - being one name out
+                            // until the player changes it beats being unchangeable.
+                            return index >= 0 ? index : 0;
+                        },
+                        i =>
+                        {
+                            if (i < 0 || i >= voices.Count) return;
+                            if (ScreenReader.SetVoiceByName(voices[i]))
+                            {
+                                ModSettings.SpeechVoice = voices[i];
+                                ModSettings.Save();
+                            }
+                        },
+                        "Which voice this engine speaks with"));
+                }
+            }
+
+            if (ScreenReader.SupportsRate)
+            {
+                items.Add(new IntSliderSetting("Speech Rate",
+                    () => ModSettings.SpeechRatePercent,
+                    v => { ModSettings.SpeechRatePercent = v; ModSettings.Save(); ScreenReader.ApplyVoiceAndParams(); },
+                    1, 100, 5,
+                    "How fast this engine speaks"));
+            }
+
+            if (ScreenReader.SupportsVolume)
+            {
+                items.Add(new IntSliderSetting("Speech Volume",
+                    () => ModSettings.SpeechVolumePercent,
+                    v => { ModSettings.SpeechVolumePercent = v; ModSettings.Save(); ScreenReader.ApplyVoiceAndParams(); },
+                    1, 100, 5,
+                    "How loud this engine speaks"));
+            }
+
+            // What gets spoken, below what speaks it.
+            items.Add(new ToggleSetting("Speak Only When Focused",
+                () => ModSettings.SpeakOnlyWhenFocused,
+                v => { ModSettings.SpeakOnlyWhenFocused = v; ModSettings.Save(); },
+                description: "When on, the mod goes quiet while you are in another window and stops talking the moment you switch away"));
+            items.Add(new ToggleSetting("Read Voiced Text",
+                () => ModSettings.ReadVoicedText,
+                v => { ModSettings.ReadVoicedText = v; ModSettings.Save(); },
+                description: "When on, the screen reader also reads dialog text that has voice acting"));
+            items.Add(new ToggleSetting("Speak Movie Subtitles",
+                () => ModSettings.SpeakMovieSubtitles,
+                v => { ModSettings.SpeakMovieSubtitles = v; ModSettings.Save(); },
+                description: "When on, the screen reader reads subtitles during movie cutscenes"));
+
+            return items.ToArray();
         }
 
         private SettingItem[] BuildKeybindingsItems()
@@ -1045,6 +1161,14 @@ namespace DigimonNOAccess
         {
             public string Name { get; }
             public string Description { get; }
+
+            /// <summary>
+            /// True when changing this setting changes which OTHER settings exist, so
+            /// the category has to be rebuilt. Toggles already do this via OnConfirm;
+            /// this covers left/right settings like the speech engine picker, where
+            /// switching engine changes whether Voice, Rate and Volume apply at all.
+            /// </summary>
+            public bool RebuildOnChange { get; protected set; }
 
             protected SettingItem(string name, string description = null)
             {
@@ -1166,6 +1290,53 @@ namespace DigimonNOAccess
             }
 
             public override void OnConfirm() { }
+        }
+
+        /// <summary>
+        /// Cycles through a fixed list of options with left and right, the same feel as
+        /// the keybinding rows. Used where the choices come from the system at runtime
+        /// (speech engines, installed voices) rather than being known up front.
+        /// </summary>
+        private class ChoiceSetting : SettingItem
+        {
+            private readonly List<string> _options;
+            private readonly Func<int> _getIndex;
+            private readonly Action<int> _setIndex;
+
+            public ChoiceSetting(string name, List<string> options, Func<int> getIndex, Action<int> setIndex,
+                string description = null, bool rebuildOnChange = false)
+                : base(name, description)
+            {
+                _options = options ?? new List<string>();
+                _getIndex = getIndex;
+                _setIndex = setIndex;
+                RebuildOnChange = rebuildOnChange;
+            }
+
+            public override string GetValueText()
+            {
+                int i = _getIndex();
+                return (i >= 0 && i < _options.Count) ? _options[i] : "not set";
+            }
+
+            public override bool OnLeft() => Move(-1);
+            public override bool OnRight() => Move(1);
+
+            private bool Move(int delta)
+            {
+                if (_options.Count == 0) return false;
+
+                int current = _getIndex();
+                // An unset or unrecognized current value starts the cycle at the top
+                // rather than refusing to move.
+                if (current < 0) current = 0;
+                else current += delta;
+
+                if (current < 0 || current >= _options.Count) return false;
+
+                _setIndex(current);
+                return true;
+            }
         }
 
         private class ReadOnlySetting : SettingItem

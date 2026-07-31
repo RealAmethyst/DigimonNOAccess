@@ -27,6 +27,15 @@ namespace DigimonNOAccess
 
         public static bool SpeakMovieSubtitles { get; set; } = true;
 
+        // --- Text to speech (Prism) ---
+        // Engine is stored by Prism's stable registry ID, not by name or index.
+        // 0 means "let Prism pick the best available".
+        public static ulong SpeechEngineId { get; set; } = 0;
+        public static string SpeechVoice { get; set; } = "";
+        public static int SpeechRatePercent { get; set; } = 50;
+        public static int SpeechVolumePercent { get; set; } = 100;
+        public static bool SpeakOnlyWhenFocused { get; set; } = true;
+
         // --- Audio Navigation: Detection Ranges ---
         public static float ItemRange { get; set; } = 80f;
         public static float NpcRange { get; set; } = 80f;
@@ -45,6 +54,11 @@ namespace DigimonNOAccess
         public static float TransitionVolume { get; set; } = 1.0f;
         public static float FacilityVolume { get; set; } = 1.0f;
 
+        // --- Pathfinding beacon ---
+        // The beacon conveys distance through how fast it repeats, not how loud it is,
+        // so this is a flat volume rather than a range.
+        public static float PathfinderVolume { get; set; } = 0.45f;
+
         // --- Audio Navigation: Per-type Enable/Disable ---
         public static bool ItemsEnabled { get; set; } = true;
         public static bool NpcsEnabled { get; set; } = true;
@@ -58,6 +72,9 @@ namespace DigimonNOAccess
         public static int MaxEnemySounds { get; set; } = 3;
         public static int MaxTransitionSounds { get; set; } = 2;
         public static int MaxFacilitySounds { get; set; } = 2;
+
+        // --- Battle ---
+        public static bool AnnounceBattleBuffs { get; set; } = true;
 
         // --- Gameplay: Care Mechanics ---
         public static bool DisableHunger { get; set; } = false;
@@ -119,6 +136,12 @@ namespace DigimonNOAccess
             ReadVoicedText = data.ReadVoicedText;
             SpeakMovieSubtitles = data.SpeakMovieSubtitles;
 
+            SpeechEngineId = data.SpeechEngineId;
+            SpeechVoice = data.SpeechVoice ?? "";
+            SpeechRatePercent = data.SpeechRatePercent;
+            SpeechVolumePercent = data.SpeechVolumePercent;
+            SpeakOnlyWhenFocused = data.SpeakOnlyWhenFocused;
+
             ItemRange = data.ItemRange;
             NpcRange = data.NpcRange;
             EnemyRange = data.EnemyRange;
@@ -134,6 +157,8 @@ namespace DigimonNOAccess
             TransitionVolume = data.TransitionVolume;
             FacilityVolume = data.FacilityVolume;
 
+            PathfinderVolume = data.PathfinderVolume;
+
             ItemsEnabled = data.ItemsEnabled;
             NpcsEnabled = data.NpcsEnabled;
             EnemiesEnabled = data.EnemiesEnabled;
@@ -145,6 +170,8 @@ namespace DigimonNOAccess
             MaxEnemySounds = data.MaxEnemySounds;
             MaxTransitionSounds = data.MaxTransitionSounds;
             MaxFacilitySounds = data.MaxFacilitySounds;
+
+            AnnounceBattleBuffs = data.AnnounceBattleBuffs;
 
             DisableHunger = data.DisableHunger;
             DisableToilet = data.DisableToilet;
@@ -158,6 +185,12 @@ namespace DigimonNOAccess
             {
                 ReadVoicedText = ReadVoicedText,
                 SpeakMovieSubtitles = SpeakMovieSubtitles,
+
+                SpeechEngineId = SpeechEngineId,
+                SpeechVoice = SpeechVoice,
+                SpeechRatePercent = SpeechRatePercent,
+                SpeechVolumePercent = SpeechVolumePercent,
+                SpeakOnlyWhenFocused = SpeakOnlyWhenFocused,
 
                 ItemRange = ItemRange,
                 NpcRange = NpcRange,
@@ -174,6 +207,8 @@ namespace DigimonNOAccess
                 TransitionVolume = TransitionVolume,
                 FacilityVolume = FacilityVolume,
 
+                PathfinderVolume = PathfinderVolume,
+
                 ItemsEnabled = ItemsEnabled,
                 NpcsEnabled = NpcsEnabled,
                 EnemiesEnabled = EnemiesEnabled,
@@ -186,6 +221,8 @@ namespace DigimonNOAccess
                 MaxTransitionSounds = MaxTransitionSounds,
                 MaxFacilitySounds = MaxFacilitySounds,
 
+                AnnounceBattleBuffs = AnnounceBattleBuffs,
+
                 DisableHunger = DisableHunger,
                 DisableToilet = DisableToilet,
                 DisableFatigue = DisableFatigue,
@@ -197,6 +234,12 @@ namespace DigimonNOAccess
         {
             public bool ReadVoicedText { get; set; } = false;
             public bool SpeakMovieSubtitles { get; set; } = true;
+
+            public ulong SpeechEngineId { get; set; } = 0;
+            public string SpeechVoice { get; set; } = "";
+            public int SpeechRatePercent { get; set; } = 50;
+            public int SpeechVolumePercent { get; set; } = 100;
+            public bool SpeakOnlyWhenFocused { get; set; } = true;
 
             public float ItemRange { get; set; } = 80f;
             public float NpcRange { get; set; } = 80f;
@@ -213,6 +256,8 @@ namespace DigimonNOAccess
             public float TransitionVolume { get; set; } = 1.0f;
             public float FacilityVolume { get; set; } = 1.0f;
 
+            public float PathfinderVolume { get; set; } = 0.45f;
+
             public bool ItemsEnabled { get; set; } = true;
             public bool NpcsEnabled { get; set; } = true;
             public bool EnemiesEnabled { get; set; } = true;
@@ -224,6 +269,8 @@ namespace DigimonNOAccess
             public int MaxEnemySounds { get; set; } = 3;
             public int MaxTransitionSounds { get; set; } = 2;
             public int MaxFacilitySounds { get; set; } = 2;
+
+            public bool AnnounceBattleBuffs { get; set; } = true;
 
             public bool DisableHunger { get; set; } = false;
             public bool DisableToilet { get; set; } = false;

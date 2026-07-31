@@ -200,8 +200,25 @@ namespace DigimonNOAccess
             }
         }
 
+        /// <summary>
+        /// The name of the options screen we are on.
+        ///
+        /// Read from the game's own caption first, so it is correct in whatever
+        /// language the player is running. Each command panel carries a
+        /// uOptionPanelCaption whose m_Caption is the rendered header - the exact
+        /// text a sighted player sees at the top of the screen.
+        ///
+        /// The English names below are only a fallback for when the caption has not
+        /// been populated yet (it fills in a frame after the panel opens). Falling
+        /// back is deliberate: saying the wrong language is better than saying
+        /// nothing at all about which screen you are on.
+        /// </summary>
         private string GetMenuName(uOptionPanel.MainSettingState state)
         {
+            string caption = GetPanelCaption(state);
+            if (!string.IsNullOrWhiteSpace(caption))
+                return TextUtilities.StripRichTextTags(caption).Trim();
+
             switch (state)
             {
                 case uOptionPanel.MainSettingState.TOP:
@@ -218,6 +235,57 @@ namespace DigimonNOAccess
                     return "Agreement";
                 default:
                     return "Options";
+            }
+        }
+
+        /// <summary>
+        /// The rendered caption for a settings state, or null if it is not reachable
+        /// yet. Every hop logs its own reason rather than failing silently, so a
+        /// broken chain after a game update shows up in the log instead of quietly
+        /// reverting everyone to English.
+        /// </summary>
+        private string GetPanelCaption(uOptionPanel.MainSettingState state)
+        {
+            try
+            {
+                if (_optionPanel == null)
+                    return null;
+
+                var commandPanels = _optionPanel.m_uOptionPanelCommand;
+                if (commandPanels == null)
+                {
+                    DebugLogger.Log("[OptionsMenu] Caption: no command panel array");
+                    return null;
+                }
+
+                int index = (int)state;
+                if (index < 0 || index >= commandPanels.Length)
+                    return null;
+
+                var panel = commandPanels[index];
+                if (panel == null)
+                    return null;
+
+                var captionPanel = panel.m_Caption;
+                if (captionPanel == null)
+                {
+                    DebugLogger.Log($"[OptionsMenu] Caption: state {state} has no caption panel");
+                    return null;
+                }
+
+                var text = captionPanel.m_Caption;
+                if (text == null)
+                {
+                    DebugLogger.Log($"[OptionsMenu] Caption: state {state} caption panel has no Text");
+                    return null;
+                }
+
+                return text.text;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[OptionsMenu] Caption read failed for {state}: {ex.Message}");
+                return null;
             }
         }
 

@@ -33,6 +33,11 @@
     <None Include="phonon.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('phonon.dll')" />
   </ItemGroup>
 
+  <!-- Prism native DLL: screen reader abstraction (NVDA, JAWS, SAPI, ...) -->
+  <ItemGroup>
+    <None Include="prism.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('prism.dll')" />
+  </ItemGroup>
+
   <!-- MelonLoader references -->
   <ItemGroup>
     <Reference Include="MelonLoader">

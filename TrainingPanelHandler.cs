@@ -493,8 +493,32 @@ namespace DigimonNOAccess
             }
         }
 
+        /// <summary>
+        /// Name of a training bonus.
+        ///
+        /// The game has a proper localized accessor for these:
+        /// ParameterTrainingData.GetCorrectionName(index) resolves each case through
+        /// Language.GetString, verified by decompiling it (@ 1802160d0). Use it, so
+        /// these read correctly in every language.
+        ///
+        /// The English names below only cover the accessor returning nothing, which
+        /// it does when the language entry is missing.
+        /// </summary>
         private string GetBonusTypeName(ParameterTrainingData.TrainingCorrectionKindIndex bonus)
         {
+            try
+            {
+                string name = ParameterTrainingData.GetCorrectionName(bonus);
+                if (!string.IsNullOrWhiteSpace(name))
+                    return TextUtilities.StripRichTextTags(name).Trim();
+
+                DebugLogger.Log($"[TrainingPanel] GetCorrectionName({bonus}) returned nothing, using the English fallback");
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[TrainingPanel] GetCorrectionName({bonus}) failed: {ex.Message}");
+            }
+
             switch (bonus)
             {
                 case ParameterTrainingData.TrainingCorrectionKindIndex.FriendBonus:

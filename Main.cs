@@ -54,10 +54,10 @@ namespace DigimonNOAccess
             ModInputManager.Initialize(_modFolderPath);
             LoggerInstance.Msg($"Input manager initialized, config at: {_modFolderPath}");
 
-            // Initialize screen reader
-            if (ScreenReader.Initialize())
+            // Initialize screen reader (Prism loads prism.dll from the mod folder)
+            if (ScreenReader.Initialize(_modFolderPath))
             {
-                LoggerInstance.Msg("Screen reader initialized successfully");
+                LoggerInstance.Msg($"Screen reader initialized successfully via {ScreenReader.BackendName}");
             }
             else
             {
@@ -73,6 +73,7 @@ namespace DigimonNOAccess
             QuestItemCounterPatch.Apply();
             OptionPanelPatch.Apply(_harmony);
             CareMechanicsPatch.Apply(_harmony);
+            BattleAbnormalPatch.Apply(_harmony);
             LoggerInstance.Msg("Dialog, battle, area change, event trigger, option panel, care mechanics, and quest item patches applied");
 
             // Apply gamepad input injection patch for PlayStation controller support
@@ -105,6 +106,7 @@ namespace DigimonNOAccess
                 new NameEntryHandler(),
                 new DialogHandler(),
                 new TitleMenuHandler(),
+                new StartupLogoHandler(),
                 new CommonSelectWindowHandler(),
                 new OptionsMenuHandler(),
                 new CharaSelectHandler(),
@@ -165,6 +167,9 @@ namespace DigimonNOAccess
 
             // Update the input manager first (tracks button states)
             ModInputManager.Update();
+
+            // Stop speech when the player alt-tabs away (if that setting is on)
+            ScreenReader.UpdateFocusState();
 
             // Cross-handler data flow: NavigationList needs to know if evolution is active
             _navigationListHandler.SetEvolutionActive(_evolutionHandler.IsActive());

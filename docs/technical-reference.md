@@ -1,6 +1,6 @@
 # Technical Reference
 
-Compact overview: MelonLoader, Harmony, and Tolk.
+Compact overview: MelonLoader, Harmony, and Prism.
 
 ---
 
@@ -196,84 +196,52 @@ public class DamagePatch
 
 ---
 
-## Tolk (Screen Reader)
+## Prism (Screen Reader)
 
-### DLL Imports
+Speech goes through **Prism**, not Tolk. Tolk was Windows-only and effectively
+NVDA/JAWS-only; Prism targets whatever reader is actually running - NVDA, JAWS,
+System Access, ZDSR, Narrator, SAPI and OneCore on Windows, Orca and
+speech-dispatcher on Linux, VoiceOver on Mac. It is the reason this mod can move
+off Windows later.
 
-```csharp
-using System.Runtime.InteropServices;
+Do not reintroduce Tolk or any other single-reader speech path.
 
-[DllImport("Tolk.dll")]
-private static extern void Tolk_Load();
+### Where the code is
 
-[DllImport("Tolk.dll")]
-private static extern void Tolk_Unload();
+- `PrismInterop.cs` - the P/Invoke surface, backend IDs and feature flags.
+- `ScreenReader.cs` - the only class the rest of the mod talks to.
+- `prism.dll` - x64, ships in the mod folder, loaded explicitly from there by
+  `ScreenReader.Initialize(modFolderPath)`.
 
-[DllImport("Tolk.dll")]
-private static extern bool Tolk_IsLoaded();
-
-[DllImport("Tolk.dll")]
-private static extern bool Tolk_HasSpeech();
-
-[DllImport("Tolk.dll", CharSet = CharSet.Unicode)]
-private static extern bool Tolk_Output(string text, bool interrupt);
-
-[DllImport("Tolk.dll")]
-private static extern bool Tolk_Silence();
-```
-
-### Simple Wrapper
+### The API the mod uses
 
 ```csharp
-public static class ScreenReader
-{
-    private static bool _available;
-
-    public static void Initialize()
-    {
-        try
-        {
-            Tolk_Load();
-            _available = Tolk_IsLoaded() && Tolk_HasSpeech();
-        }
-        catch
-        {
-            _available = false;
-        }
-    }
-
-    public static void Say(string text, bool interrupt = true)
-    {
-        if (_available && !string.IsNullOrEmpty(text))
-            Tolk_Output(text, interrupt);
-    }
-
-    public static void Stop()
-    {
-        if (_available) Tolk_Silence();
-    }
-
-    public static void Shutdown()
-    {
-        try { Tolk_Unload(); } catch { }
-    }
-}
+ScreenReader.Initialize(modFolderPath);   // once, in OnInitializeMelon
+ScreenReader.Say("Fire Blast, 120 power, 3 of 8");   // interrupts by default
+ScreenReader.SayQueued("...");            // waits for current speech to finish
+ScreenReader.Silence();                   // stop speaking now
+ScreenReader.RepeatLast();                // repeat the last thing said
+ScreenReader.IsAvailable                  // false when no backend was found
+ScreenReader.BackendName                  // diagnostics
+ScreenReader.Shutdown();                  // in OnApplicationQuit
 ```
 
-### Usage
+Every one of those is a safe no-op when Prism or a backend is unavailable, so
+the mod still runs with no speech rather than crashing.
 
-```csharp
-public override void OnInitializeMelon()
-{
-    ScreenReader.Initialize();
-    ScreenReader.Say("Mod loaded");
-}
+### Things worth knowing about Prism
 
-public override void OnApplicationQuit()
-{
-    ScreenReader.Shutdown();
-}
-```
+- **Backend selection** is automatic: `prism_registry_create_best` picks the best
+  available reader. Backend IDs are stable 64-bit hashes, so a user preference
+  could be persisted later if we add an engine picker.
+- **`output` vs `speak`**: `prism_backend_output` sends both speech and braille
+  and is preferred; `prism_backend_speak` is the fallback for backends that
+  advertise `FEATURE_SPEAK` but not `FEATURE_OUTPUT`. Check the feature bitmask
+  from `prism_backend_get_features`, do not assume.
+- **Rate, volume, pitch and voice selection are not universal.** Screen-reader
+  backends return `NotImplemented` and use the user's own reader settings
+  instead. Only real TTS engines (SAPI, OneCore, Orca, AVSpeech) honour them.
+- Strings marshal as UTF-8 (`LPUTF8Str`), not UTF-16.
 
 ---
 

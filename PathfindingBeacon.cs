@@ -7,21 +7,33 @@ using NAudio.Wave.SampleProviders;
 namespace DigimonNOAccess
 {
     /// <summary>
-    /// Audio beacon that guides the player to a destination using spatial audio.
-    /// Beeps faster as the player approaches, pans to indicate direction,
-    /// and calculates a guide point along the NavMesh path ahead of the player.
+    /// Audio beacon that guides the player to a destination along a NavMesh path.
+    ///
+    /// The beep is placed at a guide point a short way ahead of the player along the
+    /// path, so it leads rather than pointing straight at a destination behind a wall.
+    /// It repeats faster the closer the destination gets.
+    ///
+    /// Spatialization goes through the same pipeline as every other navigation sound:
+    /// Steam Audio HRTF when phonon.dll is present, stereo panning otherwise, mixed
+    /// into the shared <see cref="AudioOutputMixer"/> rather than owning its own
+    /// output device. Direction is measured against the CAMERA, not the player, so
+    /// turning the camera moves the beep exactly like it moves the item and NPC
+    /// sounds - see <see cref="CameraOrientation"/>.
     /// </summary>
     public class PathfindingBeacon : IDisposable
     {
-        // NAudio chain
-        private WaveOutEvent _waveOut;
+        // NAudio chain (no WaveOutEvent - registers with the shared AudioOutputMixer)
+        private IntervalBeepSampleProvider _beeper;
+        private HrtfSampleProvider _hrtfProvider;
         private PanningSampleProvider _panner;
         private VolumeSampleProvider _volumeProvider;
-        private BeepingSampleProvider _beeper;
+        private bool _useHrtf;
+        private bool _addedToMixer;
 
-        // Position tracking
+        // Position tracking (full 3D camera orientation for HRTF)
         private float _playerX, _playerY, _playerZ;
-        private float _playerForwardX, _playerForwardZ;
+        private float _camFwdX, _camFwdY, _camFwdZ;
+        private float _camUpX, _camUpY, _camUpZ;
         private float _destX, _destY, _destZ;
         private float[] _pathCornersX;
         private float[] _pathCornersY;
@@ -33,16 +45,18 @@ namespace DigimonNOAccess
         private const float MaxBeaconDistance = 200f;
         private const float MinInterval = 0.15f;
         private const float MaxInterval = 1.5f;
-        private const float MinVolume = 0.2f;
-        private const float MaxVolume = 0.6f;
+
+        // Fallback tone, used only when pathfinding_tracker.wav is missing
+        private const float FallbackToneSeconds = 0.08f;
+        private const float FallbackToneHz = 800f;
 
         // State
         private bool _isActive = false;
-        private bool _disposed = false;
+        private volatile bool _disposed = false;
 
         // Update thread
         private Thread _updateThread;
-        private bool _shouldUpdate = false;
+        private volatile bool _shouldUpdate = false;
 
         public bool IsActive => _isActive;
 
@@ -66,11 +80,17 @@ namespace DigimonNOAccess
                 }
 
                 InitializeAudio();
+                if (_volumeProvider == null)
+                {
+                    DebugLogger.Error("[PathBeacon] Audio chain unavailable, beacon not started");
+                    return;
+                }
 
                 _isActive = true;
                 _shouldUpdate = true;
 
-                _waveOut?.Play();
+                AudioOutputMixer.AddInput(_volumeProvider);
+                _addedToMixer = true;
 
                 _updateThread = new Thread(UpdateLoop)
                 {
@@ -79,7 +99,7 @@ namespace DigimonNOAccess
                 };
                 _updateThread.Start();
 
-                DebugLogger.Log("[PathBeacon] Started");
+                DebugLogger.Log($"[PathBeacon] Started (hrtf={_useHrtf})");
             }
             catch (Exception ex)
             {
@@ -94,6 +114,14 @@ namespace DigimonNOAccess
         {
             _shouldUpdate = false;
             _isActive = false;
+
+            try
+            {
+                _updateThread?.Join(500);
+            }
+            catch { }
+            _updateThread = null;
+
             StopInternal();
         }
 
@@ -111,115 +139,170 @@ namespace DigimonNOAccess
         }
 
         /// <summary>
-        /// Update the player's current position and facing direction.
+        /// Update the player's position and the camera orientation to spatialize against.
         /// Called each frame from the game thread.
         /// </summary>
-        public void UpdatePlayerPosition(float x, float y, float z, float forwardX, float forwardZ)
+        public void UpdatePlayerPosition(float x, float y, float z,
+            float camFwdX, float camFwdY, float camFwdZ,
+            float camUpX, float camUpY, float camUpZ)
         {
             lock (_positionLock)
             {
                 _playerX = x;
                 _playerY = y;
                 _playerZ = z;
-                _playerForwardX = forwardX;
-                _playerForwardZ = forwardZ;
-            }
-        }
-
-        /// <summary>
-        /// Get the current distance from the player to the destination.
-        /// </summary>
-        public float GetDistanceToDestination()
-        {
-            lock (_positionLock)
-            {
-                float dx = _destX - _playerX;
-                float dy = _destY - _playerY;
-                float dz = _destZ - _playerZ;
-                return (float)Math.Sqrt(dx * dx + dy * dy + dz * dz);
+                _camFwdX = camFwdX;
+                _camFwdY = camFwdY;
+                _camFwdZ = camFwdZ;
+                _camUpX = camUpX;
+                _camUpY = camUpY;
+                _camUpZ = camUpZ;
             }
         }
 
         private void InitializeAudio()
         {
-            string modPath = Path.GetDirectoryName(typeof(PathfindingBeacon).Assembly.Location);
-            string soundsPath = Path.Combine(Path.GetDirectoryName(modPath), "sounds");
-            if (!Directory.Exists(soundsPath))
-                soundsPath = Path.Combine(modPath, "sounds");
+            StopInternal();
 
-            string wavPath = Path.Combine(soundsPath, "pathfinding_tracker.wav");
+            float[] samples = LoadBeepSamples(out int sampleRate);
+            if (samples == null || samples.Length == 0)
+                return;
 
-            ISampleProvider source;
-
-            if (File.Exists(wavPath))
+            if (SteamAudioManager.IsAvailable && sampleRate != SteamAudioManager.SampleRate)
             {
-                var audioFile = new AudioFileReader(wavPath);
-                var looping = new LoopingWaveProvider(audioFile);
+                DebugLogger.Warning(
+                    $"[PathBeacon] Beep sample rate {sampleRate}Hz does not match the HRTF pipeline "
+                    + $"({SteamAudioManager.SampleRate}Hz) - the beep will play at the wrong pitch");
+            }
 
-                ISampleProvider sampleProvider;
-                if (looping.WaveFormat.Channels == 2)
-                    sampleProvider = new StereoToMonoSampleProvider(looping.ToSampleProvider());
-                else
-                    sampleProvider = looping.ToSampleProvider();
+            _beeper = new IntervalBeepSampleProvider(samples, sampleRate)
+            {
+                Interval = MaxInterval
+            };
 
-                source = sampleProvider;
-                DebugLogger.Log($"[PathBeacon] Loaded WAV: {wavPath}");
+            ISampleProvider stereoSource;
+            if (SteamAudioManager.IsAvailable)
+            {
+                _hrtfProvider = new HrtfSampleProvider(_beeper);
+                stereoSource = _hrtfProvider;
+                _panner = null;
+                _useHrtf = true;
             }
             else
             {
-                // Fallback: generate a short click tone
-                var generator = new SignalGenerator(44100, 1)
-                {
-                    Frequency = 800f,
-                    Type = SignalGeneratorType.Sin,
-                    Gain = 0.3
-                };
-                source = generator;
-                DebugLogger.Log("[PathBeacon] WAV not found, using generated tone");
+                _panner = new PanningSampleProvider(_beeper) { Pan = 0f };
+                stereoSource = _panner;
+                _hrtfProvider = null;
+                _useHrtf = false;
             }
 
-            _beeper = new BeepingSampleProvider(source)
+            _volumeProvider = new VolumeSampleProvider(stereoSource)
             {
-                BeepInterval = MaxInterval
+                Volume = ModSettings.PathfinderVolume
             };
+        }
 
-            _panner = new PanningSampleProvider(_beeper)
-            {
-                Pan = 0f
-            };
+        /// <summary>
+        /// Load the tracker beep, reusing the shared audio cache so repeated
+        /// pathfinding sessions never touch disk twice. Falls back to a generated
+        /// click if the WAV is missing so navigation still works.
+        /// </summary>
+        private float[] LoadBeepSamples(out int sampleRate)
+        {
+            string wavPath = ResolveSoundPath("pathfinding_tracker.wav");
 
-            _volumeProvider = new VolumeSampleProvider(_panner)
+            if (wavPath != null && File.Exists(wavPath))
             {
-                Volume = MinVolume
-            };
+                try
+                {
+                    var (samples, format) = PositionalAudio.LoadOrGetCachedAudio(wavPath);
+                    if (samples.Length > 0)
+                    {
+                        sampleRate = format.SampleRate;
+                        return samples;
+                    }
+                    DebugLogger.Warning($"[PathBeacon] {wavPath} decoded to zero samples");
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Warning($"[PathBeacon] Failed to load {wavPath}: {ex.Message}");
+                }
+            }
+            else
+            {
+                DebugLogger.Warning($"[PathBeacon] pathfinding_tracker.wav not found at {wavPath ?? "(unresolved sounds folder)"}, using generated click");
+            }
 
-            _waveOut = new WaveOutEvent
+            sampleRate = SteamAudioManager.SampleRate;
+            return GenerateFallbackClick(sampleRate);
+        }
+
+        private static string ResolveSoundPath(string fileName)
+        {
+            try
             {
-                DesiredLatency = 100
-            };
-            _waveOut.Init(_volumeProvider);
+                string modPath = Path.GetDirectoryName(typeof(PathfindingBeacon).Assembly.Location);
+                if (string.IsNullOrEmpty(modPath))
+                    return null;
+
+                string soundsPath = Path.Combine(Path.GetDirectoryName(modPath), "sounds");
+                if (!Directory.Exists(soundsPath))
+                    soundsPath = Path.Combine(modPath, "sounds");
+
+                return Path.Combine(soundsPath, fileName);
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning($"[PathBeacon] Could not resolve sounds folder: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// A short sine click with fades, baked into a buffer so it feeds the same
+        /// interval provider as the real WAV.
+        /// </summary>
+        private static float[] GenerateFallbackClick(int sampleRate)
+        {
+            int length = (int)(sampleRate * FallbackToneSeconds);
+            var samples = new float[length];
+            int fade = Math.Max(1, sampleRate / 1000); // 1ms fade in and out
+
+            for (int i = 0; i < length; i++)
+            {
+                float envelope = 1f;
+                if (i < fade) envelope = i / (float)fade;
+                else if (i >= length - fade) envelope = (length - 1 - i) / (float)fade;
+
+                samples[i] = 0.3f * envelope
+                    * (float)Math.Sin(2.0 * Math.PI * FallbackToneHz * i / sampleRate);
+            }
+
+            return samples;
         }
 
         private void StopInternal()
         {
+            if (_addedToMixer && _volumeProvider != null)
+            {
+                AudioOutputMixer.RemoveInput(_volumeProvider);
+                _addedToMixer = false;
+            }
+
             try
             {
-                _waveOut?.Stop();
-                _waveOut?.Dispose();
-                _waveOut = null;
+                _hrtfProvider?.Dispose();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[PathBeacon] HRTF dispose error: {ex.Message}");
+            }
 
-            _beeper = null;
+            _hrtfProvider = null;
             _panner = null;
+            _beeper = null;
             _volumeProvider = null;
-
-            try
-            {
-                _updateThread?.Join(500);
-            }
-            catch { }
-            _updateThread = null;
+            _useHrtf = false;
         }
 
         private void UpdateLoop()
@@ -241,11 +324,17 @@ namespace DigimonNOAccess
 
         private void UpdateAudioParameters()
         {
-            if (_panner == null || _volumeProvider == null || _beeper == null)
+            // Snapshot the chain once: Stop() can null these out from the game thread
+            // while this update thread is mid-pass.
+            var beeper = _beeper;
+            var volume = _volumeProvider;
+            var hrtf = _hrtfProvider;
+            var panner = _panner;
+            if (beeper == null || volume == null)
                 return;
 
             float playerX, playerY, playerZ;
-            float forwardX, forwardZ;
+            float cfX, cfY, cfZ, cuX, cuY, cuZ;
             float destX, destY, destZ;
             float[] cornersX, cornersY, cornersZ;
 
@@ -254,8 +343,8 @@ namespace DigimonNOAccess
                 playerX = _playerX;
                 playerY = _playerY;
                 playerZ = _playerZ;
-                forwardX = _playerForwardX;
-                forwardZ = _playerForwardZ;
+                cfX = _camFwdX; cfY = _camFwdY; cfZ = _camFwdZ;
+                cuX = _camUpX;  cuY = _camUpY;  cuZ = _camUpZ;
                 destX = _destX;
                 destY = _destY;
                 destZ = _destZ;
@@ -264,65 +353,58 @@ namespace DigimonNOAccess
                 cornersZ = _pathCornersZ;
             }
 
-            // Calculate distance to destination
+            // Distance to the destination drives cadence and volume
             float ddx = destX - playerX;
             float ddy = destY - playerY;
             float ddz = destZ - playerZ;
             float distToDest = (float)Math.Sqrt(ddx * ddx + ddy * ddy + ddz * ddz);
 
-            // Calculate guide point along the path
-            float guideX, guideY, guideZ;
+            // The beep sits at a guide point ahead of the player along the path
             CalculateGuidePoint(playerX, playerY, playerZ, cornersX, cornersY, cornersZ,
-                destX, destY, destZ, out guideX, out guideY, out guideZ);
+                destX, destY, destZ, out float guideX, out float guideY, out float guideZ);
 
-            // Direction to guide point (horizontal plane)
             float dx = guideX - playerX;
+            float dy = guideY - playerY;
             float dz = guideZ - playerZ;
-            float dist2D = (float)Math.Sqrt(dx * dx + dz * dz);
-
-            if (dist2D > 0.01f)
+            float dist = (float)Math.Sqrt(dx * dx + dy * dy + dz * dz);
+            if (dist > 0.01f)
             {
-                dx /= dist2D;
-                dz /= dist2D;
+                dx /= dist;
+                dy /= dist;
+                dz /= dist;
+            }
+            else
+            {
+                // Standing on the guide point: keep it in front rather than snapping
+                // to an arbitrary direction as the normalization degenerates.
+                dx = cfX; dy = cfY; dz = cfZ;
             }
 
-            // Normalize player forward
-            float forwardMag = (float)Math.Sqrt(forwardX * forwardX + forwardZ * forwardZ);
-            if (forwardMag > 0.01f)
+            CameraOrientation.ToCameraLocal(dx, dy, dz, cfX, cfY, cfZ, cuX, cuY, cuZ,
+                out float localRight, out float localUp, out float localForward);
+
+            if (_useHrtf && hrtf != null)
             {
-                forwardX /= forwardMag;
-                forwardZ /= forwardMag;
+                // Steam Audio: right-handed, -Z = forward
+                hrtf.SetDirection(localRight, localUp, -localForward);
+            }
+            else if (panner != null)
+            {
+                panner.Pan = Math.Max(-1f, Math.Min(1f, localRight));
             }
 
-            // Pan using cross product (same algorithm as PositionalAudio.cs:430)
-            float cross = forwardZ * dx - forwardX * dz;
-            float pan = Math.Max(-1f, Math.Min(1f, cross));
-
-            // If guide point is behind player, push pan to extremes
-            float dot = forwardX * dx + forwardZ * dz;
-            if (dot < 0)
-            {
-                pan = pan > 0 ? Math.Min(1f, pan + 0.3f) : Math.Max(-1f, pan - 0.3f);
-            }
-
-            // Closeness factor: 0 = far (MaxBeaconDistance), 1 = arrived
+            // Distance is carried entirely by cadence: the beep repeats faster the closer
+            // the destination gets. Volume stays flat at whatever the player set, so the
+            // loudness cue never fights the distance cue.
             float closeness = 1f - Math.Min(1f, distToDest / MaxBeaconDistance);
 
-            // Beep interval: far = slow, close = rapid
-            float interval = MinInterval + (1f - closeness) * (MaxInterval - MinInterval);
-
-            // Volume: far = quiet, close = louder
-            float volume = MinVolume + closeness * (MaxVolume - MinVolume);
-
-            // Apply
-            _panner.Pan = pan;
-            _volumeProvider.Volume = volume;
-            _beeper.BeepInterval = interval;
+            beeper.Interval = MinInterval + (1f - closeness) * (MaxInterval - MinInterval);
+            volume.Volume = ModSettings.PathfinderVolume;
         }
 
         /// <summary>
         /// Calculate a guide point ~GuideDistance units ahead of the player along the path.
-        /// This point is used for panning so the sound "leads" the player.
+        /// This point is what the beep is positioned at, so the sound "leads" the player.
         /// </summary>
         private void CalculateGuidePoint(
             float playerX, float playerY, float playerZ,
@@ -338,23 +420,48 @@ namespace DigimonNOAccess
             if (cornersX == null || cornersX.Length < 2)
                 return;
 
-            // Find the path segment nearest to the player
+            // Find the path segment nearest to the player, and how far along it they are
             int nearestSegment = 0;
+            float nearestT = 0f;
             float bestDist = float.MaxValue;
             for (int i = 0; i < cornersX.Length - 1; i++)
             {
                 float dist = PointToSegmentDistance(playerX, playerZ,
-                    cornersX[i], cornersZ[i], cornersX[i + 1], cornersZ[i + 1]);
+                    cornersX[i], cornersZ[i], cornersX[i + 1], cornersZ[i + 1], out float t);
                 if (dist < bestDist)
                 {
                     bestDist = dist;
                     nearestSegment = i;
+                    nearestT = t;
                 }
             }
 
-            // Walk along path from nearest segment, advancing GuideDistance
+            // Walk forward from where the player actually is on that segment, not from
+            // its start corner. Paths are recalculated twice a second from the player's
+            // position, so starting at the corner would drag the guide point backwards
+            // in between - on a long straight leg it can end up behind the player.
             float remaining = GuideDistance;
-            for (int i = nearestSegment; i < cornersX.Length - 1; i++)
+            {
+                int i = nearestSegment;
+                float segDx = cornersX[i + 1] - cornersX[i];
+                float segDy = cornersY[i + 1] - cornersY[i];
+                float segDz = cornersZ[i + 1] - cornersZ[i];
+                float segLen = (float)Math.Sqrt(segDx * segDx + segDy * segDy + segDz * segDz);
+                float travelled = segLen * nearestT;
+
+                if (segLen - travelled >= remaining)
+                {
+                    float t = (travelled + remaining) / segLen;
+                    guideX = cornersX[i] + segDx * t;
+                    guideY = cornersY[i] + segDy * t;
+                    guideZ = cornersZ[i] + segDz * t;
+                    return;
+                }
+
+                remaining -= (segLen - travelled);
+            }
+
+            for (int i = nearestSegment + 1; i < cornersX.Length - 1; i++)
             {
                 float segDx = cornersX[i + 1] - cornersX[i];
                 float segDy = cornersY[i + 1] - cornersY[i];
@@ -381,8 +488,10 @@ namespace DigimonNOAccess
 
         /// <summary>
         /// Distance from point (px, pz) to line segment (ax, az)-(bx, bz) in 2D.
+        /// <paramref name="t"/> is how far along the segment the closest point sits,
+        /// clamped to 0..1.
         /// </summary>
-        private float PointToSegmentDistance(float px, float pz, float ax, float az, float bx, float bz)
+        private float PointToSegmentDistance(float px, float pz, float ax, float az, float bx, float bz, out float t)
         {
             float abx = bx - ax;
             float abz = bz - az;
@@ -392,10 +501,11 @@ namespace DigimonNOAccess
             float abLenSq = abx * abx + abz * abz;
             if (abLenSq < 0.0001f)
             {
+                t = 0f;
                 return (float)Math.Sqrt(apx * apx + apz * apz);
             }
 
-            float t = Math.Max(0f, Math.Min(1f, (apx * abx + apz * abz) / abLenSq));
+            t = Math.Max(0f, Math.Min(1f, (apx * abx + apz * abz) / abLenSq));
             float closestX = ax + t * abx;
             float closestZ = az + t * abz;
             float dx = px - closestX;
@@ -407,114 +517,99 @@ namespace DigimonNOAccess
         {
             if (_disposed) return;
             _disposed = true;
-            _shouldUpdate = false;
-            _isActive = false;
-            StopInternal();
+            Stop();
         }
     }
 
     /// <summary>
-    /// Wraps a sample provider to create a beep-silence-beep pattern.
-    /// Plays the source audio for one "beep" duration, then inserts silence.
-    /// The BeepInterval property controls the gap between beeps and can be
-    /// updated in real-time from another thread.
+    /// Repeats a short mono clip at a settable interval: the whole clip plays, then
+    /// silence fills the rest of the cycle. Plays the clip in full every time rather
+    /// than cutting it at a fixed beep length, so the tracker sound keeps its shape
+    /// no matter how fast the cadence gets.
+    ///
+    /// The sample buffer is shared and never written to, so several beacons could
+    /// read the same cached clip.
     /// </summary>
-    public class BeepingSampleProvider : ISampleProvider
+    public class IntervalBeepSampleProvider : ISampleProvider
     {
-        private readonly ISampleProvider _source;
+        private readonly float[] _samples;
         private readonly int _sampleRate;
-        private const float BeepDuration = 0.08f; // Duration of each beep in seconds
 
-        private int _beepSamples;
-        private int _silenceSamples;
         private int _positionInCycle;
-        private float _beepInterval = 1.0f;
-        private bool _intervalChanged = true;
+        private int _cycleSamples;
 
-        public WaveFormat WaveFormat => _source.WaveFormat;
+        // Written from the position update thread, read on the audio thread.
+        private volatile float _interval = 1.0f;
+
+        public WaveFormat WaveFormat { get; }
 
         /// <summary>
-        /// Time in seconds between the start of each beep.
-        /// Thread-safe: can be updated from the audio update thread.
+        /// Seconds between the start of each beep. Never shorter than the clip itself.
+        /// A change takes effect at the next cycle boundary so a beep is never cut off
+        /// half way through.
         /// </summary>
-        public float BeepInterval
+        public float Interval
         {
-            get => _beepInterval;
-            set
-            {
-                if (Math.Abs(_beepInterval - value) > 0.001f)
-                {
-                    _beepInterval = value;
-                    _intervalChanged = true;
-                }
-            }
+            get => _interval;
+            set => _interval = value;
         }
 
-        public BeepingSampleProvider(ISampleProvider source)
+        public IntervalBeepSampleProvider(float[] samples, int sampleRate)
         {
-            _source = source;
-            _sampleRate = source.WaveFormat.SampleRate;
-            _beepSamples = (int)(_sampleRate * BeepDuration);
-            RecalcSilence();
+            _samples = samples ?? Array.Empty<float>();
+            _sampleRate = sampleRate;
+            WaveFormat = WaveFormat.CreateIeeeFloatWaveFormat(sampleRate, 1);
+            _cycleSamples = ComputeCycleSamples();
         }
 
-        private void RecalcSilence()
+        private int ComputeCycleSamples()
         {
-            float silenceDuration = Math.Max(0f, _beepInterval - BeepDuration);
-            _silenceSamples = (int)(_sampleRate * silenceDuration);
-            _intervalChanged = false;
+            int wanted = (int)(_sampleRate * _interval);
+            // A cycle is at least one full clip, so the clip is never truncated.
+            return Math.Max(wanted, Math.Max(1, _samples.Length));
         }
 
         public int Read(float[] buffer, int offset, int count)
         {
-            if (_intervalChanged)
-                RecalcSilence();
-
-            int totalCycle = _beepSamples + _silenceSamples;
-            if (totalCycle <= 0)
-                totalCycle = _beepSamples > 0 ? _beepSamples : 1;
+            if (_samples.Length == 0)
+            {
+                Array.Clear(buffer, offset, count);
+                return count;
+            }
 
             int written = 0;
             while (written < count)
             {
-                int posInCycle = _positionInCycle % totalCycle;
-
-                if (posInCycle < _beepSamples)
+                if (_positionInCycle < _samples.Length)
                 {
-                    // In the beep portion: read from source
-                    int beepRemaining = _beepSamples - posInCycle;
-                    int toRead = Math.Min(count - written, beepRemaining);
-                    int read = _source.Read(buffer, offset + written, toRead);
-                    if (read == 0)
-                    {
-                        // Source exhausted, fill silence
-                        Array.Clear(buffer, offset + written, count - written);
-                        written = count;
-                        break;
-                    }
-                    written += read;
-                    _positionInCycle += read;
+                    int toCopy = Math.Min(count - written, _samples.Length - _positionInCycle);
+                    // NAudio's WaveBuffer overlays byte[]/float[], which makes
+                    // Array.Copy throw ArrayTypeMismatchException. BlockCopy is safe.
+                    Buffer.BlockCopy(_samples, _positionInCycle * sizeof(float),
+                        buffer, (offset + written) * sizeof(float), toCopy * sizeof(float));
+                    written += toCopy;
+                    _positionInCycle += toCopy;
                 }
                 else
                 {
-                    // In the silence portion: output zeros
-                    int silenceRemaining = totalCycle - posInCycle;
-                    int toWrite = Math.Min(count - written, silenceRemaining);
+                    int toWrite = Math.Min(count - written, _cycleSamples - _positionInCycle);
+                    if (toWrite <= 0)
+                    {
+                        // Interval shrank below the current position: start the next cycle now.
+                        _positionInCycle = 0;
+                        _cycleSamples = ComputeCycleSamples();
+                        continue;
+                    }
                     Array.Clear(buffer, offset + written, toWrite);
                     written += toWrite;
                     _positionInCycle += toWrite;
                 }
 
-                // Wrap cycle position
-                if (_positionInCycle >= totalCycle)
+                if (_positionInCycle >= _cycleSamples)
                 {
-                    _positionInCycle -= totalCycle;
-                    // Re-check interval in case it changed mid-cycle
-                    if (_intervalChanged)
-                        RecalcSilence();
-                    totalCycle = _beepSamples + _silenceSamples;
-                    if (totalCycle <= 0)
-                        totalCycle = _beepSamples > 0 ? _beepSamples : 1;
+                    _positionInCycle = 0;
+                    // Pick up any interval change only at the boundary.
+                    _cycleSamples = ComputeCycleSamples();
                 }
             }
 

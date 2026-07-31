@@ -17,6 +17,14 @@ obj/
 # Decompiled game code (copyrighted - not for distribution)
 decompiled/
 
+# Ghidra outputs. The scripts and README in ghidra_project/ ARE committed - they
+# are tooling. The analysis results are RE work products and stay local, along
+# with the project database itself (C:\Users\Amethyst\ghidra_dwno).
+ghidra_project/*.log
+ghidra_project/*.txt
+ghidra_project/script.log
+ghidra_project/import.log
+
 # Internal dev prompts
 FEATURE_WORK_PROMPT.md
 
