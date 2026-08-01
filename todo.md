@@ -75,10 +75,6 @@ Best two first:
 
 ### 3. Smaller things worth a look
 
-- **Field Guide grid**: only the first entry reads its name; the rest say
-  "Unknown". Undiscovered Digimon genuinely render as `???` and *should* say
-  Unknown, so check the new log lines first — they now name the real reason
-  rather than always claiming "was empty".
 - **Button hints on hand-built announcements**: these now append inside
   `ScreenReader.Say`, so every screen should get them. If one is missing, say
   which.
@@ -99,3 +95,10 @@ Recorded so nobody re-opens them:
 - **Bond, trust, lifespan and raw hunger are deliberately not spoken.** No
   display field exists for any of them, and the rule is parity with the sighted
   view.
+- **The Field Guide saying "Unknown" is correct, not a bug.** Verified in game
+  on 2026-08-01: entries you have met speak their real name, undiscovered ones
+  render as `???` and cannot be selected at all. `???` is punctuation-only and
+  therefore counts as placeholder text, which is why it comes out as "Unknown" —
+  exactly the intended behaviour. It briefly looked like a defect because the
+  log line claimed "was empty" for every rejection reason; that message now
+  reports the real cause via `TextUtilities.DescribeUnusable`.
