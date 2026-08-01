@@ -179,7 +179,7 @@ namespace DigimonNOAccess
 
         private void AnnounceCommandState(uFarmPanelCommand.State cmdState, bool includeMenuName)
         {
-            string prefix = includeMenuName ? "Farm. " : "";
+            string prefix = includeMenuName ? $"{GetFarmTitle()}. " : "";
 
             if (cmdState == uFarmPanelCommand.State.Main)
             {
@@ -293,7 +293,7 @@ namespace DigimonNOAccess
                 if (farmData != null && farmData.m_id != 0)
                 {
                     // Slot has something planted - get name from ParameterFarmData
-                    string name = GetFarmItemName(farmData.m_id);
+                    string name = GetFarmItemName(farmData.m_id, index);
                     string condition = ParameterFarmData.GetCondition(farmData.m_condition);
                     int harvestCount = farmData.m_pick_num;
 
@@ -316,7 +316,13 @@ namespace DigimonNOAccess
                 {
                     // Empty slot
                     string emptyName = ParameterFarmData.GetEmptyName();
-                    return !string.IsNullOrEmpty(emptyName) ? emptyName : "Empty";
+                    string cleanedEmptyName = TextUtilities.StripRichTextTags(emptyName)?.Trim();
+                    if (!string.IsNullOrWhiteSpace(cleanedEmptyName))
+                        return cleanedEmptyName;
+
+                    DebugLogger.Log($"{LogTag} Slot name: ParameterFarmData.GetEmptyName() was empty");
+
+                    return GetFarmContentName(index, "Empty");
                 }
             }
             catch (System.Exception ex)
@@ -328,7 +334,7 @@ namespace DigimonNOAccess
             return GetSlotTextFromUI(index);
         }
 
-        private string GetFarmItemName(uint itemId)
+        private string GetFarmItemName(uint itemId, int slotIndex)
         {
             try
             {
@@ -336,12 +342,29 @@ namespace DigimonNOAccess
                 {
                     var paramData = _farmPanel.GetParameterFarmData(itemId);
                     if (paramData != null)
-                        return paramData.GetName();
+                    {
+                        string name = TextUtilities.StripRichTextTags(paramData.GetName())?.Trim();
+                        if (!string.IsNullOrWhiteSpace(name))
+                            return name;
+
+                        DebugLogger.Log($"{LogTag} Slot name: ParameterFarmData.GetName() was empty for item {itemId}");
+                    }
+                    else
+                    {
+                        DebugLogger.Log($"{LogTag} Slot name: GetParameterFarmData({itemId}) returned null");
+                    }
+                }
+                else
+                {
+                    DebugLogger.Log($"{LogTag} Slot name: m_farmPanel was null");
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Slot name read failed for item {itemId}: {ex.Message}");
+            }
 
-            return $"Item {itemId}";
+            return GetFarmContentName(slotIndex, $"Item {itemId}");
         }
 
         private string GetSlotDayText(int index)
@@ -389,18 +412,7 @@ namespace DigimonNOAccess
 
         private string GetSlotTextFromUI(int index)
         {
-            try
-            {
-                var contents = _command?.m_farmContents;
-                if (contents != null && index >= 0 && index < contents.Length)
-                {
-                    var content = contents[index];
-                    if (content?.m_name != null && !string.IsNullOrEmpty(content.m_name.text))
-                        return content.m_name.text;
-                }
-            }
-            catch { }
-            return AnnouncementBuilder.FallbackItem("Farm slot", index);
+            return GetFarmContentName(index, AnnouncementBuilder.FallbackItem("Farm slot", index));
         }
 
         // --- Item selection reading (seed list) ---
@@ -441,49 +453,183 @@ namespace DigimonNOAccess
 
         private string GetSelectedItemName()
         {
+            const string fallback = "Unknown item";
+
             try
             {
-                var scrollView = GetScrollView();
-                if (scrollView != null)
+                if (_command == null)
                 {
-                    // Use GetSelectItemParam (from uItemBase) for the name
-                    var paramItem = scrollView.GetSelectItemParam();
-                    if (paramItem != null)
-                    {
-                        string name = paramItem.GetName();
-                        if (!string.IsNullOrEmpty(name))
-                        {
-                            // Get quantity from the selected ItemData
-                            var selectItem = scrollView.m_selectItem;
-                            if (selectItem != null)
-                            {
-                                int count = selectItem.m_itemNum;
-                                return count > 0 ? $"{name}, have {count}" : name;
-                            }
-                            return name;
-                        }
-                    }
-
-                    // Fallback: try reading from uItemParts UI text
-                    int selectNo = scrollView.m_selectNo;
-                    var parts = scrollView.GetSelectItemParts(selectNo);
-                    if (parts?.m_name != null && !string.IsNullOrEmpty(parts.m_name.text))
-                        return TextUtilities.StripRichTextTags(parts.m_name.text);
+                    DebugLogger.Log($"{LogTag} Selected item: m_command was null");
+                    return fallback;
                 }
 
-                // Last fallback: try caption text
-                var caption = _command?.m_farmPanelItem?.m_itemCaption;
-                if (caption?.m_caption != null && !string.IsNullOrEmpty(caption.m_caption.text))
-                    return caption.m_caption.text;
+                var itemPanel = _command.m_farmPanelItem;
+                if (itemPanel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Selected item: m_farmPanelItem was null");
+                    return fallback;
+                }
+
+                var scrollView = itemPanel.m_itemScrollView;
+                if (scrollView == null)
+                {
+                    DebugLogger.Log($"{LogTag} Selected item: m_itemScrollView was null");
+                    return fallback;
+                }
+
+                // Use GetSelectItemParam (from uItemBase) for the name.
+                var paramItem = scrollView.GetSelectItemParam();
+                if (paramItem != null)
+                {
+                    string name = TextUtilities.StripRichTextTags(paramItem.GetName())?.Trim();
+                    if (!string.IsNullOrWhiteSpace(name))
+                    {
+                        // Get quantity from the selected ItemData
+                        var selectItem = scrollView.m_selectItem;
+                        if (selectItem != null)
+                        {
+                            int count = selectItem.m_itemNum;
+                            return count > 0 ? $"{name}, have {count}" : name;
+                        }
+
+                        DebugLogger.Log($"{LogTag} Selected item quantity: m_selectItem was null");
+                        return name;
+                    }
+
+                    DebugLogger.Log($"{LogTag} Selected item: ParameterItemData.GetName() was empty");
+                }
+                else
+                {
+                    DebugLogger.Log($"{LogTag} Selected item: GetSelectItemParam() returned null");
+                }
+
+                // Fallback: read the logical selection's rendered uItemParts name.
+                int selectNo = scrollView.m_selectNo;
+                var parts = scrollView.GetSelectItemParts(selectNo);
+                if (parts == null)
+                {
+                    DebugLogger.Log($"{LogTag} Selected item: GetSelectItemParts({selectNo}) returned null");
+                    return fallback;
+                }
+
+                var nameText = parts.m_name;
+                if (nameText == null)
+                {
+                    DebugLogger.Log($"{LogTag} Selected item: selected uItemParts.m_name was null");
+                    return fallback;
+                }
+
+                string renderedName = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(nameText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(renderedName) || TextUtilities.IsPlaceholderText(renderedName))
+                {
+                    DebugLogger.Log($"{LogTag} Selected item: selected uItemParts.m_name.text unusable: {TextUtilities.DescribeUnusable(renderedName)}");
+                    return fallback;
+                }
+
+                return renderedName;
             }
             catch (System.Exception ex)
             {
                 DebugLogger.Log($"{LogTag} Error reading item selection: {ex.Message}");
             }
-            return "Unknown item";
+            return fallback;
         }
 
         // --- Helpers ---
+
+        private string GetFarmTitle()
+        {
+            const string fallback = "Farm";
+            try
+            {
+                if (_command == null)
+                {
+                    DebugLogger.Log($"{LogTag} Title: m_command was null");
+                    return fallback;
+                }
+
+                var caption = _command.m_farmCaption;
+                if (caption == null)
+                {
+                    DebugLogger.Log($"{LogTag} Title: m_farmCaption was null");
+                    return fallback;
+                }
+
+                var text = caption.m_text;
+                if (text == null)
+                {
+                    DebugLogger.Log($"{LogTag} Title: m_farmCaption.m_text was null");
+                    return fallback;
+                }
+
+                string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(text.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(cleaned) || TextUtilities.IsPlaceholderText(cleaned))
+                {
+                    DebugLogger.Log($"{LogTag} Title: m_farmCaption.m_text.text unusable: {TextUtilities.DescribeUnusable(cleaned)}");
+                    return fallback;
+                }
+
+                return cleaned;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Title read failed: {ex.Message}");
+                return fallback;
+            }
+        }
+
+        private string GetFarmContentName(int index, string fallback)
+        {
+            try
+            {
+                if (_command == null)
+                {
+                    DebugLogger.Log($"{LogTag} Slot name: m_command was null");
+                    return fallback;
+                }
+
+                var contents = _command.m_farmContents;
+                if (contents == null)
+                {
+                    DebugLogger.Log($"{LogTag} Slot name: m_farmContents was null");
+                    return fallback;
+                }
+
+                if (index < 0 || index >= contents.Length)
+                {
+                    DebugLogger.Log($"{LogTag} Slot name: index {index} was outside m_farmContents length {contents.Length}");
+                    return fallback;
+                }
+
+                var content = contents[index];
+                if (content == null)
+                {
+                    DebugLogger.Log($"{LogTag} Slot name: m_farmContents[{index}] was null");
+                    return fallback;
+                }
+
+                var nameText = content.m_name;
+                if (nameText == null)
+                {
+                    DebugLogger.Log($"{LogTag} Slot name: m_farmContents[{index}].m_name was null");
+                    return fallback;
+                }
+
+                string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(nameText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(cleaned) || TextUtilities.IsPlaceholderText(cleaned))
+                {
+                    DebugLogger.Log($"{LogTag} Slot name: m_farmContents[{index}].m_name.text unusable: {TextUtilities.DescribeUnusable(cleaned)}");
+                    return fallback;
+                }
+
+                return cleaned;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Slot name read failed for index {index}: {ex.Message}");
+                return fallback;
+            }
+        }
 
         private string GetFarmStateText(uFarmPanel.State state)
         {
@@ -497,7 +643,7 @@ namespace DigimonNOAccess
                 case uFarmPanel.State.Wait:
                     return "Please wait";
                 default:
-                    return "Farm";
+                    return GetFarmTitle();
             }
         }
 
@@ -515,11 +661,11 @@ namespace DigimonNOAccess
             if (_farmPanel != null)
             {
                 string stateText = GetFarmStateText(_farmPanel.m_state);
-                ScreenReader.Say($"Farm. {stateText}");
+                ScreenReader.Say($"{GetFarmTitle()}. {stateText}");
             }
             else
             {
-                ScreenReader.Say("Farm");
+                ScreenReader.Say(GetFarmTitle());
             }
         }
     }

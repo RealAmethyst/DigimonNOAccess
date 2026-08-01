@@ -125,8 +125,84 @@ namespace DigimonNOAccess
 
         private void CacheCommandPanel()
         {
-            if (_command != null || _panel == null) return;
-            try { _command = _panel.Top2d?.Command; } catch { _command = null; }
+            if (_command != null) return;
+            if (_panel == null)
+            {
+                DebugLogger.Log($"{LogTag} Command: panel is null");
+                return;
+            }
+
+            try
+            {
+                var top2d = _panel.Top2d;
+                if (top2d == null)
+                {
+                    DebugLogger.Log($"{LogTag} Command: Top2d is null");
+                    return;
+                }
+
+                _command = top2d.Command;
+                if (_command == null)
+                    DebugLogger.Log($"{LogTag} Command: Top2d.Command is null");
+            }
+            catch (System.Exception ex)
+            {
+                _command = null;
+                DebugLogger.Log($"{LogTag} Command read failed: {ex.Message}");
+            }
+        }
+
+        private string GetDimensionBoxTitle()
+        {
+            const string fallback = "Dimension Box";
+
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Headline: panel is null");
+                    return fallback;
+                }
+
+                var top2d = _panel.Top2d;
+                if (top2d == null)
+                {
+                    DebugLogger.Log($"{LogTag} Headline: Top2d is null");
+                    return fallback;
+                }
+
+                var headline = top2d.HeadLine;
+                if (headline == null)
+                {
+                    DebugLogger.Log($"{LogTag} Headline: Top2d.HeadLine is null");
+                    return fallback;
+                }
+
+                return GetRenderedText(headline.Text, "Top2d.HeadLine.Text") ?? fallback;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Headline read failed: {ex.Message}");
+                return fallback;
+            }
+        }
+
+        private string GetRenderedText(UnityEngine.UI.Text textComponent, string fieldName)
+        {
+            if (textComponent == null)
+            {
+                DebugLogger.Log($"{LogTag} {fieldName} component is null");
+                return null;
+            }
+
+            string text = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(textComponent.text))?.Trim();
+            if (string.IsNullOrWhiteSpace(text) || TextUtilities.IsPlaceholderText(text))
+            {
+                DebugLogger.Log($"{LogTag} {fieldName}.text is empty");
+                return null;
+            }
+
+            return text;
         }
 
         // ── State Grouping ──
@@ -165,7 +241,7 @@ namespace DigimonNOAccess
                     if (!string.IsNullOrEmpty(tabName))
                     {
                         int idx = (int)cmd;
-                        string prefix = _announcedOpen ? "Menu" : "Dimension Box";
+                        string prefix = _announcedOpen ? "Menu" : GetDimensionBoxTitle();
                         ScreenReader.Say($"{prefix}. {tabName}. {idx + 1} of 5");
                         _lastCommand = cmd;
                         _announcedOpen = true;
@@ -188,31 +264,31 @@ namespace DigimonNOAccess
                     break;
 
                 case uIjigenBoxPanel.State.Registration_ConfirmMessageStart:
-                    ScreenReader.Say("Confirm registration");
+                    ScreenReader.Say(GetYesNoMessage(newState, "Confirm registration"));
                     break;
 
                 case uIjigenBoxPanel.State.Registration_ConfirmOverwriteMessageStart:
-                    ScreenReader.Say("Confirm overwrite registration");
+                    ScreenReader.Say(GetYesNoMessage(newState, "Confirm overwrite registration"));
                     break;
 
                 case uIjigenBoxPanel.State.Registration_UnableMessageStart:
-                    ScreenReader.Say("Cannot register");
+                    ScreenReader.Say(GetCommonMessage(newState, "Cannot register"));
                     break;
 
                 case uIjigenBoxPanel.State.Battle_ConfirmStartMessageStart:
-                    ScreenReader.Say("Confirm battle start");
+                    ScreenReader.Say(GetYesNoMessage(newState, "Confirm battle start"));
                     break;
 
                 case uIjigenBoxPanel.State.Battle_NotRegistMessageStart:
-                    ScreenReader.Say("No Digimon registered");
+                    ScreenReader.Say(GetCommonMessage(newState, "No Digimon registered"));
                     break;
 
                 case uIjigenBoxPanel.State.Battle_AlreadyMessageStart:
-                    ScreenReader.Say("Already battled today");
+                    ScreenReader.Say(GetCommonMessage(newState, "Already battled today"));
                     break;
 
                 case uIjigenBoxPanel.State.Battle_ResultStart:
-                    ScreenReader.Say("Battle results");
+                    ScreenReader.Say(GetCommonMessage(newState, "Battle results"));
                     break;
 
                 case uIjigenBoxPanel.State.Battle_ResultTotalNwpStart:
@@ -220,13 +296,111 @@ namespace DigimonNOAccess
                     break;
 
                 case uIjigenBoxPanel.State.Present_EmptyMessageStart:
-                    ScreenReader.Say("No presents");
+                    ScreenReader.Say(GetCommonMessage(newState, "No presents"));
                     break;
 
                 case uIjigenBoxPanel.State.Open_NetworkErrorMessageStart:
                 case uIjigenBoxPanel.State.Battle_NetworkErrorMessageStart:
-                    ScreenReader.Say("Network error");
+                    ScreenReader.Say(GetCommonMessage(newState, "Network error"));
                     break;
+            }
+        }
+
+        private string GetYesNoMessage(uIjigenBoxPanel.State state, string fallback)
+        {
+            try
+            {
+                var manager = MainGameManager.m_instance;
+                if (manager == null)
+                {
+                    DebugLogger.Log($"{LogTag} {state}: MainGameManager is null");
+                    return fallback;
+                }
+
+                var window = manager.commonYesNoWindowUI;
+                if (window == null)
+                {
+                    DebugLogger.Log($"{LogTag} {state}: commonYesNoWindowUI is null");
+                    return fallback;
+                }
+
+                if (!window.m_isOpend)
+                {
+                    DebugLogger.Log($"{LogTag} {state}: commonYesNoWindowUI is not open");
+                    return fallback;
+                }
+
+                return GetRenderedText(window.m_message, "commonYesNoWindowUI.m_message") ?? fallback;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} {state}: yes/no message read failed: {ex.Message}");
+                return fallback;
+            }
+        }
+
+        private string GetCommonMessage(uIjigenBoxPanel.State state, string fallback)
+        {
+            try
+            {
+                var manager = MainGameManager.m_instance;
+                if (manager == null)
+                {
+                    DebugLogger.Log($"{LogTag} {state}: MainGameManager is null");
+                    return fallback;
+                }
+
+                var messageManager = manager.MessageManager;
+                if (messageManager == null)
+                {
+                    DebugLogger.Log($"{LogTag} {state}: MessageManager is null");
+                    return fallback;
+                }
+
+                if (!messageManager.IsFindActive())
+                {
+                    DebugLogger.Log($"{LogTag} {state}: MessageManager has no active window");
+                    return fallback;
+                }
+
+                uCommonMessageWindow window = null;
+                var center = messageManager.GetCenter();
+                if (center != null && center.m_isOpend)
+                    window = center;
+
+                if (window == null)
+                {
+                    var partner0 = messageManager.Get00();
+                    if (partner0 != null && partner0.m_isOpend)
+                        window = partner0;
+                }
+
+                if (window == null)
+                {
+                    var partner1 = messageManager.Get01();
+                    if (partner1 != null && partner1.m_isOpend)
+                        window = partner1;
+                }
+
+                if (window == null)
+                {
+                    var rightUp = messageManager.GetRightUp();
+                    if (rightUp != null && rightUp.m_isOpend)
+                        window = rightUp;
+                }
+
+                if (window == null)
+                {
+                    DebugLogger.Log($"{LogTag} {state}: no open uCommonMessageWindow was reachable");
+                    return fallback;
+                }
+
+                return GetRenderedText(window.m_label, "active uCommonMessageWindow.m_label") ?? fallback;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} {state}: common message read failed: {ex.Message}");
+                return fallback;
             }
         }
 
@@ -276,21 +450,39 @@ namespace DigimonNOAccess
 
         private string GetTabNameForCommand(uIjigenBoxPanelTop2dCommand.Command cmd)
         {
-            // Try reading from UI text first
             try
             {
-                if (_command?.m_commandText != null)
+                if (_command == null)
                 {
-                    int idx = (int)cmd;
-                    if (idx >= 0 && idx < _command.m_commandText.Length)
+                    DebugLogger.Log($"{LogTag} Tab {cmd}: command panel is null");
+                }
+                else
+                {
+                    var commandText = _command.m_commandText;
+                    if (commandText == null)
                     {
-                        string text = _command.m_commandText[idx]?.text;
-                        if (!string.IsNullOrEmpty(text))
-                            return TextUtilities.StripRichTextTags(text);
+                        DebugLogger.Log($"{LogTag} Tab {cmd}: m_commandText is null");
+                    }
+                    else
+                    {
+                        int idx = (int)cmd;
+                        if (idx < 0 || idx >= commandText.Length)
+                        {
+                            DebugLogger.Log($"{LogTag} Tab {cmd}: index {idx} is outside m_commandText");
+                        }
+                        else
+                        {
+                            string text = GetRenderedText(commandText[idx], $"m_commandText[{idx}]");
+                            if (!string.IsNullOrWhiteSpace(text))
+                                return text;
+                        }
                     }
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Tab {cmd}: command text read failed: {ex.Message}");
+            }
 
             // Fallback names
             return cmd switch
@@ -329,15 +521,40 @@ namespace DigimonNOAccess
         {
             try
             {
-                var rankUi = _panel?.Ranking?.Ui2dRanking;
-                if (rankUi == null) return;
+                if (_panel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Ranking: panel is null");
+                    return;
+                }
+
+                var ranking = _panel.Ranking;
+                if (ranking == null)
+                {
+                    DebugLogger.Log($"{LogTag} Ranking: panel.Ranking is null");
+                    return;
+                }
+
+                var rankUi = ranking.Ui2dRanking;
+                if (rankUi == null)
+                {
+                    DebugLogger.Log($"{LogTag} Ranking: Ranking.Ui2dRanking is null");
+                    return;
+                }
 
                 int cursor = rankUi.RankCursor;
                 _lastRankCursor = cursor;
 
                 var itemArray = rankUi.m_itemArray;
-                if (itemArray == null || cursor < 0 || cursor >= itemArray.Length)
+                if (itemArray == null)
                 {
+                    DebugLogger.Log($"{LogTag} Ranking: m_itemArray is null");
+                    ScreenReader.Say($"Rank {cursor + 1}");
+                    return;
+                }
+
+                if (cursor < 0 || cursor >= itemArray.Length)
+                {
+                    DebugLogger.Log($"{LogTag} Ranking: cursor {cursor} is outside m_itemArray");
                     ScreenReader.Say($"Rank {cursor + 1}");
                     return;
                 }
@@ -345,6 +562,7 @@ namespace DigimonNOAccess
                 var itemObj = itemArray[cursor];
                 if (itemObj == null)
                 {
+                    DebugLogger.Log($"{LogTag} Ranking: m_itemArray[{cursor}] is null");
                     ScreenReader.Say($"Rank {cursor + 1}");
                     return;
                 }
@@ -352,6 +570,7 @@ namespace DigimonNOAccess
                 var item = itemObj.GetComponent<uIjigenBoxPanelRankingUi2dRankingScrollViewContentItem>();
                 if (item == null)
                 {
+                    DebugLogger.Log($"{LogTag} Ranking: item {cursor} has no ranking content component");
                     ScreenReader.Say($"Rank {cursor + 1}");
                     return;
                 }
@@ -372,11 +591,17 @@ namespace DigimonNOAccess
 
             try
             {
-                string rank = item.Ranking?.text;
-                if (!string.IsNullOrEmpty(rank))
-                    parts.Add($"Rank {TextUtilities.StripRichTextTags(rank)}");
+                string rank = GetRenderedText(item.Ranking, "Ranking");
+                if (!string.IsNullOrWhiteSpace(rank))
+                {
+                    string rankUnit = GetRenderedText(item.RankingUnit, "RankingUnit") ?? "Rank";
+                    parts.Add($"{rankUnit} {rank}");
+                }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Ranking label read failed: {ex.Message}");
+            }
 
             try
             {
@@ -388,18 +613,21 @@ namespace DigimonNOAccess
 
             try
             {
-                string wins = item.WinCountValue?.text;
-                string losses = item.LoseCountValue?.text;
-                string battles = item.BattleCountValue?.text;
+                string wins = GetRenderedText(item.WinCountValue, "WinCountValue");
+                string losses = GetRenderedText(item.LoseCountValue, "LoseCountValue");
+                string battles = GetRenderedText(item.BattleCountValue, "BattleCountValue");
 
-                if (!string.IsNullOrEmpty(wins))
-                    parts.Add($"{wins} wins");
-                if (!string.IsNullOrEmpty(losses))
-                    parts.Add($"{losses} losses");
-                if (!string.IsNullOrEmpty(battles))
-                    parts.Add($"{battles} battles");
+                if (!string.IsNullOrWhiteSpace(wins))
+                    parts.Add($"{wins} {GetRenderedText(item.WinCountText, "WinCountText") ?? "wins"}");
+                if (!string.IsNullOrWhiteSpace(losses))
+                    parts.Add($"{losses} {GetRenderedText(item.LoseCountText, "LoseCountText") ?? "losses"}");
+                if (!string.IsNullOrWhiteSpace(battles))
+                    parts.Add($"{battles} {GetRenderedText(item.BattleCountText, "BattleCountText") ?? "battles"}");
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Ranking count labels read failed: {ex.Message}");
+            }
 
             if (parts.Count == 0)
                 return "Empty ranking entry";
@@ -452,32 +680,57 @@ namespace DigimonNOAccess
             // Try reading the cage's 2D display (name, battle stats)
             try
             {
-                var cage = _panel?.Registration?.Ui2dRegistration?.Cage;
-                if (cage != null)
+                if (_panel == null)
                 {
-                    string name = cage.Name?.text;
-                    if (!string.IsNullOrEmpty(name))
-                    {
-                        string cleanName = TextUtilities.StripRichTextTags(name);
-                        var parts = new System.Collections.Generic.List<string>();
-                        parts.Add($"Cage {cursor + 1}, {cleanName}");
+                    DebugLogger.Log($"{LogTag} Cage: panel is null");
+                    return $"Cage {cursor + 1}, Empty";
+                }
 
-                        string wins = cage.WinCountValue?.text;
-                        string losses = cage.LoseCountValue?.text;
-                        string battles = cage.BattleCountValue?.text;
+                var registration = _panel.Registration;
+                if (registration == null)
+                {
+                    DebugLogger.Log($"{LogTag} Cage: panel.Registration is null");
+                    return $"Cage {cursor + 1}, Empty";
+                }
 
-                        if (!string.IsNullOrEmpty(wins))
-                            parts.Add($"{wins} wins");
-                        if (!string.IsNullOrEmpty(losses))
-                            parts.Add($"{losses} losses");
-                        if (!string.IsNullOrEmpty(battles))
-                            parts.Add($"{battles} battles");
+                var registrationUi = registration.Ui2dRegistration;
+                if (registrationUi == null)
+                {
+                    DebugLogger.Log($"{LogTag} Cage: Registration.Ui2dRegistration is null");
+                    return $"Cage {cursor + 1}, Empty";
+                }
 
-                        return string.Join(", ", parts);
-                    }
+                var cage = registrationUi.Cage;
+                if (cage == null)
+                {
+                    DebugLogger.Log($"{LogTag} Cage: Ui2dRegistration.Cage is null");
+                    return $"Cage {cursor + 1}, Empty";
+                }
+
+                string cleanName = GetRenderedText(cage.Name, "Cage.Name");
+                if (!string.IsNullOrWhiteSpace(cleanName))
+                {
+                    var parts = new System.Collections.Generic.List<string>();
+                    parts.Add($"Cage {cursor + 1}, {cleanName}");
+
+                    string wins = GetRenderedText(cage.WinCountValue, "Cage.WinCountValue");
+                    string losses = GetRenderedText(cage.LoseCountValue, "Cage.LoseCountValue");
+                    string battles = GetRenderedText(cage.BattleCountValue, "Cage.BattleCountValue");
+
+                    if (!string.IsNullOrWhiteSpace(wins))
+                        parts.Add($"{wins} {GetRenderedText(cage.WinCountText, "Cage.WinCountText") ?? "wins"}");
+                    if (!string.IsNullOrWhiteSpace(losses))
+                        parts.Add($"{losses} {GetRenderedText(cage.LoseCountText, "Cage.LoseCountText") ?? "losses"}");
+                    if (!string.IsNullOrWhiteSpace(battles))
+                        parts.Add($"{battles} {GetRenderedText(cage.BattleCountText, "Cage.BattleCountText") ?? "battles"}");
+
+                    return string.Join(", ", parts);
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Cage announcement read failed: {ex.Message}");
+            }
 
             return $"Cage {cursor + 1}, Empty";
         }
@@ -507,15 +760,40 @@ namespace DigimonNOAccess
         {
             try
             {
-                var regUi = _panel?.Registration?.Ui2dRegistration;
-                if (regUi == null) return;
+                if (_panel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Partner: panel is null");
+                    return;
+                }
+
+                var registration = _panel.Registration;
+                if (registration == null)
+                {
+                    DebugLogger.Log($"{LogTag} Partner: panel.Registration is null");
+                    return;
+                }
+
+                var regUi = registration.Ui2dRegistration;
+                if (regUi == null)
+                {
+                    DebugLogger.Log($"{LogTag} Partner: Registration.Ui2dRegistration is null");
+                    return;
+                }
 
                 int cursor = regUi.PartnerCursor;
                 _lastPartnerCursor = cursor;
 
                 var partners = regUi.Partner;
-                if (partners == null || cursor < 0 || cursor >= partners.Length)
+                if (partners == null)
                 {
+                    DebugLogger.Log($"{LogTag} Partner: Ui2dRegistration.Partner is null");
+                    ScreenReader.Say($"Partner {cursor + 1}");
+                    return;
+                }
+
+                if (cursor < 0 || cursor >= partners.Length)
+                {
+                    DebugLogger.Log($"{LogTag} Partner: cursor {cursor} is outside Partner");
                     ScreenReader.Say($"Partner {cursor + 1}");
                     return;
                 }
@@ -523,6 +801,7 @@ namespace DigimonNOAccess
                 var partner = partners[cursor];
                 if (partner == null)
                 {
+                    DebugLogger.Log($"{LogTag} Partner: Partner[{cursor}] is null");
                     ScreenReader.Say($"Partner {cursor + 1}");
                     return;
                 }
@@ -569,35 +848,47 @@ namespace DigimonNOAccess
 
             try
             {
-                string atk = partner.AttackValue?.text;
-                if (!string.IsNullOrEmpty(atk))
-                    parts.Add($"ATK {atk}");
+                string atk = GetRenderedText(partner.AttackValue, "Partner.AttackValue");
+                if (!string.IsNullOrWhiteSpace(atk))
+                    parts.Add($"{GetRenderedText(partner.AttackHeadLine, "Partner.AttackHeadLine") ?? "ATK"} {atk}");
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Partner attack label read failed: {ex.Message}");
+            }
 
             try
             {
-                string def = partner.DefenseValue?.text;
-                if (!string.IsNullOrEmpty(def))
-                    parts.Add($"DEF {def}");
+                string def = GetRenderedText(partner.DefenseValue, "Partner.DefenseValue");
+                if (!string.IsNullOrWhiteSpace(def))
+                    parts.Add($"{GetRenderedText(partner.DefenseHeadLine, "Partner.DefenseHeadLine") ?? "DEF"} {def}");
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Partner defense label read failed: {ex.Message}");
+            }
 
             try
             {
-                string wis = partner.WisdomValue?.text;
-                if (!string.IsNullOrEmpty(wis))
-                    parts.Add($"WIS {wis}");
+                string wis = GetRenderedText(partner.WisdomValue, "Partner.WisdomValue");
+                if (!string.IsNullOrWhiteSpace(wis))
+                    parts.Add($"{GetRenderedText(partner.WisdomHeadLine, "Partner.WisdomHeadLine") ?? "WIS"} {wis}");
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Partner wisdom label read failed: {ex.Message}");
+            }
 
             try
             {
-                string spd = partner.SpeedValue?.text;
-                if (!string.IsNullOrEmpty(spd))
-                    parts.Add($"SPD {spd}");
+                string spd = GetRenderedText(partner.SpeedValue, "Partner.SpeedValue");
+                if (!string.IsNullOrWhiteSpace(spd))
+                    parts.Add($"{GetRenderedText(partner.SpeedHeadLine, "Partner.SpeedHeadLine") ?? "SPD"} {spd}");
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Partner speed label read failed: {ex.Message}");
+            }
 
             return string.Join(", ", parts);
         }
@@ -608,17 +899,34 @@ namespace DigimonNOAccess
         {
             try
             {
-                var resultUi = _panel?.Result?.Ui2dResult;
-                if (resultUi == null) return;
-
-                string label = resultUi.NwpTotalText?.text;
-                string value = resultUi.NwpTotalValue?.text;
-
-                if (!string.IsNullOrEmpty(value))
+                if (_panel == null)
                 {
-                    string text = !string.IsNullOrEmpty(label)
-                        ? $"{TextUtilities.StripRichTextTags(label)}: {TextUtilities.StripRichTextTags(value)}"
-                        : $"Total NWP: {TextUtilities.StripRichTextTags(value)}";
+                    DebugLogger.Log($"{LogTag} NWP result: panel is null");
+                    return;
+                }
+
+                var result = _panel.Result;
+                if (result == null)
+                {
+                    DebugLogger.Log($"{LogTag} NWP result: Result is null");
+                    return;
+                }
+
+                var resultUi = result.Ui2dResult;
+                if (resultUi == null)
+                {
+                    DebugLogger.Log($"{LogTag} NWP result: Result.Ui2dResult is null");
+                    return;
+                }
+
+                string label = GetRenderedText(resultUi.NwpTotalText, "NwpTotalText");
+                string value = GetRenderedText(resultUi.NwpTotalValue, "NwpTotalValue");
+
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    string text = !string.IsNullOrWhiteSpace(label)
+                        ? $"{label}: {value}"
+                        : $"Total NWP: {value}";
                     ScreenReader.Say(text);
                 }
             }
@@ -642,7 +950,7 @@ namespace DigimonNOAccess
                 case ActiveMode.TopMenu:
                     string tabName = GetCurrentTabName();
                     int tabIdx = GetCurrentTabIndex();
-                    ScreenReader.Say($"Dimension Box. {tabName}. {tabIdx + 1} of 5");
+                    ScreenReader.Say($"{GetDimensionBoxTitle()}. {tabName}. {tabIdx + 1} of 5");
                     break;
 
                 case ActiveMode.Ranking:
@@ -654,7 +962,7 @@ namespace DigimonNOAccess
                     break;
 
                 case ActiveMode.Battle:
-                    ScreenReader.Say("Dimension Box, Battle");
+                    ScreenReader.Say($"{GetDimensionBoxTitle()}, Battle");
                     break;
 
                 case ActiveMode.Result:
@@ -662,7 +970,7 @@ namespace DigimonNOAccess
                     break;
 
                 default:
-                    ScreenReader.Say("Dimension Box");
+                    ScreenReader.Say(GetDimensionBoxTitle());
                     break;
             }
         }

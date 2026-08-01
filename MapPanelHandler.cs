@@ -129,7 +129,7 @@ namespace DigimonNOAccess
             string destination = GetTownJumpDestinationName(cursor);
             int total = GetTownJumpItemCount();
 
-            string announcement = $"Fast Travel. {destination}. {cursor + 1} of {total}";
+            string announcement = $"{GetTownJumpCaptionText()}. {destination}. {cursor + 1} of {total}";
             ScreenReader.Say(announcement);
             DebugLogger.Log($"{LogTag} Town Jump opened, cursor={cursor}, items={total}");
             _lastTownJumpCursor = cursor;
@@ -190,60 +190,127 @@ namespace DigimonNOAccess
 
         private string GetTownJumpDestinationName(int index)
         {
-            // Primary: use data API via selectPointId for reliable name
             try
             {
-                if (_townJumpCommand != null && _townJumpPanel != null)
+                if (_townJumpCommand == null)
+                {
+                    DebugLogger.Log($"{LogTag} Destination {index}: town jump command is null");
+                }
+                else if (_townJumpPanel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Destination {index}: town jump panel is null");
+                }
+                else
                 {
                     uint pointId = _townJumpCommand.selectPointId;
-                    if (pointId > 0)
+                    if (pointId == 0)
+                    {
+                        DebugLogger.Log($"{LogTag} Destination {index}: selectPointId is zero");
+                    }
+                    else
                     {
                         var jumpData = _townJumpPanel.GetParameterTownJumpData(pointId);
-                        if (jumpData != null)
+                        if (jumpData == null)
+                        {
+                            DebugLogger.Log($"{LogTag} Destination {index}: GetParameterTownJumpData({pointId}) returned null");
+                        }
+                        else
                         {
                             string dataName = jumpData.GetName();
-                            if (!string.IsNullOrEmpty(dataName))
-                                return TextUtilities.StripRichTextTags(dataName);
+                            string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(dataName))?.Trim();
+                            if (!string.IsNullOrWhiteSpace(cleaned))
+                                return cleaned;
+
+                            DebugLogger.Log($"{LogTag} Destination {index}: ParameterTownJumpData.GetName() is empty");
                         }
                     }
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Destination {index}: parameter name read failed: {ex.Message}");
+            }
 
-            // Fallback: read from UI text parts
             try
             {
-                if (_townJumpCommand != null)
+                if (_townJumpCommand == null)
+                {
+                    DebugLogger.Log($"{LogTag} Destination {index}: command unavailable for rendered row");
+                }
+                else
                 {
                     var parts = _townJumpCommand.GetSelectItemParts(index);
-                    if (parts?.m_name != null)
+                    if (parts == null)
                     {
-                        string uiText = parts.m_name.text;
-                        if (!string.IsNullOrEmpty(uiText))
+                        DebugLogger.Log($"{LogTag} Destination {index}: selected row parts are null");
+                    }
+                    else
+                    {
+                        var nameText = parts.m_name;
+                        if (nameText == null)
                         {
-                            string cleaned = TextUtilities.StripRichTextTags(uiText);
-                            if (!string.IsNullOrEmpty(cleaned))
+                            DebugLogger.Log($"{LogTag} Destination {index}: selected row m_name is null");
+                        }
+                        else
+                        {
+                            string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(nameText.text))?.Trim();
+                            if (!string.IsNullOrWhiteSpace(cleaned))
                                 return cleaned;
+
+                            DebugLogger.Log($"{LogTag} Destination {index}: selected row m_name.text is empty");
                         }
                     }
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Destination {index}: rendered row read failed: {ex.Message}");
+            }
 
-            // Last fallback: headline text
+            DebugLogger.Log($"{LogTag} Destination {index}: localized name unavailable; using English fallback");
+            return AnnouncementBuilder.FallbackItem("Destination", index);
+        }
+
+        private string GetTownJumpCaptionText()
+        {
+            const string fallback = "Fast Travel";
+
             try
             {
-                var headline = _townJumpPanel?.m_townJumpPanelHeadLine;
-                if (headline?.m_text != null)
+                if (_townJumpPanel == null)
                 {
-                    string text = headline.m_text.text;
-                    if (!string.IsNullOrEmpty(text))
-                        return TextUtilities.StripRichTextTags(text);
+                    DebugLogger.Log($"{LogTag} Town jump caption: panel is null");
+                    return fallback;
                 }
-            }
-            catch { }
 
-            return AnnouncementBuilder.FallbackItem("Destination", index);
+                var caption = _townJumpPanel.m_caption;
+                if (caption == null)
+                {
+                    DebugLogger.Log($"{LogTag} Town jump caption: m_caption is null");
+                    return fallback;
+                }
+
+                var text = caption.m_text;
+                if (text == null)
+                {
+                    DebugLogger.Log($"{LogTag} Town jump caption: m_caption.m_text is null");
+                    return fallback;
+                }
+
+                string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(text.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(cleaned) || TextUtilities.IsPlaceholderText(cleaned))
+                {
+                    DebugLogger.Log($"{LogTag} Town jump caption: m_caption.m_text.text is empty");
+                    return fallback;
+                }
+
+                return cleaned;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Town jump caption read failed: {ex.Message}");
+                return fallback;
+            }
         }
 
         // ── Field Map ──
@@ -289,13 +356,55 @@ namespace DigimonNOAccess
 
         private string GetMapLevelName(uDigiviceMapPanel.State state)
         {
-            return state switch
+            string fallback = state switch
             {
                 uDigiviceMapPanel.State.WORLD => "World Map",
                 uDigiviceMapPanel.State.AREA => "Area Map",
                 uDigiviceMapPanel.State.MINI_AREA => "Local Map",
                 _ => "Map"
             };
+
+            if (state != uDigiviceMapPanel.State.WORLD &&
+                state != uDigiviceMapPanel.State.AREA &&
+                state != uDigiviceMapPanel.State.MINI_AREA)
+                return fallback;
+
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log($"{LogTag} {state} caption: map panel is null");
+                    return fallback;
+                }
+
+                var caption = _panel.m_uDigiviceMapPanelCaption;
+                if (caption == null)
+                {
+                    DebugLogger.Log($"{LogTag} {state} caption: m_uDigiviceMapPanelCaption is null");
+                    return fallback;
+                }
+
+                var text = caption.m_caption;
+                if (text == null)
+                {
+                    DebugLogger.Log($"{LogTag} {state} caption: m_caption is null");
+                    return fallback;
+                }
+
+                string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(text.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(cleaned) || TextUtilities.IsPlaceholderText(cleaned))
+                {
+                    DebugLogger.Log($"{LogTag} {state} caption: m_caption.text is empty");
+                    return fallback;
+                }
+
+                return cleaned;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} {state} caption read failed: {ex.Message}");
+                return fallback;
+            }
         }
 
         private string GetCurrentLocationName()
@@ -342,7 +451,7 @@ namespace DigimonNOAccess
                 int cursor = GetTownJumpCursor();
                 string destination = GetTownJumpDestinationName(cursor);
                 int total = GetTownJumpItemCount();
-                ScreenReader.Say($"Fast Travel. {destination}. {cursor + 1} of {total}");
+                ScreenReader.Say($"{GetTownJumpCaptionText()}. {destination}. {cursor + 1} of {total}");
                 return;
             }
 

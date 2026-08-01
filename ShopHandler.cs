@@ -126,12 +126,16 @@ namespace DigimonNOAccess
                 {
                     int qty = numChange.m_num;
                     int unitPrice = numChange.m_onePrice;
+                    string quantityLabel = GetQuantityLabel(numChange);
+                    string quantityValue = GetQuantityValueText(numChange);
+                    string totalLabel = GetTotalLabel(numChange);
                     string totalPrice = GetTotalPriceText(numChange);
                     _lastQuantity = qty;
-                    ScreenReader.Say($"Quantity select, {itemName}. {qty} at {unitPrice} each, total {totalPrice} bits");
+                    ScreenReader.Say($"{quantityLabel}, {itemName}. {quantityValue} at {unitPrice} each, {totalLabel} {totalPrice} bits");
                 }
                 else
                 {
+                    DebugLogger.Log($"{LogTag} Quantity: m_shopPanelNumChange was null");
                     ScreenReader.Say($"Quantity select, {itemName}");
                 }
             }
@@ -196,8 +200,9 @@ namespace DigimonNOAccess
                 int qty = numChange.m_num;
                 if (qty != _lastQuantity)
                 {
+                    string quantityValue = GetQuantityValueText(numChange);
                     string totalPrice = GetTotalPriceText(numChange);
-                    ScreenReader.Say($"{qty}, {totalPrice} bits");
+                    ScreenReader.Say($"{quantityValue}, {totalPrice} bits");
                     _lastQuantity = qty;
                 }
             }
@@ -228,11 +233,15 @@ namespace DigimonNOAccess
                 {
                     int qty = numChange.m_num;
                     int unitPrice = numChange.m_onePrice;
+                    string quantityLabel = GetQuantityLabel(numChange);
+                    string quantityValue = GetQuantityValueText(numChange);
+                    string totalLabel = GetTotalLabel(numChange);
                     string totalPrice = GetTotalPriceText(numChange);
-                    ScreenReader.Say($"Shop, {typeText}, Quantity select. {itemName}, {qty} at {unitPrice} each, total {totalPrice} bits. {money}");
+                    ScreenReader.Say($"Shop, {typeText}, {quantityLabel}. {itemName}, {quantityValue} at {unitPrice} each, {totalLabel} {totalPrice} bits. {money}");
                 }
                 else
                 {
+                    DebugLogger.Log($"{LogTag} Quantity: m_shopPanelNumChange was null");
                     ScreenReader.Say($"Shop, {typeText}, Quantity select. {itemName}. {money}");
                 }
             }
@@ -253,8 +262,24 @@ namespace DigimonNOAccess
 
         private uShopPanelItem GetItemPanel()
         {
-            try { return _panel?.m_itemPanel; }
-            catch { return null; }
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Item panel: _panel was null");
+                    return null;
+                }
+
+                var itemPanel = _panel.m_itemPanel;
+                if (itemPanel == null)
+                    DebugLogger.Log($"{LogTag} Item panel: m_itemPanel was null");
+                return itemPanel;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Item panel: m_itemPanel read failed: {ex.Message}");
+                return null;
+            }
         }
 
         private int GetCursorPosition()
@@ -283,13 +308,47 @@ namespace DigimonNOAccess
             try
             {
                 itemPanel ??= GetItemPanel();
-                var paramData = itemPanel?.GetSelectItemParam();
+                if (itemPanel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Item name: m_itemPanel was null");
+                    return AnnouncementBuilder.FallbackItem("Item", GetCursorPosition());
+                }
+
+                var paramData = itemPanel.GetSelectItemParam();
                 if (paramData != null)
                 {
-                    string name = paramData.GetName();
-                    if (!string.IsNullOrEmpty(name))
-                        return TextUtilities.StripRichTextTags(name);
+                    string name = (TextUtilities.StripRichTextTags(paramData.GetName()) ?? "").Trim();
+                    if (!string.IsNullOrWhiteSpace(name))
+                        return name;
+
+                    DebugLogger.Log($"{LogTag} Item name: ParameterItemData.GetName() was empty");
                 }
+                else
+                {
+                    DebugLogger.Log($"{LogTag} Item name: GetSelectItemParam() returned null");
+                }
+
+                int logicalIndex = itemPanel.selectNo;
+                var itemParts = itemPanel.GetSelectItemParts(logicalIndex);
+                if (itemParts == null)
+                {
+                    DebugLogger.Log($"{LogTag} Item name: GetSelectItemParts({logicalIndex}) returned null");
+                    return AnnouncementBuilder.FallbackItem("Item", logicalIndex);
+                }
+
+                var nameText = itemParts.m_name;
+                if (nameText == null)
+                {
+                    DebugLogger.Log($"{LogTag} Item name: selected uItemParts.m_name was null");
+                    return AnnouncementBuilder.FallbackItem("Item", logicalIndex);
+                }
+
+                string renderedName = (TextUtilities.StripRichTextTags(nameText.text) ?? "").Trim();
+                if (!string.IsNullOrWhiteSpace(renderedName))
+                    return renderedName;
+
+                DebugLogger.Log($"{LogTag} Item name: selected uItemParts.m_name.text was empty");
+                return AnnouncementBuilder.FallbackItem("Item", logicalIndex);
             }
             catch (System.Exception ex)
             {
@@ -353,22 +412,148 @@ namespace DigimonNOAccess
         {
             try
             {
-                var text = numChange?.m_totalText;
-                if (text != null)
+                if (numChange == null)
                 {
-                    string total = text.text;
-                    if (!string.IsNullOrEmpty(total))
-                        return TextUtilities.StripRichTextTags(total);
+                    DebugLogger.Log($"{LogTag} Total value: m_shopPanelNumChange was null");
+                    return "0";
                 }
+
+                var text = numChange.m_totalText;
+                if (text == null)
+                {
+                    DebugLogger.Log($"{LogTag} Total value: m_totalText was null");
+                    return (numChange.m_num * numChange.m_onePrice).ToString();
+                }
+
+                string total = (TextUtilities.StripRichTextTags(text.text) ?? "").Trim();
+                if (!string.IsNullOrWhiteSpace(total))
+                    return total;
+
+                DebugLogger.Log($"{LogTag} Total value: m_totalText.text was empty");
                 // Fallback: calculate manually
                 return (numChange.m_num * numChange.m_onePrice).ToString();
             }
-            catch { return "0"; }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Error reading m_totalText.text: {ex.Message}");
+                return "0";
+            }
         }
 
-        private static string GetShopTypeText(uShopPanel.ShopType type)
+        private string GetShopTypeText(uShopPanel.ShopType type)
         {
-            return type == uShopPanel.ShopType.BUY ? "Buy" : "Sell";
+            string fallback = type == uShopPanel.ShopType.BUY ? "Buy" : "Sell";
+
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Action caption: _panel was null");
+                    return fallback;
+                }
+
+                var captionPanel = _panel.m_captionPanel;
+                if (captionPanel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Action caption: m_captionPanel was null");
+                    return fallback;
+                }
+
+                var text = captionPanel.m_text;
+                if (text == null)
+                {
+                    DebugLogger.Log($"{LogTag} Action caption: m_captionPanel.m_text was null");
+                    return fallback;
+                }
+
+                string caption = (TextUtilities.StripRichTextTags(text.text) ?? "").Trim();
+                if (!string.IsNullOrWhiteSpace(caption))
+                    return caption;
+
+                DebugLogger.Log($"{LogTag} Action caption: m_captionPanel.m_text.text was empty");
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Error reading m_captionPanel.m_text.text: {ex.Message}");
+            }
+
+            return fallback;
+        }
+
+        private string GetQuantityLabel(uShopPanelNumChange numChange)
+        {
+            return GetNumChangeText(
+                numChange,
+                "m_itemNumTextName",
+                "Quantity select");
+        }
+
+        private string GetQuantityValueText(uShopPanelNumChange numChange)
+        {
+            string fallback = "0";
+            try
+            {
+                if (numChange != null)
+                    fallback = numChange.m_num.ToString();
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} m_num fallback read failed: {ex.Message}");
+            }
+
+            return GetNumChangeText(
+                numChange,
+                "m_numText",
+                fallback);
+        }
+
+        private string GetTotalLabel(uShopPanelNumChange numChange)
+        {
+            return GetNumChangeText(
+                numChange,
+                "m_priceTotalText",
+                "total");
+        }
+
+        private string GetNumChangeText(
+            uShopPanelNumChange numChange,
+            string fieldName,
+            string fallback)
+        {
+            try
+            {
+                if (numChange == null)
+                {
+                    DebugLogger.Log($"{LogTag} {fieldName}: m_shopPanelNumChange was null");
+                    return fallback;
+                }
+
+                UnityEngine.UI.Text text = fieldName switch
+                {
+                    "m_itemNumTextName" => numChange.m_itemNumTextName,
+                    "m_numText" => numChange.m_numText,
+                    "m_priceTotalText" => numChange.m_priceTotalText,
+                    _ => null
+                };
+
+                if (text == null)
+                {
+                    DebugLogger.Log($"{LogTag} {fieldName}: field was null");
+                    return fallback;
+                }
+
+                string value = (TextUtilities.StripRichTextTags(text.text) ?? "").Trim();
+                if (!string.IsNullOrWhiteSpace(value))
+                    return value;
+
+                DebugLogger.Log($"{LogTag} {fieldName}.text was empty");
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Error reading {fieldName}.text: {ex.Message}");
+            }
+
+            return fallback;
         }
     }
 }

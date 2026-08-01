@@ -324,13 +324,56 @@ namespace DigimonNOAccess
                 // backing out of Key Config/Graphics/etc.)
                 int total = topPanel?.m_KeyCursorController != null ? topPanel.m_KeyCursorController.m_DataMax : 0;
                 int index = AccessibilityItemIndex + 1; // 1-based for speech
-                ScreenReader.Say($"System Menu. Accessibility, {index} of {total}");
+                string menuName = GetTopPanelCaption(topPanel);
+                ScreenReader.Say($"{menuName}. Accessibility, {index} of {total}");
 
                 DebugLogger.Log("[OptionPanelPatch] Returned to TOP menu");
             }
             catch (Exception ex)
             {
                 DebugLogger.Error($"[OptionPanelPatch] ReturnToTopMenu error: {ex.Message}");
+            }
+        }
+
+        private static string GetTopPanelCaption(uOptionTopPanelCommand topPanel)
+        {
+            const string fallback = "System Menu";
+
+            try
+            {
+                if (topPanel == null)
+                {
+                    DebugLogger.Log("[OptionPanelPatch] Top caption: top panel was null");
+                    return fallback;
+                }
+
+                var captionPanel = topPanel.m_Caption;
+                if (captionPanel == null)
+                {
+                    DebugLogger.Log("[OptionPanelPatch] Top caption: m_Caption was null");
+                    return fallback;
+                }
+
+                var captionText = captionPanel.m_Caption;
+                if (captionText == null)
+                {
+                    DebugLogger.Log("[OptionPanelPatch] Top caption: m_Caption.m_Caption was null");
+                    return fallback;
+                }
+
+                string caption = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(captionText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(caption) || TextUtilities.IsPlaceholderText(caption))
+                {
+                    DebugLogger.Log($"[OptionPanelPatch] Top caption: m_Caption.m_Caption.text unusable: {TextUtilities.DescribeUnusable(caption)}");
+                    return fallback;
+                }
+
+                return caption;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[OptionPanelPatch] Top caption read failed: {ex.Message}");
+                return fallback;
             }
         }
 

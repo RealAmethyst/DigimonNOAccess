@@ -314,7 +314,7 @@ namespace DigimonNOAccess
                     if (detailState == uDigiviceLibraryDetailPanel.State.Back)
                     {
                         var info = GetDigimonInfoFromParams();
-                        ScreenReader.Say($"{info.name}. Nature: {info.nature}. Attribute: {info.attribute}");
+                        ScreenReader.Say($"{info.name}. {info.natureLabel}: {info.nature}. {info.attributeLabel}: {info.attribute}");
                     }
                     else
                     {
@@ -392,7 +392,7 @@ namespace DigimonNOAccess
         private void AnnounceDigimonInfo(uDigiviceLibraryDetailPanel.State detailState)
         {
             var info = GetDigimonInfoFromParams();
-            string announcement = $"{info.name}. Nature: {info.nature}. Attribute: {info.attribute}";
+            string announcement = $"{info.name}. {info.natureLabel}: {info.nature}. {info.attributeLabel}: {info.attribute}";
 
             if (detailState != uDigiviceLibraryDetailPanel.State.Back)
             {
@@ -571,7 +571,7 @@ namespace DigimonNOAccess
             if (detailState == uDigiviceLibraryDetailPanel.State.Back)
             {
                 var info = GetDigimonInfoFromParams();
-                ScreenReader.Say($"{info.name}. Nature: {info.nature}. Attribute: {info.attribute}");
+                ScreenReader.Say($"{info.name}. {info.natureLabel}: {info.nature}. {info.attributeLabel}: {info.attribute}");
             }
             else if (detailState == uDigiviceLibraryDetailPanel.State.Before ||
                      detailState == uDigiviceLibraryDetailPanel.State.After)
@@ -616,27 +616,91 @@ namespace DigimonNOAccess
 
         private string GetGridItemName()
         {
-            string raw = _libraryPanel.m_TopPanel.m_MainWindow.m_NameText.text;
-            string name = TextUtilities.StripRichTextTags(raw);
-            // Game shows "???" for undiscovered Digimon
-            if (string.IsNullOrEmpty(name) || name == "???")
-                return "Unknown";
-            return name;
+            const string fallback = "Unknown";
+
+            try
+            {
+                if (_libraryPanel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Grid name: library panel was null");
+                    return fallback;
+                }
+
+                var topPanel = _libraryPanel.m_TopPanel;
+                if (topPanel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Grid name: m_TopPanel was null");
+                    return fallback;
+                }
+
+                var mainWindow = topPanel.m_MainWindow;
+                if (mainWindow == null)
+                {
+                    DebugLogger.Log($"{LogTag} Grid name: m_TopPanel.m_MainWindow was null");
+                    return fallback;
+                }
+
+                var nameText = mainWindow.m_NameText;
+                if (nameText == null)
+                {
+                    DebugLogger.Log($"{LogTag} Grid name: m_TopPanel.m_MainWindow.m_NameText was null");
+                    return fallback;
+                }
+
+                string name = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(nameText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(name) || TextUtilities.IsPlaceholderText(name))
+                {
+                    DebugLogger.Log($"{LogTag} Grid name: m_TopPanel.m_MainWindow.m_NameText.text unusable: {TextUtilities.DescribeUnusable(name)}");
+                    return fallback;
+                }
+
+                // Preserve the game's rendered "???" for undiscovered Digimon.
+                return name;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Grid name read failed: {ex.Message}");
+                return fallback;
+            }
         }
 
         private string GetHeaderTitle()
         {
             try
             {
-                var headLine = _libraryPanel?.m_HeadLine;
-                if (headLine?.m_Text != null)
+                if (_libraryPanel == null)
                 {
-                    string text = headLine.m_Text.text;
-                    if (!string.IsNullOrEmpty(text))
-                        return TextUtilities.StripRichTextTags(text).Trim();
+                    DebugLogger.Log($"{LogTag} Header: library panel was null");
+                    return "Field Guide";
                 }
+
+                var headLine = _libraryPanel.m_HeadLine;
+                if (headLine == null)
+                {
+                    DebugLogger.Log($"{LogTag} Header: m_HeadLine was null");
+                    return "Field Guide";
+                }
+
+                var headerText = headLine.m_Text;
+                if (headerText == null)
+                {
+                    DebugLogger.Log($"{LogTag} Header: m_HeadLine.m_Text was null");
+                    return "Field Guide";
+                }
+
+                string text = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(headerText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(text) || TextUtilities.IsPlaceholderText(text))
+                {
+                    DebugLogger.Log($"{LogTag} Header: m_HeadLine.m_Text.text unusable: {TextUtilities.DescribeUnusable(text)}");
+                    return "Field Guide";
+                }
+
+                return text;
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Header read failed: {ex.Message}");
+            }
             return "Field Guide";
         }
 
@@ -649,26 +713,151 @@ namespace DigimonNOAccess
         /// Gets Digimon info directly from parameter data using selectDigiID.
         /// This works regardless of which tab the detail panel is on.
         /// </summary>
-        private (string name, string nature, string attribute) GetDigimonInfoFromParams()
+        private (string name, string natureLabel, string nature, string attributeLabel, string attribute) GetDigimonInfoFromParams()
         {
-            uint digiId = _libraryPanel.m_DetailPanel.selectDigiID;
-            var param = ParameterDigimonData.GetParam(digiId);
-            if (param == null)
-                return ("Unknown", "", "");
+            ParameterDigimonData param = null;
+            try
+            {
+                if (_libraryPanel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Detail parameter fallback: library panel was null");
+                }
+                else
+                {
+                    var detailPanel = _libraryPanel.m_DetailPanel;
+                    if (detailPanel == null)
+                    {
+                        DebugLogger.Log($"{LogTag} Detail parameter fallback: m_DetailPanel was null");
+                    }
+                    else
+                    {
+                        param = ParameterDigimonData.GetParam(detailPanel.selectDigiID);
+                        if (param == null)
+                            DebugLogger.Log($"{LogTag} Detail parameter fallback: ParameterDigimonData.GetParam returned null");
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Detail parameter fallback read failed: {ex.Message}");
+            }
 
-            string name = param.GetDefaultName() ?? "Unknown";
+            string name = "Unknown";
+            string natureFallback = "";
+            string attributeFallback = "";
 
-            int personality = param.m_personality;
-            string nature = (personality >= 0 && personality < PersonalityNames.Length)
-                ? PersonalityNames[personality]
-                : "Unknown";
+            if (param != null)
+            {
+                name = param.GetDefaultName() ?? "Unknown";
 
-            int attr = param.m_attr;
-            string attribute = (attr >= 0 && attr < AttributeNames.Length)
-                ? AttributeNames[attr]
-                : "Unknown";
+                int personality = param.m_personality;
+                natureFallback = (personality >= 0 && personality < PersonalityNames.Length)
+                    ? PersonalityNames[personality]
+                    : "Unknown";
 
-            return (name, nature, attribute);
+                int attr = param.m_attr;
+                attributeFallback = (attr >= 0 && attr < AttributeNames.Length)
+                    ? AttributeNames[attr]
+                    : "Unknown";
+            }
+
+            var detailInfo = GetRenderedDetailInfo();
+            string natureLabel = GetDetailInfoText(
+                detailInfo, true, uDigiviceLibraryDetailInfo.TextIndex.Nature, "Nature")
+                .TrimEnd(':', '：')
+                .Trim();
+            string nature = GetDetailInfoText(
+                detailInfo, false, uDigiviceLibraryDetailInfo.TextIndex.Nature, natureFallback);
+            string attributeLabel = GetDetailInfoText(
+                detailInfo, true, uDigiviceLibraryDetailInfo.TextIndex.Property, "Attribute")
+                .TrimEnd(':', '：')
+                .Trim();
+            string attribute = GetDetailInfoText(
+                detailInfo, false, uDigiviceLibraryDetailInfo.TextIndex.Property, attributeFallback);
+
+            return (name, natureLabel, nature, attributeLabel, attribute);
+        }
+
+        private uDigiviceLibraryDetailInfo GetRenderedDetailInfo()
+        {
+            try
+            {
+                if (_libraryPanel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Detail info: library panel was null");
+                    return null;
+                }
+
+                var detailPanel = _libraryPanel.m_DetailPanel;
+                if (detailPanel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Detail info: m_DetailPanel was null");
+                    return null;
+                }
+
+                var detailInfo = detailPanel.m_Info;
+                if (detailInfo == null)
+                    DebugLogger.Log($"{LogTag} Detail info: m_DetailPanel.m_Info was null");
+                return detailInfo;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Detail info panel read failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        private string GetDetailInfoText(
+            uDigiviceLibraryDetailInfo detailInfo,
+            bool title,
+            uDigiviceLibraryDetailInfo.TextIndex index,
+            string fallback)
+        {
+            string arrayName = title ? "m_TitleText" : "m_ValueText";
+
+            try
+            {
+                if (detailInfo == null)
+                {
+                    DebugLogger.Log($"{LogTag} Detail info {index}: m_Info was null for {arrayName}");
+                    return fallback;
+                }
+
+                var textArray = title ? detailInfo.m_TitleText : detailInfo.m_ValueText;
+                if (textArray == null)
+                {
+                    DebugLogger.Log($"{LogTag} Detail info {index}: {arrayName} was null");
+                    return fallback;
+                }
+
+                int textIndex = (int)index;
+                if (textIndex < 0 || textIndex >= textArray.Length)
+                {
+                    DebugLogger.Log($"{LogTag} Detail info {index}: index {textIndex} was outside {arrayName}");
+                    return fallback;
+                }
+
+                var textComponent = textArray[textIndex];
+                if (textComponent == null)
+                {
+                    DebugLogger.Log($"{LogTag} Detail info {index}: {arrayName}[{textIndex}] was null");
+                    return fallback;
+                }
+
+                string rendered = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(textComponent.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(rendered) || TextUtilities.IsPlaceholderText(rendered))
+                {
+                    DebugLogger.Log($"{LogTag} Detail info {index}: {arrayName}[{textIndex}].text unusable: {TextUtilities.DescribeUnusable(rendered)}");
+                    return fallback;
+                }
+
+                return rendered;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Detail info {index} {arrayName} read failed: {ex.Message}");
+                return fallback;
+            }
         }
 
         private int GetEvoCursor(uDigiviceLibraryDetailPanel.State state)
@@ -780,10 +969,51 @@ namespace DigimonNOAccess
             switch (state)
             {
                 case uDigiviceLibraryDetailPanel.State.Before: return "Before";
-                case uDigiviceLibraryDetailPanel.State.After: return "After";
-                case uDigiviceLibraryDetailPanel.State.Skill: return "Skill";
+                case uDigiviceLibraryDetailPanel.State.After: return GetRenderedTabName(false, "After");
+                case uDigiviceLibraryDetailPanel.State.Skill: return GetRenderedTabName(true, "Skill");
                 case uDigiviceLibraryDetailPanel.State.Back: return "Info";
                 default: return null;
+            }
+        }
+
+        private string GetRenderedTabName(bool skill, string fallback)
+        {
+            try
+            {
+                if (_libraryPanel == null)
+                {
+                    DebugLogger.Log($"{LogTag} {fallback} tab: library panel was null");
+                    return fallback;
+                }
+
+                var detailPanel = _libraryPanel.m_DetailPanel;
+                if (detailPanel == null)
+                {
+                    DebugLogger.Log($"{LogTag} {fallback} tab: m_DetailPanel was null");
+                    return fallback;
+                }
+
+                var tabText = skill ? detailPanel.m_skillLangText : detailPanel.m_afterLangText;
+                string fieldName = skill ? "m_skillLangText" : "m_afterLangText";
+                if (tabText == null)
+                {
+                    DebugLogger.Log($"{LogTag} {fallback} tab: {fieldName} was null");
+                    return fallback;
+                }
+
+                string rendered = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(tabText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(rendered) || TextUtilities.IsPlaceholderText(rendered))
+                {
+                    DebugLogger.Log($"{LogTag} {fallback} tab: {fieldName}.text unusable: {TextUtilities.DescribeUnusable(rendered)}");
+                    return fallback;
+                }
+
+                return rendered;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} {fallback} tab label read failed: {ex.Message}");
+                return fallback;
             }
         }
     }

@@ -61,7 +61,7 @@ namespace DigimonNOAccess
             var genelogy = GetGenelogy();
             if (genelogy == null)
             {
-                ScreenReader.Say("Evolution Dojo");
+                ScreenReader.Say(GetPanelTitle());
                 return;
             }
 
@@ -69,9 +69,9 @@ namespace DigimonNOAccess
             _lastType = genelogy.m_Type;
 
             string generation = GetGenerationText();
-            string announcement = "Evolution Dojo";
+            string announcement = GetPanelTitle();
             if (!string.IsNullOrEmpty(generation))
-                announcement += ", Generation " + generation;
+                announcement += ", " + generation;
 
             ScreenReader.Say(announcement);
             DebugLogger.Log($"{LogTag} Opened: {announcement}");
@@ -211,11 +211,11 @@ namespace DigimonNOAccess
             {
                 string nature = GetInfoPanelText("m_Nature_Evo");
                 if (!string.IsNullOrEmpty(nature))
-                    announcement += ", Nature: " + nature;
+                    announcement += $", {GetInfoLabel(true, true)}: {nature}";
 
                 string property = GetInfoPanelText("m_Property_Evo");
                 if (!string.IsNullOrEmpty(property))
-                    announcement += ", Attribute: " + property;
+                    announcement += $", {GetInfoLabel(false, true)}: {property}";
 
                 string conditions = GetConditionsText();
                 if (!string.IsNullOrEmpty(conditions))
@@ -236,11 +236,11 @@ namespace DigimonNOAccess
             var genelogy = GetGenelogy();
             if (genelogy == null)
             {
-                ScreenReader.Say("Evolution Dojo");
+                ScreenReader.Say(GetPanelTitle());
                 return;
             }
 
-            string announcement = "Evolution Dojo";
+            string announcement = GetPanelTitle();
 
             // Partner
             string partnerName = GetCurrentPartnerName();
@@ -255,11 +255,11 @@ namespace DigimonNOAccess
             // Nature and property
             string nature = GetInfoPanelText("m_Nature");
             if (!string.IsNullOrEmpty(nature))
-                announcement += ", Nature: " + nature;
+                announcement += $", {GetInfoLabel(true, false)}: {nature}";
 
             string property = GetInfoPanelText("m_Property");
             if (!string.IsNullOrEmpty(property))
-                announcement += ", Attribute: " + property;
+                announcement += $", {GetInfoLabel(false, false)}: {property}";
 
             // Description
             string description = GetInfoPanelText("m_Description");
@@ -293,7 +293,7 @@ namespace DigimonNOAccess
             // Generation
             string generation = GetGenerationText();
             if (!string.IsNullOrEmpty(generation))
-                announcement += ", Generation " + generation;
+                announcement += ", " + generation;
 
             // Grid position
             announcement += $", Position {_lastCursorX + 1} of {genelogy.m_CursorX_Max + 1}";
@@ -303,6 +303,108 @@ namespace DigimonNOAccess
         }
 
         // --- Helpers ---
+
+        private string GetPanelTitle()
+        {
+            const string fallback = "Evolution Dojo";
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Title: m_panel was null");
+                    return fallback;
+                }
+
+                var headLine = _panel.m_HeadLine;
+                if (headLine == null)
+                {
+                    DebugLogger.Log($"{LogTag} Title: m_HeadLine was null");
+                    return fallback;
+                }
+
+                return GetRenderedText(headLine.m_ScreenNameText, "m_HeadLine.m_ScreenNameText", fallback);
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Title read failed: {ex.Message}");
+                return fallback;
+            }
+        }
+
+        private string GetInfoLabel(bool nature, bool evo)
+        {
+            string fallback = nature ? "Nature" : "Attribute";
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log($"{LogTag} {fallback} label: m_panel was null");
+                    return fallback;
+                }
+
+                var genelogy = _panel.m_Genelogy;
+                if (genelogy == null)
+                {
+                    DebugLogger.Log($"{LogTag} {fallback} label: m_Genelogy was null");
+                    return fallback;
+                }
+
+                var info = genelogy.m_GenelogyInfo;
+                if (info == null)
+                {
+                    DebugLogger.Log($"{LogTag} {fallback} label: m_GenelogyInfo was null");
+                    return fallback;
+                }
+
+                UnityEngine.UI.Text label;
+                string fieldName;
+                if (nature)
+                {
+                    label = evo ? info.m_NatureTitle_Evo : info.m_NatureTitle;
+                    fieldName = evo ? "m_NatureTitle_Evo" : "m_NatureTitle";
+                }
+                else
+                {
+                    label = evo ? info.m_PropertyTitle_Evo : info.m_PropertyTitle;
+                    fieldName = evo ? "m_PropertyTitle_Evo" : "m_PropertyTitle";
+                }
+
+                return GetRenderedText(label, $"m_GenelogyInfo.{fieldName}", fallback)
+                    .TrimEnd(':', '：')
+                    .Trim();
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} {fallback} label read failed: {ex.Message}");
+                return fallback;
+            }
+        }
+
+        private string GetRenderedText(UnityEngine.UI.Text textComponent, string fieldName, string fallback)
+        {
+            if (textComponent == null)
+            {
+                DebugLogger.Log($"{LogTag} {fieldName} was null");
+                return fallback;
+            }
+
+            try
+            {
+                string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(textComponent.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(cleaned) || TextUtilities.IsPlaceholderText(cleaned))
+                {
+                    DebugLogger.Log($"{LogTag} {fieldName}.text unusable: {TextUtilities.DescribeUnusable(cleaned)}");
+                    return fallback;
+                }
+
+                return cleaned;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} {fieldName} read failed: {ex.Message}");
+                return fallback;
+            }
+        }
 
         private uGenelogyUI GetGenelogy()
         {
@@ -491,15 +593,41 @@ namespace DigimonNOAccess
         {
             try
             {
-                var genelogy = GetGenelogy();
-                if (genelogy == null) return null;
+                if (_panel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Generation: m_panel was null");
+                    return null;
+                }
+
+                var genelogy = _panel.m_Genelogy;
+                if (genelogy == null)
+                {
+                    DebugLogger.Log($"{LogTag} Generation: m_Genelogy was null");
+                    return null;
+                }
+
                 var text = genelogy.m_GenerationText;
-                if (text == null) return null;
-                string val = text.text;
-                if (string.IsNullOrEmpty(val)) return null;
-                return TextUtilities.StripRichTextTags(val);
+                if (text == null)
+                {
+                    DebugLogger.Log($"{LogTag} Generation: m_GenerationText was null");
+                    return null;
+                }
+
+                string value = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(text.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(value) || TextUtilities.IsPlaceholderText(value))
+                {
+                    DebugLogger.Log($"{LogTag} Generation: m_GenerationText.text unusable: {TextUtilities.DescribeUnusable(value)}");
+                    return null;
+                }
+
+                string unit = GetRenderedText(genelogy.m_GenerationUnit, "m_GenerationUnit", "Generation");
+                return $"{unit} {value}";
             }
-            catch { return null; }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Generation read failed: {ex.Message}");
+                return null;
+            }
         }
 
         private string GetCurrentPartnerName()

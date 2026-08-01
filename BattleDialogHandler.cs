@@ -88,11 +88,8 @@ namespace DigimonNOAccess
             if (_cachedDialog == null)
                 return;
 
-            string message = _cachedDialog.m_messageText?.text ?? "Confirm?";
+            string message = GetMessageText();
             string selection = GetSelectionName(_cachedDialog.m_cursorIndex);
-
-            // Clean up message text (remove rich text tags if any)
-            message = CleanText(message);
 
             ScreenReader.Say($"{message} {selection}");
         }
@@ -111,9 +108,39 @@ namespace DigimonNOAccess
             return cursorIndex == 0 ? "Yes" : "No";
         }
 
-        private string CleanText(string text)
+        private string GetMessageText()
         {
-            return TextUtilities.CleanText(text);
+            const string fallback = "Confirm?";
+
+            try
+            {
+                if (_cachedDialog == null)
+                {
+                    DebugLogger.Log("[BattleDialogHandler] Message: cached dialog was null");
+                    return fallback;
+                }
+
+                var messageText = _cachedDialog.m_messageText;
+                if (messageText == null)
+                {
+                    DebugLogger.Log("[BattleDialogHandler] Message: m_messageText was null");
+                    return fallback;
+                }
+
+                string message = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(messageText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(message) || TextUtilities.IsPlaceholderText(message))
+                {
+                    DebugLogger.Log($"[BattleDialogHandler] Message: m_messageText.text unusable: {TextUtilities.DescribeUnusable(message)}");
+                    return fallback;
+                }
+
+                return message;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[BattleDialogHandler] Message read failed: {ex.Message}");
+                return fallback;
+            }
         }
 
         public bool IsActive()

@@ -87,7 +87,7 @@ namespace DigimonNOAccess
             _lastState = state;
 
             string stateName = GetStateName(state);
-            string announcement = $"Tamer menu, {stateName}";
+            string announcement = $"{GetMenuName()}, {stateName}";
 
             if (state == uDigiviceTamerPanel.State.Status)
             {
@@ -170,9 +170,18 @@ namespace DigimonNOAccess
         {
             try
             {
-                var statusPanel = _panel?.m_status;
-                if (statusPanel == null)
+                if (_panel == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Status change: m_panel was null");
                     return;
+                }
+
+                var statusPanel = _panel.m_status;
+                if (statusPanel == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Status change: m_status was null");
+                    return;
+                }
 
                 int currentCommand = (int)statusPanel.GetSelectIndex();
 
@@ -193,29 +202,46 @@ namespace DigimonNOAccess
         {
             try
             {
-                var statusPanel = _panel?.m_status;
-                if (statusPanel == null)
+                if (_panel == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Status info: m_panel was null");
                     return "";
+                }
+
+                var statusPanel = _panel.m_status;
+                if (statusPanel == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Status info: m_status was null");
+                    return "";
+                }
 
                 int commandIndex = (int)statusPanel.GetSelectIndex();
                 _lastStatusCommand = commandIndex;
                 string commandName = GetStatusCommandName(commandIndex);
 
-                string tp = GetTextSafe(statusPanel.m_StatusTPValue);
-                string level = GetTextSafe(statusPanel.m_StatusLevel);
-                string skills = GetTextSafe(statusPanel.m_StatusLearnedSkillCurrentValue);
-                string maxSkills = GetTextSafe(statusPanel.m_StatusLearnedSkillMaxValue);
-                string bits = GetTextSafe(statusPanel.m_StatusHaveBitValue);
+                string tp = GetTextSafe(statusPanel.m_StatusTPValue, "m_StatusTPValue");
+                string level = GetRenderedText(statusPanel.m_StatusLevel, "m_StatusLevel", "Level");
+                string skills = GetTextSafe(statusPanel.m_StatusLearnedSkillCurrentValue, "m_StatusLearnedSkillCurrentValue");
+                string maxSkills = GetTextSafe(statusPanel.m_StatusLearnedSkillMaxValue, "m_StatusLearnedSkillMaxValue");
+                string bits = GetTextSafe(statusPanel.m_StatusHaveBitValue, "m_StatusHaveBitValue");
 
                 string stats = "";
-                if (!string.IsNullOrEmpty(level))
-                    stats += $"Level {level}. ";
+                stats += $"{level}. ";
                 if (!string.IsNullOrEmpty(tp))
-                    stats += $"TP {tp}. ";
+                {
+                    string tpLabel = GetRenderedText(statusPanel.m_StatusTPText, "m_StatusTPText", "TP");
+                    stats += $"{tpLabel} {tp}. ";
+                }
                 if (!string.IsNullOrEmpty(skills) && !string.IsNullOrEmpty(maxSkills))
-                    stats += $"Skills {skills} of {maxSkills}. ";
+                {
+                    string skillsLabel = GetRenderedText(statusPanel.m_StatusLearnedSkillText, "m_StatusLearnedSkillText", "Skills");
+                    stats += $"{skillsLabel} {skills} of {maxSkills}. ";
+                }
                 if (!string.IsNullOrEmpty(bits))
-                    stats += $"Bits {bits}. ";
+                {
+                    string bitsLabel = GetRenderedText(statusPanel.m_StatusHaveBitText, "m_StatusHaveBitText", "Bits");
+                    stats += $"{bitsLabel} {bits}. ";
+                }
 
                 return $"{stats}{commandName}, {commandIndex + 1} of 2";
             }
@@ -228,12 +254,44 @@ namespace DigimonNOAccess
 
         private string GetStatusCommandName(int index)
         {
-            return index switch
+            string fallback = index switch
             {
                 0 => "Skill Check",
                 1 => "Skill Get",
                 _ => AnnouncementBuilder.FallbackItem("Option", index)
             };
+
+            try
+            {
+                if (index < 0 || index > 1)
+                    return fallback;
+
+                if (_panel == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Status command: m_panel was null");
+                    return fallback;
+                }
+
+                var statusPanel = _panel.m_status;
+                if (statusPanel == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Status command: m_status was null");
+                    return fallback;
+                }
+
+                var text = index == 0
+                    ? statusPanel.m_CommandSkillCheckText
+                    : statusPanel.m_CommandSKillGetText;
+                string fieldName = index == 0
+                    ? "m_CommandSkillCheckText"
+                    : "m_CommandSKillGetText";
+                return GetRenderedText(text, fieldName, fallback);
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[TamerPanel] Status command read failed for index {index}: {ex.Message}");
+                return fallback;
+            }
         }
 
         #endregion
@@ -244,19 +302,34 @@ namespace DigimonNOAccess
         {
             try
             {
-                var skillGetPanel = _panel?.m_skillGet;
-                if (skillGetPanel == null)
+                if (_panel == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Skill Get change: m_panel was null");
                     return;
+                }
+
+                var skillGetPanel = _panel.m_skillGet;
+                if (skillGetPanel == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Skill Get change: m_skillGet was null");
+                    return;
+                }
 
                 var mainWindow = skillGetPanel.m_uDigiviceTamerPanelSkill_Get_MainWindow;
                 if (mainWindow == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Skill Get change: m_uDigiviceTamerPanelSkill_Get_MainWindow was null");
                     return;
+                }
 
                 int currentTab = mainWindow.m_SelectedTabIndex;
 
                 var tabPanel = GetCurrentTabPanel(mainWindow, currentTab);
                 if (tabPanel == null)
+                {
+                    DebugLogger.Log($"[TamerPanel] Skill Get change: {GetTabPanelFieldName(currentTab)} was null");
                     return;
+                }
 
                 var tabState = tabPanel.m_State;
                 bool onSkillScreen = (tabState == uGetSkillPanelBase.State.SELECT_SKILL);
@@ -480,9 +553,145 @@ namespace DigimonNOAccess
 
         private string GetCategoryName(int tabIndex, int categoryIndex)
         {
+            string fallback = GetEnglishCategoryName(tabIndex, categoryIndex);
+
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Category name: m_panel was null");
+                    return fallback;
+                }
+
+                var skillGetPanel = _panel.m_skillGet;
+                if (skillGetPanel == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Category name: m_skillGet was null");
+                    return fallback;
+                }
+
+                var mainWindow = skillGetPanel.m_uDigiviceTamerPanelSkill_Get_MainWindow;
+                if (mainWindow == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Category name: m_uDigiviceTamerPanelSkill_Get_MainWindow was null");
+                    return fallback;
+                }
+
+                var tabPanel = GetCurrentTabPanel(mainWindow, tabIndex);
+                if (tabPanel == null)
+                {
+                    DebugLogger.Log($"[TamerPanel] Category name: {GetTabPanelFieldName(tabIndex)} was null");
+                    return fallback;
+                }
+
+                uGetSkillPanelManager manager = null;
+                string managerField = null;
+                switch (tabIndex)
+                {
+                case 0:
+                    var basic = (uDigiviceTamerSKillPanel_GetBasic)tabPanel;
+                    manager = categoryIndex switch
+                    {
+                        0 => basic.m_TreatTypeManager,
+                        1 => basic.m_LifeTypeManager,
+                        2 => basic.m_CarrierTypeManager,
+                        3 => basic.m_ReverseTypeManager,
+                        _ => null
+                    };
+                    managerField = categoryIndex switch
+                    {
+                        0 => "m_TreatTypeManager",
+                        1 => "m_LifeTypeManager",
+                        2 => "m_CarrierTypeManager",
+                        3 => "m_ReverseTypeManager",
+                        _ => null
+                    };
+                    break;
+                case 1:
+                    var trainer = (uDigiviceTamerSKillPanel_GetTrainer)tabPanel;
+                    manager = categoryIndex switch
+                    {
+                        0 => trainer.m_TeacherTypeManager,
+                        1 => trainer.m_LifeCareTypeManager,
+                        2 => trainer.m_EvoluteTypeManager,
+                        _ => null
+                    };
+                    managerField = categoryIndex switch
+                    {
+                        0 => "m_TeacherTypeManager",
+                        1 => "m_LifeCareTypeManager",
+                        2 => "m_EvoluteTypeManager",
+                        _ => null
+                    };
+                    break;
+                case 2:
+                    var survivor = (uDigiviceTamerSKillPanel_GetSurvivor)tabPanel;
+                    manager = categoryIndex switch
+                    {
+                        0 => survivor.m_FinderTypeManager,
+                        1 => survivor.m_ExtractorTypeManager,
+                        2 => survivor.m_CamperTypeManager,
+                        3 => survivor.m_WalkerTypeManager,
+                        _ => null
+                    };
+                    managerField = categoryIndex switch
+                    {
+                        0 => "m_FinderTypeManager",
+                        1 => "m_ExtractorTypeManager",
+                        2 => "m_CamperTypeManager",
+                        3 => "m_WalkerTypeManager",
+                        _ => null
+                    };
+                    break;
+                case 3:
+                    var commander = (uDigiviceTamerSKillPanel_GetCommander)tabPanel;
+                    manager = categoryIndex switch
+                    {
+                        0 => commander.m_OrderTypeManager,
+                        1 => commander.m_TacticsTypeManager,
+                        2 => commander.m_ItemThrowTypeManager,
+                        3 => commander.m_DropTypeManager,
+                        4 => commander.m_LearningTypeManager,
+                        _ => null
+                    };
+                    managerField = categoryIndex switch
+                    {
+                        0 => "m_OrderTypeManager",
+                        1 => "m_TacticsTypeManager",
+                        2 => "m_ItemThrowTypeManager",
+                        3 => "m_DropTypeManager",
+                        4 => "m_LearningTypeManager",
+                        _ => null
+                    };
+                    break;
+                }
+
+                if (string.IsNullOrEmpty(managerField))
+                {
+                    DebugLogger.Log($"[TamerPanel] Category name: no manager field for tab {tabIndex}, category {categoryIndex}");
+                    return fallback;
+                }
+
+                if (manager == null)
+                {
+                    DebugLogger.Log($"[TamerPanel] Category name: {managerField} was null");
+                    return fallback;
+                }
+
+                return GetRenderedText(manager.m_HeadLine, $"{managerField}.m_HeadLine", fallback);
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[TamerPanel] Category name read failed for tab {tabIndex}, category {categoryIndex}: {ex.Message}");
+                return fallback;
+            }
+        }
+
+        private string GetEnglishCategoryName(int tabIndex, int categoryIndex)
+        {
             return tabIndex switch
             {
-                0 => categoryIndex switch // Basic
+                0 => categoryIndex switch
                 {
                     0 => "Treat",
                     1 => "Life",
@@ -490,14 +699,14 @@ namespace DigimonNOAccess
                     3 => "Reverse",
                     _ => AnnouncementBuilder.FallbackItem("Category", categoryIndex)
                 },
-                1 => categoryIndex switch // Trainer
+                1 => categoryIndex switch
                 {
                     0 => "Teacher",
                     1 => "Lifecare",
                     2 => "Evolute",
                     _ => AnnouncementBuilder.FallbackItem("Category", categoryIndex)
                 },
-                2 => categoryIndex switch // Survivor
+                2 => categoryIndex switch
                 {
                     0 => "Finder",
                     1 => "Extractor",
@@ -505,7 +714,7 @@ namespace DigimonNOAccess
                     3 => "Walker",
                     _ => AnnouncementBuilder.FallbackItem("Category", categoryIndex)
                 },
-                3 => categoryIndex switch // Commander
+                3 => categoryIndex switch
                 {
                     0 => "Order",
                     1 => "Tactics",
@@ -534,13 +743,25 @@ namespace DigimonNOAccess
         {
             try
             {
-                var skillGetPanel = _panel?.m_skillGet;
-                if (skillGetPanel == null)
+                if (_panel == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Skill Get info: m_panel was null");
                     return "";
+                }
+
+                var skillGetPanel = _panel.m_skillGet;
+                if (skillGetPanel == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Skill Get info: m_skillGet was null");
+                    return "";
+                }
 
                 var mainWindow = skillGetPanel.m_uDigiviceTamerPanelSkill_Get_MainWindow;
                 if (mainWindow == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Skill Get info: m_uDigiviceTamerPanelSkill_Get_MainWindow was null");
                     return "";
+                }
 
                 _lastSkillGetTab = mainWindow.m_SelectedTabIndex;
                 _wasOnSkillScreen = false;
@@ -569,7 +790,7 @@ namespace DigimonNOAccess
 
         private string GetSkillTabName(int index)
         {
-            return index switch
+            string fallback = index switch
             {
                 0 => "Basic",
                 1 => "Trainer",
@@ -577,6 +798,62 @@ namespace DigimonNOAccess
                 3 => "Commander",
                 _ => AnnouncementBuilder.FallbackItem("Tab", index)
             };
+
+            try
+            {
+                if (index < 0 || index > 3)
+                    return fallback;
+
+                if (_panel == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Skill tab name: m_panel was null");
+                    return fallback;
+                }
+
+                var skillGetPanel = _panel.m_skillGet;
+                if (skillGetPanel == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Skill tab name: m_skillGet was null");
+                    return fallback;
+                }
+
+                var mainWindow = skillGetPanel.m_uDigiviceTamerPanelSkill_Get_MainWindow;
+                if (mainWindow == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Skill tab name: m_uDigiviceTamerPanelSkill_Get_MainWindow was null");
+                    return fallback;
+                }
+
+                var tabPanel = mainWindow.m_uDigiviceTamerPanelSkill_GetTab;
+                if (tabPanel == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Skill tab name: m_uDigiviceTamerPanelSkill_GetTab was null");
+                    return fallback;
+                }
+
+                var text = index switch
+                {
+                    0 => tabPanel.m_Basic,
+                    1 => tabPanel.m_Trainer,
+                    2 => tabPanel.m_Survivor,
+                    3 => tabPanel.m_Commander,
+                    _ => null
+                };
+                string fieldName = index switch
+                {
+                    0 => "m_Basic",
+                    1 => "m_Trainer",
+                    2 => "m_Survivor",
+                    3 => "m_Commander",
+                    _ => "tab label"
+                };
+                return GetRenderedText(text, fieldName, fallback);
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[TamerPanel] Skill tab name read failed for index {index}: {ex.Message}");
+                return fallback;
+            }
         }
 
         #endregion
@@ -587,13 +864,25 @@ namespace DigimonNOAccess
         {
             try
             {
-                var skillCheckPanel = _panel?.m_skillCheck;
-                if (skillCheckPanel == null)
+                if (_panel == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Skill Check change: m_panel was null");
                     return;
+                }
+
+                var skillCheckPanel = _panel.m_skillCheck;
+                if (skillCheckPanel == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Skill Check change: m_skillCheck was null");
+                    return;
+                }
 
                 var tamerSkillPanel = skillCheckPanel.m_uTamerSkillPanel;
                 if (tamerSkillPanel == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Skill Check change: m_uTamerSkillPanel was null");
                     return;
+                }
 
                 int currentSelectNo = tamerSkillPanel.m_selectNo;
 
@@ -643,11 +932,16 @@ namespace DigimonNOAccess
 
         private string GetSkillCheckInfo()
         {
+            string info = GetLearnedSkillsHeading();
+
             try
             {
-                var skillCheckPanel = _panel?.m_skillCheck;
+                if (_panel == null)
+                    return info;
+
+                var skillCheckPanel = _panel.m_skillCheck;
                 if (skillCheckPanel == null)
-                    return "";
+                    return info;
 
                 var tamerSkillPanel = skillCheckPanel.m_uTamerSkillPanel;
 
@@ -666,7 +960,6 @@ namespace DigimonNOAccess
                         total = skillList.Count;
                 }
 
-                string info = "Learned skills";
                 if (!string.IsNullOrEmpty(tp))
                     info += $", TP {tp}";
                 if (total > 0)
@@ -677,7 +970,7 @@ namespace DigimonNOAccess
             catch (System.Exception ex)
             {
                 DebugLogger.Log($"[TamerPanel] Error in GetSkillCheckInfo: {ex.Message}");
-                return "";
+                return info;
             }
         }
 
@@ -686,6 +979,60 @@ namespace DigimonNOAccess
         #region Helpers
 
         private string GetTamerSkillName(ParameterTamerSkill.TamerSkill skill)
+        {
+            string fallback = GetEnglishTamerSkillName(skill);
+            if (skill == ParameterTamerSkill.TamerSkill.NONE)
+                return fallback;
+
+            try
+            {
+                var parameterManager = AppMainScript.parameterManager;
+                if (parameterManager == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Tamer skill name: AppMainScript.parameterManager was null");
+                    return fallback;
+                }
+
+                var tamerSkillData = parameterManager.tamerSkillData;
+                if (tamerSkillData == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Tamer skill name: ParameterManager.tamerSkillData was null");
+                    return fallback;
+                }
+
+                var records = tamerSkillData.GetParams();
+                if (records == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Tamer skill name: tamerSkillData.GetParams() returned null");
+                    return fallback;
+                }
+
+                foreach (var record in records)
+                {
+                    if (record == null)
+                    {
+                        DebugLogger.Log("[TamerPanel] Tamer skill name: GetParams() contained a null record");
+                        continue;
+                    }
+
+                    if (record.m_sklNumber != (int)skill)
+                        continue;
+
+                    string localized = Language.GetString(record.m_skillName_code);
+                    return GetLocalizedString(localized, "ParameterTamerSkillData.m_skillName_code", fallback);
+                }
+
+                DebugLogger.Log($"[TamerPanel] Tamer skill name: no ParameterTamerSkillData record matched m_sklNumber {(int)skill}");
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[TamerPanel] Tamer skill name read failed for {skill}: {ex.Message}");
+            }
+
+            return fallback;
+        }
+
+        private string GetEnglishTamerSkillName(ParameterTamerSkill.TamerSkill skill)
         {
             return skill switch
             {
@@ -767,21 +1114,179 @@ namespace DigimonNOAccess
 
         private string GetStateName(uDigiviceTamerPanel.State state)
         {
-            return state switch
+            string fallback = state switch
             {
                 uDigiviceTamerPanel.State.Status => "Status",
                 uDigiviceTamerPanel.State.SkillCheck => "Skill Check",
                 uDigiviceTamerPanel.State.SkillGet => "Skill Get",
                 _ => state.ToString()
             };
+
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log("[TamerPanel] State name: m_panel was null");
+                    return fallback;
+                }
+
+                switch (state)
+                {
+                    case uDigiviceTamerPanel.State.Status:
+                        var statusPanel = _panel.m_status;
+                        if (statusPanel == null)
+                        {
+                            DebugLogger.Log("[TamerPanel] State name: m_status was null");
+                            return fallback;
+                        }
+                        return GetRenderedText(statusPanel.m_HeadLineText, "m_status.m_HeadLineText", fallback);
+                    case uDigiviceTamerPanel.State.SkillCheck:
+                        var skillCheckPanel = _panel.m_skillCheck;
+                        if (skillCheckPanel == null)
+                        {
+                            DebugLogger.Log("[TamerPanel] State name: m_skillCheck was null");
+                            return fallback;
+                        }
+                        return GetRenderedText(skillCheckPanel.HeadLine, "m_skillCheck.HeadLine", fallback);
+                    case uDigiviceTamerPanel.State.SkillGet:
+                        var skillGetPanel = _panel.m_skillGet;
+                        if (skillGetPanel == null)
+                        {
+                            DebugLogger.Log("[TamerPanel] State name: m_skillGet was null");
+                            return fallback;
+                        }
+                        return GetRenderedText(skillGetPanel.m_HeadLineText, "m_skillGet.m_HeadLineText", fallback);
+                    default:
+                        return fallback;
+                }
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[TamerPanel] State name read failed for {state}: {ex.Message}");
+                return fallback;
+            }
         }
 
-        private string GetTextSafe(UnityEngine.UI.Text textComponent)
+        private string GetMenuName()
+        {
+            const string fallback = "Tamer menu";
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Menu name: m_panel was null");
+                    return fallback;
+                }
+
+                var caption = _panel.m_caption;
+                if (caption == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Menu name: m_caption was null");
+                    return fallback;
+                }
+
+                return GetRenderedText(caption.m_Caption, "m_caption.m_Caption", fallback);
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[TamerPanel] Menu name read failed: {ex.Message}");
+                return fallback;
+            }
+        }
+
+        private string GetLearnedSkillsHeading()
+        {
+            const string fallback = "Learned skills";
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Learned skills heading: m_panel was null");
+                    return fallback;
+                }
+
+                var skillCheckPanel = _panel.m_skillCheck;
+                if (skillCheckPanel == null)
+                {
+                    DebugLogger.Log("[TamerPanel] Learned skills heading: m_skillCheck was null");
+                    return fallback;
+                }
+
+                return GetRenderedText(
+                    skillCheckPanel.LearnedTamarSkillHeadLineText,
+                    "m_skillCheck.LearnedTamarSkillHeadLineText",
+                    fallback);
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[TamerPanel] Learned skills heading read failed: {ex.Message}");
+                return fallback;
+            }
+        }
+
+        private string GetTabPanelFieldName(int tabIndex)
+        {
+            return tabIndex switch
+            {
+                0 => "m_uDigiviceTamerSKillPanel_GetBasic",
+                1 => "m_uDigiviceTamerSKillPanel_GetTrainer",
+                2 => "m_uDigiviceTamerSKillPanel_GetSurvivor",
+                3 => "m_uDigiviceTamerSKillPanel_GetCommander",
+                _ => $"tab panel {tabIndex}"
+            };
+        }
+
+        private string GetRenderedText(UnityEngine.UI.Text textComponent, string fieldName, string fallback)
+        {
+            if (textComponent == null)
+            {
+                DebugLogger.Log($"[TamerPanel] {fieldName} was null");
+                return fallback;
+            }
+
+            try
+            {
+                return GetLocalizedString(textComponent.text, fieldName, fallback);
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[TamerPanel] {fieldName} read failed: {ex.Message}");
+                return fallback;
+            }
+        }
+
+        private string GetLocalizedString(string text, string fieldName, string fallback)
+        {
+            string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(text))?.Trim();
+            if (string.IsNullOrWhiteSpace(cleaned) || TextUtilities.IsPlaceholderText(cleaned))
+            {
+                DebugLogger.Log($"[TamerPanel] {fieldName} unusable: {TextUtilities.DescribeUnusable(cleaned)}");
+                return fallback;
+            }
+
+            return cleaned;
+        }
+
+        private string GetTextSafe(UnityEngine.UI.Text textComponent, string fieldName = null)
         {
             try
             {
-                if (textComponent != null)
-                    return textComponent.text ?? "";
+                if (textComponent == null)
+                {
+                    if (!string.IsNullOrEmpty(fieldName))
+                        DebugLogger.Log($"[TamerPanel] {fieldName} was null");
+                    return "";
+                }
+
+                string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(textComponent.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(cleaned) || TextUtilities.IsPlaceholderText(cleaned))
+                {
+                    if (!string.IsNullOrEmpty(fieldName))
+                        DebugLogger.Log($"[TamerPanel] {fieldName}.text unusable: {TextUtilities.DescribeUnusable(cleaned)}");
+                    return "";
+                }
+
+                return cleaned;
             }
             catch (System.Exception ex)
             {
@@ -799,7 +1304,7 @@ namespace DigimonNOAccess
 
             var state = _panel?.m_CurrentState ?? uDigiviceTamerPanel.State.None;
             string stateName = GetStateName(state);
-            string announcement = $"Tamer menu, {stateName}";
+            string announcement = $"{GetMenuName()}, {stateName}";
 
             if (state == uDigiviceTamerPanel.State.Status)
                 announcement += ". " + GetStatusInfo();

@@ -230,7 +230,7 @@ namespace DigimonNOAccess
                 int total = lure.m_selectMax;
                 string lureName = GetLureName(cursor);
 
-                string announcement = AnnouncementBuilder.MenuOpen("Select Lure", lureName, cursor, total);
+                string announcement = AnnouncementBuilder.MenuOpen(GetLureCaption(), lureName, cursor, total);
                 ScreenReader.Say(announcement);
                 _lastLureSelect = cursor;
 
@@ -238,7 +238,7 @@ namespace DigimonNOAccess
             }
             catch (System.Exception ex)
             {
-                ScreenReader.Say("Select Lure");
+                ScreenReader.Say(GetLureCaption());
                 DebugLogger.Warning($"{LogTag} Lure announce error: {ex.Message}");
             }
         }
@@ -265,22 +265,99 @@ namespace DigimonNOAccess
 
         private string GetLureName(int index)
         {
+            string fallback = AnnouncementBuilder.FallbackItem("Lure", index);
+
+            if (_panel == null)
+            {
+                DebugLogger.Log($"{LogTag} Lure name: m_panel was null");
+                return fallback;
+            }
+
             try
             {
                 var lure = _panel.m_lure;
-                if (lure?.m_luaName != null && index >= 0 && index < lure.m_luaName.Length)
+                if (lure == null)
                 {
-                    var textComp = lure.m_luaName[index];
-                    if (textComp != null)
-                    {
-                        string text = textComp.text;
-                        if (!string.IsNullOrEmpty(text))
-                            return TextUtilities.StripRichTextTags(text).Trim();
-                    }
+                    DebugLogger.Log($"{LogTag} Lure name: m_lure was null");
+                    return fallback;
                 }
+
+                var lureNames = lure.m_luaName;
+                if (lureNames == null)
+                {
+                    DebugLogger.Log($"{LogTag} Lure name: m_luaName was null");
+                    return fallback;
+                }
+
+                if (index < 0 || index >= lureNames.Length)
+                {
+                    DebugLogger.Log($"{LogTag} Lure name: index {index} was outside m_luaName length {lureNames.Length}");
+                    return fallback;
+                }
+
+                var textComp = lureNames[index];
+                if (textComp == null)
+                {
+                    DebugLogger.Log($"{LogTag} Lure name: m_luaName[{index}] was null");
+                    return fallback;
+                }
+
+                string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(textComp.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(cleaned) || TextUtilities.IsPlaceholderText(cleaned))
+                {
+                    DebugLogger.Log($"{LogTag} Lure name: m_luaName[{index}].text unusable: {TextUtilities.DescribeUnusable(cleaned)}");
+                    return fallback;
+                }
+
+                return cleaned;
             }
-            catch { }
-            return AnnouncementBuilder.FallbackItem("Lure", index);
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Lure name read failed: {ex.Message}");
+            }
+
+            return fallback;
+        }
+
+        private string GetLureCaption()
+        {
+            const string fallback = "Select Lure";
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Lure caption: m_panel was null");
+                    return fallback;
+                }
+
+                var caption = _panel.m_caption;
+                if (caption == null)
+                {
+                    DebugLogger.Log($"{LogTag} Lure caption: m_caption was null");
+                    return fallback;
+                }
+
+                var text = caption.m_text;
+                if (text == null)
+                {
+                    DebugLogger.Log($"{LogTag} Lure caption: m_caption.m_text was null");
+                    return fallback;
+                }
+
+                string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(text.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(cleaned) || TextUtilities.IsPlaceholderText(cleaned))
+                {
+                    DebugLogger.Log($"{LogTag} Lure caption: m_caption.m_text.text unusable: {TextUtilities.DescribeUnusable(cleaned)}");
+                    return fallback;
+                }
+
+                return cleaned;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Lure caption read failed: {ex.Message}");
+                return fallback;
+            }
         }
 
         private void CheckResultText()
@@ -329,10 +406,23 @@ namespace DigimonNOAccess
                     try
                     {
                         var param = ParameterItemData.GetParam((uint)itemId);
-                        if (param != null)
-                            itemName = param.GetName() ?? "item";
+                        if (param == null)
+                        {
+                            DebugLogger.Log($"{LogTag} Caught item: ParameterItemData.GetParam({itemId}) returned null");
+                        }
+                        else
+                        {
+                            string localizedName = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(param.GetName()))?.Trim();
+                            if (string.IsNullOrWhiteSpace(localizedName) || TextUtilities.IsPlaceholderText(localizedName))
+                                DebugLogger.Log($"{LogTag} Caught item: ParameterItemData.GetName() was empty for item {itemId}");
+                            else
+                                itemName = localizedName;
+                        }
                     }
-                    catch { }
+                    catch (System.Exception ex)
+                    {
+                        DebugLogger.Log($"{LogTag} Caught item name read failed for {itemId}: {ex.Message}");
+                    }
 
                     ScreenReader.Say(quantity > 1
                         ? $"Caught {quantity} {itemName}"

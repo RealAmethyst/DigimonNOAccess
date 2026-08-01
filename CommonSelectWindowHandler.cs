@@ -134,25 +134,43 @@ namespace DigimonNOAccess
         /// </summary>
         private string GetMenuItemText(int index)
         {
+            string fallback = AnnouncementBuilder.FallbackItem("Option", index);
+
+            if (_panel == null)
+            {
+                DebugLogger.Log($"{LogTag} Item name: m_panel was null");
+                return fallback;
+            }
+
             // Primary: read the actual rendered UI text from uItemParts
             try
             {
-                var itemPanel = _panel?.m_itemPanel;
-                if (itemPanel != null)
+                var itemPanel = _panel.m_itemPanel;
+                if (itemPanel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Item name: m_itemPanel was null");
+                }
+                else
                 {
                     var parts = itemPanel.GetSelectItemParts(index);
-                    if (parts != null)
+                    if (parts == null)
+                    {
+                        DebugLogger.Log($"{LogTag} Item name: GetSelectItemParts({index}) returned null");
+                    }
+                    else
                     {
                         var nameText = parts.m_name;
-                        if (nameText != null)
+                        if (nameText == null)
                         {
-                            string uiText = nameText.text;
-                            if (!string.IsNullOrEmpty(uiText))
-                            {
-                                string cleaned = TextUtilities.StripRichTextTags(uiText);
-                                if (!string.IsNullOrEmpty(cleaned))
-                                    return cleaned;
-                            }
+                            DebugLogger.Log($"{LogTag} Item name: selected uItemParts.m_name was null");
+                        }
+                        else
+                        {
+                            string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(nameText.text))?.Trim();
+                            if (!string.IsNullOrWhiteSpace(cleaned))
+                                return cleaned;
+
+                            DebugLogger.Log($"{LogTag} Item name: selected uItemParts.m_name.text was empty");
                         }
                     }
                 }
@@ -165,24 +183,38 @@ namespace DigimonNOAccess
             // Fallback: param language string
             try
             {
-                var paramList = _panel?.m_paramCommonSelectWindowList;
-                if (paramList != null && index >= 0 && index < paramList.Count)
+                var paramList = _panel.m_paramCommonSelectWindowList;
+                if (paramList == null)
                 {
-                    var param = paramList[index];
-                    if (param != null)
-                    {
-                        string text = param.GetLanguageString();
-                        if (!string.IsNullOrEmpty(text))
-                            return text;
-                    }
+                    DebugLogger.Log($"{LogTag} Item name: m_paramCommonSelectWindowList was null");
+                    return fallback;
                 }
+
+                if (index < 0 || index >= paramList.Count)
+                {
+                    DebugLogger.Log($"{LogTag} Item name: index {index} was outside m_paramCommonSelectWindowList count {paramList.Count}");
+                    return fallback;
+                }
+
+                var param = paramList[index];
+                if (param == null)
+                {
+                    DebugLogger.Log($"{LogTag} Item name: m_paramCommonSelectWindowList[{index}] was null");
+                    return fallback;
+                }
+
+                string text = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(param.GetLanguageString()))?.Trim();
+                if (!string.IsNullOrWhiteSpace(text))
+                    return text;
+
+                DebugLogger.Log($"{LogTag} Item name: ParameterCommonSelectWindow.GetLanguageString() was empty for index {index}");
             }
             catch (System.Exception ex)
             {
                 DebugLogger.Log($"{LogTag} Error reading param text: {ex.Message}");
             }
 
-            return AnnouncementBuilder.FallbackItem("Option", index);
+            return fallback;
         }
 
         /// <summary>
@@ -260,28 +292,26 @@ namespace DigimonNOAccess
 
             try
             {
-                var modeTbl = _panel?.m_uCommonSelectWindowModeTbl;
-                if (modeTbl != null)
+                var modePanel = GetCurrentModePanel("balance");
+                if (modePanel == null)
+                    return null;
+
+                var valueText = modePanel.m_valueText;
+                if (valueText == null)
                 {
-                    int modeIndex = (int)_currentOutMode;
-                    if (modeIndex >= 0 && modeIndex < modeTbl.Length)
-                    {
-                        var modePanel = modeTbl[modeIndex];
-                        if (modePanel != null)
-                        {
-                            var valueText = modePanel.m_valueText;
-                            if (valueText != null)
-                            {
-                                string text = valueText.text;
-                                if (!string.IsNullOrEmpty(text))
-                                {
-                                    string currency = GetCurrencyName();
-                                    return $"Your {currency}: {TextUtilities.StripRichTextTags(text)}";
-                                }
-                            }
-                        }
-                    }
+                    DebugLogger.Log($"{LogTag} Balance: m_valueText was null");
+                    return null;
                 }
+
+                string text = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(valueText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(text) || TextUtilities.IsPlaceholderText(text))
+                {
+                    DebugLogger.Log($"{LogTag} Balance: m_valueText.text unusable: {TextUtilities.DescribeUnusable(text)}");
+                    return null;
+                }
+
+                string currency = GetCurrencyName();
+                return $"Your {currency}: {text}";
             }
             catch (System.Exception ex)
             {
@@ -293,13 +323,81 @@ namespace DigimonNOAccess
 
         private string GetCurrencyName()
         {
-            return _currentOutMode switch
+            string fallback = _currentOutMode switch
             {
                 ParameterCommonSelectWindowMode.OutMode.Bit => "Bits",
                 ParameterCommonSelectWindowMode.OutMode.DailyQuestPoint => "Daily Quest Points",
                 ParameterCommonSelectWindowMode.OutMode.Coin => "Coins",
                 _ => "currency"
             };
+
+            var modePanel = GetCurrentModePanel("currency title");
+            if (modePanel == null)
+                return fallback;
+
+            try
+            {
+                var titleText = modePanel.m_titleText;
+                if (titleText == null)
+                {
+                    DebugLogger.Log($"{LogTag} Currency title: m_titleText was null");
+                    return fallback;
+                }
+
+                string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(titleText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(cleaned) || TextUtilities.IsPlaceholderText(cleaned))
+                {
+                    DebugLogger.Log($"{LogTag} Currency title: m_titleText.text unusable: {TextUtilities.DescribeUnusable(cleaned)}");
+                    return fallback;
+                }
+
+                return cleaned;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Currency title read failed: {ex.Message}");
+                return fallback;
+            }
+        }
+
+        private uCommonSelectWindowPanelMode GetCurrentModePanel(string purpose)
+        {
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log($"{LogTag} {purpose}: m_panel was null");
+                    return null;
+                }
+
+                var modeTable = _panel.m_uCommonSelectWindowModeTbl;
+                if (modeTable == null)
+                {
+                    DebugLogger.Log($"{LogTag} {purpose}: m_uCommonSelectWindowModeTbl was null");
+                    return null;
+                }
+
+                int modeIndex = (int)_currentOutMode;
+                if (modeIndex < 0 || modeIndex >= modeTable.Length)
+                {
+                    DebugLogger.Log($"{LogTag} {purpose}: mode index {modeIndex} was outside m_uCommonSelectWindowModeTbl length {modeTable.Length}");
+                    return null;
+                }
+
+                var modePanel = modeTable[modeIndex];
+                if (modePanel == null)
+                {
+                    DebugLogger.Log($"{LogTag} {purpose}: m_uCommonSelectWindowModeTbl[{modeIndex}] was null");
+                    return null;
+                }
+
+                return modePanel;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} {purpose} chain read failed: {ex.Message}");
+                return null;
+            }
         }
 
         /// <summary>

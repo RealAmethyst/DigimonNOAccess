@@ -24,7 +24,7 @@ namespace DigimonNOAccess
         private MainGameManager.ORDER_UNIT _lastTarget = (MainGameManager.ORDER_UNIT)(-1);
 
         private bool IsCampMode => _campPanel != null;
-        private string MenuName => IsCampMode ? "Camp Menu" : "Care Menu";
+        private string MenuName => GetMenuName();
 
         public bool IsOpen()
         {
@@ -238,49 +238,85 @@ namespace DigimonNOAccess
 
         private string GetCommandName(int index)
         {
+            string fallback = index < 0
+                ? "Option"
+                : AnnouncementBuilder.FallbackItem("Option", index);
+
             try
             {
                 if (index < 0)
-                    return "Option";
+                    return fallback;
 
                 if (IsCampMode)
                 {
                     // Read text from the command GameObject directly.
                     // m_commandText array doesn't align with GetSelectNo() indices
                     // since SimpleCursor uses a 2D grid layout.
-                    var commands = _campPanel.m_command?.m_commands;
-                    if (commands != null && index < commands.Length)
+                    if (_campPanel == null)
                     {
-                        var cmdObj = commands[index];
-                        if (cmdObj != null)
-                        {
-                            var textComp = cmdObj.GetComponentInChildren<Text>();
-                            if (textComp != null && !string.IsNullOrEmpty(textComp.text))
-                                return textComp.text;
-                        }
+                        DebugLogger.Log($"{LogTag} Command name: m_campPanel was null");
+                        return fallback;
                     }
+
+                    var commandPanel = _campPanel.m_command;
+                    if (commandPanel == null)
+                    {
+                        DebugLogger.Log($"{LogTag} Command name: m_command was null");
+                        return fallback;
+                    }
+
+                    var commands = commandPanel.m_commands;
+                    if (commands == null)
+                    {
+                        DebugLogger.Log($"{LogTag} Command name: m_commands was null");
+                        return fallback;
+                    }
+
+                    if (index >= commands.Length)
+                    {
+                        DebugLogger.Log($"{LogTag} Command name: index {index} was outside m_commands length {commands.Length}");
+                        return fallback;
+                    }
+
+                    var cmdObj = commands[index];
+                    if (cmdObj == null)
+                    {
+                        DebugLogger.Log($"{LogTag} Command name: m_commands[{index}] was null");
+                        return fallback;
+                    }
+
+                    var textComp = cmdObj.GetComponentInChildren<Text>();
+                    return GetRenderedText(textComp, $"m_commands[{index}] child Text.text", fallback);
                 }
                 else
                 {
-                    var cmd = _carePanel?.m_commandPanel;
-                    if (cmd != null)
+                    if (_carePanel == null)
                     {
-                        var choiceText = cmd.m_choiceText;
-                        if (choiceText != null && index < choiceText.Length)
-                        {
-                            var text = choiceText[index]?.text;
-                            if (!string.IsNullOrEmpty(text))
-                                return text;
-                        }
-
-                        var commandNames = cmd.m_command_name;
-                        if (commandNames != null && index < commandNames.Length)
-                        {
-                            string cmdName = commandNames[index];
-                            if (!string.IsNullOrEmpty(cmdName))
-                                return cmdName;
-                        }
+                        DebugLogger.Log($"{LogTag} Command name: m_carePanel was null");
+                        return fallback;
                     }
+
+                    var commandPanel = _carePanel.m_commandPanel;
+                    if (commandPanel == null)
+                    {
+                        DebugLogger.Log($"{LogTag} Command name: m_commandPanel was null");
+                        return fallback;
+                    }
+
+                    var choiceText = commandPanel.m_choiceText;
+                    if (choiceText == null)
+                    {
+                        DebugLogger.Log($"{LogTag} Command name: m_choiceText was null");
+                        return fallback;
+                    }
+
+                    if (index >= choiceText.Length)
+                    {
+                        DebugLogger.Log($"{LogTag} Command name: index {index} was outside m_choiceText length {choiceText.Length}");
+                        return fallback;
+                    }
+
+                    return GetRenderedText(choiceText[index], $"m_choiceText[{index}].text", fallback);
                 }
             }
             catch (System.Exception ex)
@@ -288,7 +324,60 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"{LogTag} Error getting command name: {ex.Message}");
             }
 
-            return AnnouncementBuilder.FallbackItem("Option", index);
+            return fallback;
+        }
+
+        private string GetMenuName()
+        {
+            string fallback = IsCampMode ? "Camp Menu" : "Care Menu";
+            try
+            {
+                if (_carePanel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Menu name: m_carePanel was null");
+                    return fallback;
+                }
+
+                var captionPanel = _carePanel.m_captionPanel;
+                if (captionPanel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Menu name: m_captionPanel was null");
+                    return fallback;
+                }
+
+                return GetRenderedText(captionPanel.m_text, "m_captionPanel.m_text.text", fallback);
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Menu name read failed: {ex.Message}");
+                return fallback;
+            }
+        }
+
+        private string GetRenderedText(Text textComponent, string fieldName, string fallback)
+        {
+            if (textComponent == null)
+            {
+                DebugLogger.Log($"{LogTag} {fieldName} was null");
+                return fallback;
+            }
+
+            try
+            {
+                string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(textComponent.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(cleaned) || TextUtilities.IsPlaceholderText(cleaned))
+                {
+                    DebugLogger.Log($"{LogTag} {fieldName} unusable: {TextUtilities.DescribeUnusable(cleaned)}");
+                    return fallback;
+                }
+
+                return cleaned;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} {fieldName} read failed: {ex.Message}");
+                return fallback;
+            }
         }
 
         private MainGameManager.ORDER_UNIT GetCurrentTarget()

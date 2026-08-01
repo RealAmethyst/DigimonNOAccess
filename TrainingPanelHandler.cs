@@ -221,10 +221,57 @@ namespace DigimonNOAccess
             bool bonusShowing = IsBonusTabShowing();
             if (bonusShowing != _lastBonusTabShowing)
             {
-                string tabName = bonusShowing ? "Bonus" : "Stats";
+                string tabName = GetTrainingCaption(bonusShowing ? "Bonus" : "Stats");
                 ScreenReader.Say(tabName);
                 DebugLogger.Log($"[TrainingPanel] Tab changed to: {tabName}");
                 _lastBonusTabShowing = bonusShowing;
+            }
+        }
+
+        private string GetTrainingCaption(string fallback)
+        {
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log("[TrainingPanel] Tab caption: training command panel was null");
+                    return fallback;
+                }
+
+                var trainingCaption = _panel.m_trainingCaption;
+                if (trainingCaption == null)
+                {
+                    DebugLogger.Log("[TrainingPanel] Tab caption: m_trainingCaption was null");
+                    return fallback;
+                }
+
+                var caption = trainingCaption.m_caption;
+                if (caption == null)
+                {
+                    DebugLogger.Log("[TrainingPanel] Tab caption: m_trainingCaption.m_caption was null");
+                    return fallback;
+                }
+
+                var captionText = caption.m_text;
+                if (captionText == null)
+                {
+                    DebugLogger.Log("[TrainingPanel] Tab caption: m_trainingCaption.m_caption.m_text was null");
+                    return fallback;
+                }
+
+                string rendered = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(captionText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(rendered) || TextUtilities.IsPlaceholderText(rendered))
+                {
+                    DebugLogger.Log($"[TrainingPanel] Tab caption: m_trainingCaption.m_caption.m_text.text unusable: {TextUtilities.DescribeUnusable(rendered)}");
+                    return fallback;
+                }
+
+                return rendered;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[TrainingPanel] Tab caption read failed: {ex.Message}");
+                return fallback;
             }
         }
 
@@ -508,11 +555,12 @@ namespace DigimonNOAccess
         {
             try
             {
-                string name = ParameterTrainingData.GetCorrectionName(bonus);
+                string name = TextUtilities.StripRichTextTags(
+                    ParameterTrainingData.GetCorrectionName(bonus))?.Trim();
                 if (!string.IsNullOrWhiteSpace(name))
-                    return TextUtilities.StripRichTextTags(name).Trim();
+                    return name;
 
-                DebugLogger.Log($"[TrainingPanel] GetCorrectionName({bonus}) returned nothing, using the English fallback");
+                DebugLogger.Log($"[TrainingPanel] ParameterTrainingData.GetCorrectionName({bonus}) returned empty");
             }
             catch (System.Exception ex)
             {

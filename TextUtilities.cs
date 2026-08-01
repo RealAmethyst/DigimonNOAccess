@@ -60,6 +60,69 @@ namespace DigimonNOAccess
         /// <summary>
         /// Strips Unity rich text tags like &lt;color&gt;, &lt;b&gt;, etc. for clean screen reader output.
         /// </summary>
+        /// <summary>
+        /// Why a piece of rendered text was not usable as a name, for logging.
+        ///
+        /// The readers reject text for four different reasons and used to report all
+        /// of them as "was empty", which is a log line asserting a cause it has not
+        /// established. That actively misleads: a Digimon you have not met yet renders
+        /// as "???", which is punctuation-only and therefore a placeholder - the mod
+        /// saying "Unknown" there is correct behaviour, not a failure, and the log
+        /// should not imply the game handed us nothing.
+        /// </summary>
+        public static string DescribeUnusable(string text)
+        {
+            if (text == null) return "null";
+            if (text.Length == 0) return "empty";
+            if (string.IsNullOrWhiteSpace(text)) return "whitespace only";
+            if (IsButtonHintText(text)) return "button hint bar";
+            if (text.Trim() == "???") return "not yet discovered (???)";
+            if (IsPlaceholderText(text)) return $"placeholder text (\"{text.Trim()}\")";
+            return $"unexpected (\"{text.Trim()}\")";
+        }
+
+        /// <summary>
+        /// True when this text is the game's button-hint bar rather than a title.
+        ///
+        /// The caption strip at the bottom of most screens is set through
+        /// uCaptionBase.SetCaptionNoWithButtonIcon, so its text always carries the
+        /// control characters that render as button glyphs. Titles never do. That
+        /// makes the two reliably distinguishable without hardcoding which screen is
+        /// which.
+        ///
+        /// Pass the RAW text, before StripRichTextTags or any button-name
+        /// substitution, or the markers will already be gone.
+        /// </summary>
+        public static bool IsButtonHintText(string rawText)
+        {
+            if (string.IsNullOrEmpty(rawText))
+                return false;
+
+            foreach (var (character, _) in _buttonPlaceholders)
+            {
+                if (rawText.Contains(character))
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Returns the button-hint bar as speakable text, or null when this text is
+        /// not a hint bar. The button glyph characters are converted to readable
+        /// names, so "○ OK × Back" comes out as words rather than symbols.
+        ///
+        /// Pass the RAW text, before StripRichTextTags.
+        /// </summary>
+        public static string ExtractButtonHints(string rawText)
+        {
+            if (!IsButtonHintText(rawText))
+                return null;
+
+            string cleaned = CleanText(rawText)?.Trim();
+            return string.IsNullOrWhiteSpace(cleaned) ? null : cleaned;
+        }
+
         public static string StripRichTextTags(string text)
         {
             if (string.IsNullOrEmpty(text))

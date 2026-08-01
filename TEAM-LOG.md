@@ -28,3 +28,29 @@ reviewed, what changed.
 
   Ghidra set up on `GameAssembly.dll` at `C:\Users\Amethyst\ghidra_dwno` with all
   84,160 IL2CPP method names applied. See `ghidra_project/README.md`.
+2026-07-31 - Codex - implemented Bucket A localization fixes A1-A96 across the 38 audited handlers and patches; A28 and A32 specification gaps were left unchanged where no verified source was reachable.
+
+- 2026-08-01 — Codex implemented Bucket A of the localization audit (94 of 96
+  items across 38 files, two correct partials); Claude reviewed and fixed three
+  things it found. The new readers rejected null and empty text but not
+  placeholder text, so raw `SYS_` keys and the game's Japanese
+  "language not found" marker could have been spoken aloud - 61 guards extended
+  with `TextUtilities.IsPlaceholderText`. A8 was reverted as unreachable dead
+  code: its only caller already reads the same label first, with a placeholder
+  filter the replacement lacked.
+
+  Button hints then moved to the end of screen announcements. Two mistakes worth
+  remembering: the hint check first ran on the STRIPPED text, but
+  `StripRichTextTags` converts the button-glyph control characters into words -
+  the very markers that identify a hint bar - so it never fired; and the
+  re-append was only wired into `AnnouncementBuilder.MenuOpen`, which about half
+  the handlers do not use, so those screens went silent instead. Final design:
+  detect on raw text at read time via `ButtonHintCache.Filter`, append in
+  `ScreenReader.Say` so every handler is covered regardless of how it builds its
+  string, one-shot so cursor moves do not repeat it. Confirmed working in game.
+
+  Also corrected: the Field Guide reading "Unknown" is NOT a bug. `???` for an
+  undiscovered Digimon is punctuation-only and so hits the placeholder branch -
+  the feature working as designed. Amethyst challenged the claim and was right.
+  The misleading log line ("was empty" for every rejection reason) was replaced
+  with `TextUtilities.DescribeUnusable`, which reports the actual cause.

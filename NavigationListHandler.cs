@@ -1879,6 +1879,12 @@ namespace DigimonNOAccess
         /// </summary>
         private string GetTransitionNameFromAreaChange(AreaChangeInfo aci)
         {
+            if (aci == null)
+            {
+                DebugLogger.Log("[NavList] Transition name: AreaChangeInfo is null");
+                return "Unknown Transition";
+            }
+
             try
             {
                 var dest = aci.m_Destination;
@@ -1887,32 +1893,67 @@ namespace DigimonNOAccess
                     try
                     {
                         string areaName = ParameterAreaName.GetAreaName((AppInfo.MAP)dest.m_MapNo, (uint)dest.m_AreaNo);
-                        if (!string.IsNullOrEmpty(areaName) && !areaName.Contains("not found"))
-                            return areaName;
+                        string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(areaName))?.Trim();
+                        if (!string.IsNullOrWhiteSpace(cleaned) && !cleaned.Contains("not found"))
+                            return cleaned;
+
+                        DebugLogger.Log($"[NavList] Transition name: ParameterAreaName.GetAreaName({dest.m_MapNo}, {dest.m_AreaNo}) is empty or not found");
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.Log($"[NavList] Transition name: area name read failed: {ex.Message}");
+                    }
 
                     try
                     {
                         string mapName = ParameterMapName.GetMapName((AppInfo.MAP)dest.m_MapNo);
-                        if (!string.IsNullOrEmpty(mapName) && !mapName.Contains("not found"))
-                            return mapName;
-                    }
-                    catch { }
+                        string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(mapName))?.Trim();
+                        if (!string.IsNullOrWhiteSpace(cleaned) && !cleaned.Contains("not found"))
+                            return cleaned;
 
+                        DebugLogger.Log($"[NavList] Transition name: ParameterMapName.GetMapName({dest.m_MapNo}) is empty or not found");
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.Log($"[NavList] Transition name: map name read failed: {ex.Message}");
+                    }
+
+                    DebugLogger.Log($"[NavList] Transition name: localized destination unavailable for {dest.m_MapNo}-{dest.m_AreaNo}; using English fallback");
                     return $"Area {dest.m_MapNo}-{dest.m_AreaNo}";
                 }
+
+                DebugLogger.Log("[NavList] Transition name: m_Destination is null");
             }
-            catch { }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[NavList] Transition name: destination chain failed: {ex.Message}");
+            }
 
             try
             {
-                string objName = aci.gameObject.name;
-                if (!string.IsNullOrEmpty(objName))
-                    return $"Transition ({objName})";
-            }
-            catch { }
+                var gameObject = aci.gameObject;
+                if (gameObject == null)
+                {
+                    DebugLogger.Log("[NavList] Transition name: AreaChangeInfo.gameObject is null");
+                }
+                else
+                {
+                    string objName = gameObject.name?.Trim();
+                    if (!string.IsNullOrWhiteSpace(objName))
+                    {
+                        DebugLogger.Log("[NavList] Transition name: using asset-name English fallback");
+                        return $"Transition ({objName})";
+                    }
 
+                    DebugLogger.Log("[NavList] Transition name: AreaChangeInfo.gameObject.name is empty");
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[NavList] Transition name: asset fallback read failed: {ex.Message}");
+            }
+
+            DebugLogger.Log("[NavList] Transition name: using Unknown Transition fallback");
             return "Unknown Transition";
         }
 
@@ -2111,10 +2152,29 @@ namespace DigimonNOAccess
 
         private string GetNpcName(NpcCtrl npc)
         {
-            string npcId = null;
-            try { npcId = npc.m_npcId; } catch { }
+            if (npc == null)
+            {
+                DebugLogger.Log("[NavList] NPC name: NpcCtrl is null; using Unknown NPC fallback");
+                return "Unknown NPC";
+            }
 
-            if (!string.IsNullOrEmpty(npcId))
+            string placementName = GetPlacementNpcName(npc);
+            if (!string.IsNullOrWhiteSpace(placementName))
+                return placementName;
+
+            string npcId = null;
+            try
+            {
+                npcId = npc.m_npcId;
+                if (string.IsNullOrWhiteSpace(npcId))
+                    DebugLogger.Log("[NavList] NPC name: NpcCtrl.m_npcId is empty");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[NavList] NPC name: m_npcId read failed: {ex.Message}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(npcId))
             {
                 // Use FindBaseIdToModelName to map model name -> Digimon ID directly
                 try
@@ -2123,40 +2183,62 @@ namespace DigimonNOAccess
                     if (digimonId != 0)
                     {
                         var paramData = ParameterDigimonData.GetParam(digimonId);
-                        if (paramData != null)
-                        {
-                            string name = paramData.GetDefaultName();
-                            if (!string.IsNullOrEmpty(name) && !name.Contains("ランゲージ"))
-                                return name;
-                        }
+                        string name = GetDigimonDefaultName(paramData, $"FindBaseIdToModelName({npcId})");
+                        if (!string.IsNullOrWhiteSpace(name))
+                            return name;
+                    }
+                    else
+                    {
+                        DebugLogger.Log($"[NavList] NPC name: FindBaseIdToModelName({npcId}) returned zero");
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    DebugLogger.Log($"[NavList] NPC name: model lookup failed for {npcId}: {ex.Message}");
+                }
 
                 // Fallback: iterate parameterManager.digimonData matching by m_mdlName
                 try
                 {
-                    var digimonData = AppMainScript.parameterManager?.digimonData;
-                    if (digimonData != null)
+                    var parameterManager = AppMainScript.parameterManager;
+                    if (parameterManager == null)
                     {
-                        int count = digimonData.GetRecordMax();
-                        for (int i = 0; i < count; i++)
+                        DebugLogger.Log("[NavList] NPC name: AppMainScript.parameterManager is null");
+                    }
+                    else
+                    {
+                        var digimonData = parameterManager.digimonData;
+                        if (digimonData == null)
                         {
-                            try
+                            DebugLogger.Log("[NavList] NPC name: parameterManager.digimonData is null");
+                        }
+                        else
+                        {
+                            int count = digimonData.GetRecordMax();
+                            for (int i = 0; i < count; i++)
                             {
-                                var paramData = digimonData.GetParams(i);
-                                if (paramData != null && paramData.m_mdlName == npcId)
+                                try
                                 {
-                                    string name = paramData.GetDefaultName();
-                                    if (!string.IsNullOrEmpty(name) && !name.Contains("ランゲージ"))
-                                        return name;
+                                    var paramData = digimonData.GetParams(i);
+                                    if (paramData != null && paramData.m_mdlName == npcId)
+                                    {
+                                        string name = GetDigimonDefaultName(paramData, $"digimonData[{i}] for {npcId}");
+                                        if (!string.IsNullOrWhiteSpace(name))
+                                            return name;
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    DebugLogger.Log($"[NavList] NPC name: digimonData[{i}] read failed: {ex.Message}");
                                 }
                             }
-                            catch { }
                         }
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    DebugLogger.Log($"[NavList] NPC name: digimonData scan failed: {ex.Message}");
+                }
 
                 // Fallback: use NpcCtrl.unitParamId to look up the Digimon name directly.
                 // Some town NPCs (e.g. "C007" = Palmon) use IDs that don't match any model name
@@ -2167,51 +2249,147 @@ namespace DigimonNOAccess
                     if (unitParamId != 0)
                     {
                         var paramData = ParameterDigimonData.GetParam(unitParamId);
-                        if (paramData != null)
-                        {
-                            string name = paramData.GetDefaultName();
-                            if (!string.IsNullOrEmpty(name) && !name.Contains("ランゲージ"))
-                                return name;
-                        }
+                        string name = GetDigimonDefaultName(paramData, $"unitParamId {unitParamId}");
+                        if (!string.IsNullOrWhiteSpace(name))
+                            return name;
+                    }
+                    else
+                    {
+                        DebugLogger.Log("[NavList] NPC name: NpcCtrl.unitParamId is zero");
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    DebugLogger.Log($"[NavList] NPC name: unitParamId lookup failed: {ex.Message}");
+                }
 
                 // Fallback: try _GetNpcObjectName which may return the display name
                 try
                 {
-                    if (npc._GetNpcObjectName(out string objName) && !string.IsNullOrEmpty(objName))
+                    if (npc._GetNpcObjectName(out string objName) && !string.IsNullOrWhiteSpace(objName))
                     {
                         // Try to resolve the object name as a model name
                         uint digimonId2 = ParameterDigimonData.FindBaseIdToModelName(objName);
                         if (digimonId2 != 0)
                         {
                             var paramData = ParameterDigimonData.GetParam(digimonId2);
-                            if (paramData != null)
-                            {
-                                string name = paramData.GetDefaultName();
-                                if (!string.IsNullOrEmpty(name) && !name.Contains("ランゲージ"))
-                                    return name;
-                            }
+                            string name = GetDigimonDefaultName(paramData, $"_GetNpcObjectName({objName})");
+                            if (!string.IsNullOrWhiteSpace(name))
+                                return name;
+                        }
+                        else
+                        {
+                            DebugLogger.Log($"[NavList] NPC name: object model {objName} did not resolve to a Digimon ID");
                         }
                     }
+                    else
+                    {
+                        DebugLogger.Log("[NavList] NPC name: _GetNpcObjectName returned no model name");
+                    }
                 }
-                catch { }
-
-                // Fallback: try gameObject.name
-                try
+                catch (Exception ex)
                 {
-                    string goName = npc.gameObject.name;
-                    if (!string.IsNullOrEmpty(goName) && goName != npcId)
-                        return goName;
+                    DebugLogger.Log($"[NavList] NPC name: _GetNpcObjectName lookup failed: {ex.Message}");
                 }
-                catch { }
-
-                return npcId;
             }
 
-            try { return npc.gameObject.name ?? "Unknown NPC"; } catch { }
+            DebugLogger.Log("[NavList] NPC name: no localized placement or Digimon identity; using Unknown NPC fallback");
             return "Unknown NPC";
+        }
+
+        private string GetPlacementNpcName(NpcCtrl npc)
+        {
+            try
+            {
+                if (_npcManager == null)
+                {
+                    DebugLogger.Log("[NavList] NPC placement name: NpcManager is null");
+                    return null;
+                }
+
+                var placements = _npcManager.m_placementNpcList;
+                if (placements == null)
+                {
+                    DebugLogger.Log("[NavList] NPC placement name: m_placementNpcList is null");
+                    return null;
+                }
+
+                for (int i = 0; i < placements.Count; i++)
+                {
+                    var placement = placements[i];
+                    if (placement == null)
+                    {
+                        DebugLogger.Log($"[NavList] NPC placement name: m_placementNpcList[{i}] is null");
+                        continue;
+                    }
+
+                    NpcCtrl placedNpc;
+                    try
+                    {
+                        placedNpc = _npcManager._GetNpcCtrlFromPlacementId(placement.id);
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.Log($"[NavList] NPC placement name: controller lookup for placement {placement.id} failed: {ex.Message}");
+                        continue;
+                    }
+
+                    if (placedNpc != npc)
+                        continue;
+
+                    uint languageId = placement.m_Name;
+                    if (languageId == 0)
+                    {
+                        DebugLogger.Log($"[NavList] NPC placement name: placement {placement.id} m_Name is zero");
+                        return null;
+                    }
+
+                    string name = Language.GetString(languageId);
+                    string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(name))?.Trim();
+                    if (string.IsNullOrWhiteSpace(cleaned) || TextUtilities.IsPlaceholderText(cleaned))
+                    {
+                        DebugLogger.Log($"[NavList] NPC placement name: Language.GetString({languageId}) is empty");
+                        return null;
+                    }
+
+                    return cleaned;
+                }
+
+                DebugLogger.Log("[NavList] NPC placement name: no ParameterPlacementNpc matched the NpcCtrl");
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[NavList] NPC placement name read failed: {ex.Message}");
+            }
+
+            return null;
+        }
+
+        private string GetDigimonDefaultName(ParameterDigimonData data, string source)
+        {
+            if (data == null)
+            {
+                DebugLogger.Log($"[NavList] Digimon name: {source} returned null ParameterDigimonData");
+                return null;
+            }
+
+            try
+            {
+                string name = data.GetDefaultName();
+                string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(name))?.Trim();
+                if (string.IsNullOrWhiteSpace(cleaned) || cleaned.Contains("ランゲージ"))
+                {
+                    DebugLogger.Log($"[NavList] Digimon name: GetDefaultName() is empty or unresolved for {source}");
+                    return null;
+                }
+
+                return cleaned;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[NavList] Digimon name: GetDefaultName() failed for {source}: {ex.Message}");
+                return null;
+            }
         }
 
         private EventCategory GetItemCategory(ItemPickPointBase point)
@@ -2239,17 +2417,37 @@ namespace DigimonNOAccess
 
         private string GetItemName(ItemPickPointBase point)
         {
+            if (point == null)
+            {
+                DebugLogger.Log("[NavList] Item name: ItemPickPointBase is null; using Unknown Item fallback");
+                return "Unknown Item";
+            }
+
+            uint itemId = 0;
+            bool isMaterial = false;
             try
             {
-                uint itemId = point.itemId;
-                if (itemId != 0)
+                itemId = point.itemId;
+                isMaterial = point.isMaterial;
+                if (itemId == 0)
+                {
+                    DebugLogger.Log("[NavList] Item name: itemId is zero");
+                }
+                else
                 {
                     var itemData = ParameterItemData.GetParam(itemId);
-                    if (itemData != null)
+                    if (itemData == null)
+                    {
+                        DebugLogger.Log($"[NavList] Item name: ParameterItemData.GetParam({itemId}) returned null");
+                    }
+                    else
                     {
                         string name = itemData.GetName();
-                        if (!string.IsNullOrEmpty(name))
-                            return name;
+                        string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(name))?.Trim();
+                        if (!string.IsNullOrWhiteSpace(cleaned))
+                            return cleaned;
+
+                        DebugLogger.Log($"[NavList] Item name: ParameterItemData.GetName() is empty for {itemId}");
                     }
                 }
             }
@@ -2258,86 +2456,132 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"[NavList] GetItemName error: {ex.Message}");
             }
 
-            return point.isMaterial ? "Unknown Material" : "Unknown Item";
+            DebugLogger.Log($"[NavList] Item name: using English fallback for itemId {itemId}");
+            return isMaterial ? "Unknown Material" : "Unknown Item";
         }
 
 
         private string GetEnemyName(EnemyCtrl enemy)
         {
+            if (enemy == null)
+            {
+                DebugLogger.Log("[NavList] Enemy name: EnemyCtrl is null; using Unknown Enemy fallback");
+                return "Unknown Enemy";
+            }
+
             int level = 0;
+            ParameterPlacementEnemy placementData = null;
             try
             {
-                var placementData = enemy.m_placementData;
+                placementData = enemy.m_placementData;
                 if (placementData != null)
                     level = placementData.m_level;
+                else
+                    DebugLogger.Log("[NavList] Enemy name: m_placementData is null");
             }
-            catch { }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[NavList] Enemy name: m_placementData read failed: {ex.Message}");
+            }
 
-            // Primary: EnemyCtrl.gameData.m_commonData.m_name (actual localized name)
+            // Resolve the placed Digimon through the parameter table first.
             try
             {
-                var commonData = enemy.gameData?.m_commonData;
-                if (commonData != null)
-                {
-                    string name = commonData.m_name;
-                    if (!string.IsNullOrEmpty(name) && !name.Contains("ランゲージ"))
-                        return level > 0 ? $"{name} Lv.{level}" : name;
-                }
-            }
-            catch { }
-
-            // Fallback: placement chain -> ParameterDigimonData (EvolutionHandler pattern)
-            try
-            {
-                var placementData = enemy.m_placementData;
                 if (placementData != null)
                 {
                     uint paramId = placementData.m_paramId;
-                    if (paramId != 0)
+                    if (paramId == 0)
                     {
-                        var mgm = MainGameManager.m_instance;
-                        Csvb<ParameterNpcEnemyData> npcEnemyCsvb = null;
-                        try { npcEnemyCsvb = mgm?.m_EnemyMgr?.m_NpcEnemyData; } catch { }
-                        if (npcEnemyCsvb == null)
-                            try { npcEnemyCsvb = mgm?.m_NpcEnemyData; } catch { }
-
-                        if (npcEnemyCsvb != null)
+                        DebugLogger.Log("[NavList] Enemy name: m_placementData.m_paramId is zero");
+                    }
+                    else
+                    {
+                        var manager = MainGameManager.m_instance;
+                        if (manager == null)
                         {
-                            var npcEnemyData = HashIdSearchClass<ParameterNpcEnemyData>.GetParam(npcEnemyCsvb, paramId);
-                            if (npcEnemyData != null && npcEnemyData.m_DigiParamId != 0)
+                            DebugLogger.Log("[NavList] Enemy name: MainGameManager is null");
+                        }
+                        else
+                        {
+                            Csvb<ParameterNpcEnemyData> npcEnemyCsvb = null;
+                            var enemyManager = manager.m_EnemyMgr;
+                            if (enemyManager == null)
                             {
-                                var staticData = ParameterDigimonData.GetParam(npcEnemyData.m_DigiParamId);
-                                if (staticData != null)
+                                DebugLogger.Log("[NavList] Enemy name: MainGameManager.m_EnemyMgr is null");
+                            }
+                            else
+                            {
+                                npcEnemyCsvb = enemyManager.m_NpcEnemyData;
+                                if (npcEnemyCsvb == null)
+                                    DebugLogger.Log("[NavList] Enemy name: m_EnemyMgr.m_NpcEnemyData is null");
+                            }
+
+                            if (npcEnemyCsvb == null)
+                            {
+                                npcEnemyCsvb = manager.m_NpcEnemyData;
+                                if (npcEnemyCsvb == null)
+                                    DebugLogger.Log("[NavList] Enemy name: MainGameManager.m_NpcEnemyData is null");
+                            }
+
+                            if (npcEnemyCsvb != null)
+                            {
+                                var npcEnemyData = HashIdSearchClass<ParameterNpcEnemyData>.GetParam(npcEnemyCsvb, paramId);
+                                if (npcEnemyData == null)
                                 {
-                                    string mdlName = staticData.m_mdlName;
-                                    var digiCsvb = AppMainScript.parameterManager?.digimonData;
-                                    if (digiCsvb != null)
-                                    {
-                                        int count = digiCsvb.GetRecordMax();
-                                        for (int i = 0; i < count; i++)
-                                        {
-                                            try
-                                            {
-                                                var paramData = digiCsvb.GetParams(i);
-                                                if (paramData != null && paramData.m_mdlName == mdlName)
-                                                {
-                                                    string name = paramData.GetDefaultName();
-                                                    if (!string.IsNullOrEmpty(name) && !name.Contains("ランゲージ"))
-                                                        return level > 0 ? $"{name} Lv.{level}" : name;
-                                                }
-                                            }
-                                            catch { }
-                                        }
-                                    }
+                                    DebugLogger.Log($"[NavList] Enemy name: ParameterNpcEnemyData {paramId} is null");
+                                }
+                                else if (npcEnemyData.m_DigiParamId == 0)
+                                {
+                                    DebugLogger.Log($"[NavList] Enemy name: ParameterNpcEnemyData {paramId} m_DigiParamId is zero");
+                                }
+                                else
+                                {
+                                    var digimonData = ParameterDigimonData.GetParam(npcEnemyData.m_DigiParamId);
+                                    string name = GetDigimonDefaultName(digimonData, $"enemy DigiParamId {npcEnemyData.m_DigiParamId}");
+                                    if (!string.IsNullOrWhiteSpace(name))
+                                        return level > 0 ? $"{name} Lv.{level}" : name;
                                 }
                             }
                         }
                     }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[NavList] Enemy name: parameter chain failed: {ex.Message}");
+            }
 
-            try { return enemy.gameObject.name ?? "Unknown Enemy"; } catch { }
+            // Keep the already-localized runtime name as a secondary game source.
+            try
+            {
+                var gameData = enemy.gameData;
+                if (gameData == null)
+                {
+                    DebugLogger.Log("[NavList] Enemy name: EnemyCtrl.gameData is null");
+                }
+                else
+                {
+                    var commonData = gameData.m_commonData;
+                    if (commonData == null)
+                    {
+                        DebugLogger.Log("[NavList] Enemy name: gameData.m_commonData is null");
+                    }
+                    else
+                    {
+                        string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(commonData.m_name))?.Trim();
+                        if (!string.IsNullOrWhiteSpace(cleaned) && !cleaned.Contains("ランゲージ"))
+                            return level > 0 ? $"{cleaned} Lv.{level}" : cleaned;
+
+                        DebugLogger.Log("[NavList] Enemy name: gameData.m_commonData.m_name is empty or unresolved");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Log($"[NavList] Enemy name: runtime name read failed: {ex.Message}");
+            }
+
+            DebugLogger.Log("[NavList] Enemy name: no localized Digimon identity; using Unknown Enemy fallback");
             return "Unknown Enemy";
         }
 

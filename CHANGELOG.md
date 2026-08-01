@@ -8,12 +8,15 @@
 
 - Partner condition on the partner keys. F3 and F4 (or your controller bindings) now also tell you how your Digimon is actually doing: tiredness, mood, discipline and curse as percentages of their bars, plus "hungry", "needs toilet" and "needs sleep" when those are showing. Weight and age stay exact numbers, as the game shows them.
 - Battle stat boosts are announced. When a partner's Strength, Stamina, Wisdom or Speed goes up or wears off, you hear it, and the partner keys in battle now include any boosts currently running. There is a toggle for this in Gameplay settings if you would rather not hear it.
-- Text to speech settings. In the Speech category you can now pick which speech engine the mod talks through, and on engines that support it (SAPI voices and similar) choose the voice, rate and volume. Screen readers ignore those and keep using your own settings, so those options only appear when they actually do something. There is also a "Speaking Through" line showing what is in use.
+- Text to speech settings, at the top of the Speech category. You can pick which speech engine the mod talks through, and on engines that support it (SAPI voices and similar) choose the voice, rate and volume. Screen readers ignore those and keep using your own settings, so those options only appear when they actually do something. Only engines that genuinely work on your machine are listed.
 - Speak only when focused, on by default. The mod goes quiet while you are in another window, and stops talking mid-sentence when you switch away, instead of carrying on at you.
 - Pathfinder beep volume slider in the Audio settings.
 
 - The startup logos are announced. During the boot sequence you now hear "Bandai Namco", "Unity" and "CRIWARE" as each one appears, instead of an unexplained silent wait.
 - Battle status conditions are announced. When a Digimon becomes poisoned, slowed, paralysed, confused, crystallised or angry you hear it, and you hear when it wears off.
+
+- Menus now speak in your language. Around 90 places that used to say English at you regardless of your game language now read the game's own text instead: the options and graphics menus, the whole Tamer skill list, battle tactics and item screens, battle results, the Field Guide, Partner and Digivice menus, the shop, storage, farm, colosseum, restaurant and more. Where the game has no text of its own for something, the mod's English stays and that is now a deliberate, documented exception rather than an oversight.
+- The button hint line ("Select, Cross Confirm, Triangle Back") is now read at the end of a screen's announcement instead of the beginning. You hear where you are and what you are on first, and can act without waiting through the hints. It is spoken once when a screen opens, not repeated as you move the cursor.
 
 ## Bug Fixes
 

@@ -92,7 +92,7 @@ namespace DigimonNOAccess
                 return;
 
             var type = _panel.m_type;
-            string typeName = type == uRestaurantPanel.Type.CampCooking ? "Camp Cooking" : "Restaurant";
+            string typeName = GetRestaurantCaption(type);
             var state = _panel.m_state;
             int cursor = GetCursorPosition();
 
@@ -142,12 +142,67 @@ namespace DigimonNOAccess
 
         private void CacheSubPanels()
         {
-            if (_panel == null) return;
+            if (_panel == null)
+            {
+                DebugLogger.Log($"{LogTag} Sub-panels: _panel was null");
+                return;
+            }
 
-            try { _itemPanel = _panel.m_itemPanel; } catch { _itemPanel = null; }
-            try { _bitPanel = _itemPanel?.m_bitPanel; } catch { _bitPanel = null; }
-            try { _efficacyWindow = _itemPanel?.m_efficacyWindow; } catch { _efficacyWindow = null; }
-            try { _resultDialog = _itemPanel?.m_resultDialog; } catch { _resultDialog = null; }
+            try
+            {
+                _itemPanel = _panel.m_itemPanel;
+                if (_itemPanel == null)
+                    DebugLogger.Log($"{LogTag} Sub-panels: m_itemPanel was null");
+            }
+            catch (System.Exception ex)
+            {
+                _itemPanel = null;
+                DebugLogger.Log($"{LogTag} Sub-panels: m_itemPanel read failed: {ex.Message}");
+            }
+
+            if (_itemPanel == null)
+            {
+                _bitPanel = null;
+                _efficacyWindow = null;
+                _resultDialog = null;
+                return;
+            }
+
+            try
+            {
+                _bitPanel = _itemPanel.m_bitPanel;
+                if (_bitPanel == null)
+                    DebugLogger.Log($"{LogTag} Sub-panels: m_itemPanel.m_bitPanel was null");
+            }
+            catch (System.Exception ex)
+            {
+                _bitPanel = null;
+                DebugLogger.Log($"{LogTag} Sub-panels: m_itemPanel.m_bitPanel read failed: {ex.Message}");
+            }
+
+            try
+            {
+                _efficacyWindow = _itemPanel.m_efficacyWindow;
+                if (_efficacyWindow == null)
+                    DebugLogger.Log($"{LogTag} Sub-panels: m_itemPanel.m_efficacyWindow was null");
+            }
+            catch (System.Exception ex)
+            {
+                _efficacyWindow = null;
+                DebugLogger.Log($"{LogTag} Sub-panels: m_itemPanel.m_efficacyWindow read failed: {ex.Message}");
+            }
+
+            try
+            {
+                _resultDialog = _itemPanel.m_resultDialog;
+                if (_resultDialog == null)
+                    DebugLogger.Log($"{LogTag} Sub-panels: m_itemPanel.m_resultDialog was null");
+            }
+            catch (System.Exception ex)
+            {
+                _resultDialog = null;
+                DebugLogger.Log($"{LogTag} Sub-panels: m_itemPanel.m_resultDialog read failed: {ex.Message}");
+            }
         }
 
         // ── Bits ──
@@ -235,12 +290,12 @@ namespace DigimonNOAccess
                 AddStat(parts, "Weight", foodData.m_bodyWeight);
 
                 // Other/special stats
-                AddStat(parts, "Life", foodData.m_lifeTime);
-                AddStat(parts, "Education", foodData.m_education);
-                AddStat(parts, "Trust", foodData.m_trust);
-                AddStat(parts, "Bonds", foodData.m_bonds);
-                AddStat(parts, "HP Cure", foodData.m_hp);
-                AddStat(parts, "MP Cure", foodData.m_mp);
+                AddLocalizedOtherStat(parts, ParameterItemDataFood.OtherParamKind.Life, "Life", foodData.m_lifeTime);
+                AddLocalizedOtherStat(parts, ParameterItemDataFood.OtherParamKind.Education, "Education", foodData.m_education);
+                AddLocalizedOtherStat(parts, ParameterItemDataFood.OtherParamKind.Trust, "Trust", foodData.m_trust);
+                AddLocalizedOtherStat(parts, ParameterItemDataFood.OtherParamKind.Bonds, "Bonds", foodData.m_bonds);
+                AddLocalizedOtherStat(parts, ParameterItemDataFood.OtherParamKind.HpCure, "HP Cure", foodData.m_hp);
+                AddLocalizedOtherStat(parts, ParameterItemDataFood.OtherParamKind.MpCure, "MP Cure", foodData.m_mp);
 
                 if (parts.Count == 0)
                     return "No stat effects";
@@ -261,6 +316,76 @@ namespace DigimonNOAccess
                 string prefix = value > 0 ? "+" : "";
                 parts.Add($"{name} {prefix}{value}");
             }
+        }
+
+        private void AddLocalizedOtherStat(
+            System.Collections.Generic.List<string> parts,
+            ParameterItemDataFood.OtherParamKind kind,
+            string fallbackName,
+            int value)
+        {
+            if (value == 0)
+                return;
+
+            string name = GetOtherParamName(kind, fallbackName);
+            string prefix = value > 0 ? "+" : "";
+            parts.Add($"{name} {prefix}{value}");
+        }
+
+        private string GetOtherParamName(
+            ParameterItemDataFood.OtherParamKind kind,
+            string fallback)
+        {
+            try
+            {
+                if (_efficacyWindow == null)
+                {
+                    DebugLogger.Log($"{LogTag} Other parameter {kind}: m_efficacyWindow was null");
+                    return fallback;
+                }
+
+                var rows = _efficacyWindow.m_foodPanelParamOtherTbl;
+                if (rows == null)
+                {
+                    DebugLogger.Log($"{LogTag} Other parameter {kind}: m_foodPanelParamOtherTbl was null");
+                    return fallback;
+                }
+
+                for (int i = 0; i < rows.Length; i++)
+                {
+                    var row = rows[i];
+                    if (row == null)
+                    {
+                        DebugLogger.Log($"{LogTag} Other parameter {kind}: m_foodPanelParamOtherTbl[{i}] was null");
+                        continue;
+                    }
+
+                    if (row.m_paramKind != kind)
+                        continue;
+
+                    var nameText = row.m_paramNameText;
+                    if (nameText == null)
+                    {
+                        DebugLogger.Log($"{LogTag} Other parameter {kind}: m_paramNameText was null");
+                        return fallback;
+                    }
+
+                    string name = (TextUtilities.StripRichTextTags(nameText.text) ?? "").Trim();
+                    if (!string.IsNullOrWhiteSpace(name))
+                        return name;
+
+                    DebugLogger.Log($"{LogTag} Other parameter {kind}: m_paramNameText.text was empty");
+                    return fallback;
+                }
+
+                DebugLogger.Log($"{LogTag} Other parameter {kind}: no matching m_paramKind row");
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Error reading other parameter {kind} label: {ex.Message}");
+            }
+
+            return fallback;
         }
 
         // ── State Changes ──
@@ -411,10 +536,24 @@ namespace DigimonNOAccess
                 var nameTbl = _resultDialog?.m_digimonNameTbl;
                 if (selectNo == (int)uRestaurantPanelResultDialog.Select.All)
                 {
-                    // "Both" option - try reading the bothText
-                    string bothText = _resultDialog?.m_bothText?.text;
-                    if (!string.IsNullOrEmpty(bothText))
-                        return TextUtilities.StripRichTextTags(bothText);
+                    if (_resultDialog == null)
+                    {
+                        DebugLogger.Log($"{LogTag} Both label: m_resultDialog was null");
+                        return "Both";
+                    }
+
+                    var bothTextComponent = _resultDialog.m_bothText;
+                    if (bothTextComponent == null)
+                    {
+                        DebugLogger.Log($"{LogTag} Both label: m_bothText was null");
+                        return "Both";
+                    }
+
+                    string bothText = (TextUtilities.StripRichTextTags(bothTextComponent.text) ?? "").Trim();
+                    if (!string.IsNullOrWhiteSpace(bothText))
+                        return bothText;
+
+                    DebugLogger.Log($"{LogTag} Both label: m_bothText.text was empty");
                     return "Both";
                 }
 
@@ -477,38 +616,38 @@ namespace DigimonNOAccess
 
         private string GetFoodName(int index)
         {
-            // Primary: read from the UI text (what sighted players see)
             try
             {
-                if (_itemPanel != null)
+                if (_itemPanel == null)
                 {
-                    var parts = _itemPanel.GetSelectItemParts(index);
-                    if (parts?.m_name != null)
-                    {
-                        string uiText = parts.m_name.text;
-                        if (!string.IsNullOrEmpty(uiText))
-                        {
-                            string cleaned = TextUtilities.StripRichTextTags(uiText);
-                            if (!string.IsNullOrEmpty(cleaned))
-                                return cleaned;
-                        }
-                    }
+                    DebugLogger.Log($"{LogTag} Food name: m_itemPanel was null");
+                    return AnnouncementBuilder.FallbackItem("Food", index);
                 }
-            }
-            catch { }
 
-            // Fallback: ParameterCookingData.GetCookingName()
-            try
-            {
-                var cookingData = _panel?.GetSelectParamCookingData();
-                if (cookingData != null)
+                var parts = _itemPanel.GetSelectItemParts(index);
+                if (parts == null)
                 {
-                    string name = cookingData.GetCookingName();
-                    if (!string.IsNullOrEmpty(name))
-                        return name;
+                    DebugLogger.Log($"{LogTag} Food name: GetSelectItemParts({index}) returned null");
+                    return AnnouncementBuilder.FallbackItem("Food", index);
                 }
+
+                var nameText = parts.m_name;
+                if (nameText == null)
+                {
+                    DebugLogger.Log($"{LogTag} Food name: selected item part m_name was null");
+                    return AnnouncementBuilder.FallbackItem("Food", index);
+                }
+
+                string name = (TextUtilities.StripRichTextTags(nameText.text) ?? "").Trim();
+                if (!string.IsNullOrWhiteSpace(name))
+                    return name;
+
+                DebugLogger.Log($"{LogTag} Food name: selected item part m_name.text was empty");
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Error reading selected item part m_name.text: {ex.Message}");
+            }
 
             return AnnouncementBuilder.FallbackItem("Food", index);
         }
@@ -564,9 +703,49 @@ namespace DigimonNOAccess
             }
 
             var type = _panel.m_type;
-            string typeName = type == uRestaurantPanel.Type.CampCooking ? "Camp Cooking" : "Restaurant";
+            string typeName = GetRestaurantCaption(type);
             int cursor = GetCursorPosition();
             ScreenReader.Say($"{typeName}. {BuildItemAnnouncement(cursor)}");
+        }
+
+        private string GetRestaurantCaption(uRestaurantPanel.Type type)
+        {
+            string fallback = type == uRestaurantPanel.Type.CampCooking ? "Camp Cooking" : "Restaurant";
+
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Caption: _panel was null");
+                    return fallback;
+                }
+
+                var captionPanel = _panel.m_captionPanel;
+                if (captionPanel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Caption: m_captionPanel was null");
+                    return fallback;
+                }
+
+                var text = captionPanel.m_text;
+                if (text == null)
+                {
+                    DebugLogger.Log($"{LogTag} Caption: m_captionPanel.m_text was null");
+                    return fallback;
+                }
+
+                string caption = (TextUtilities.StripRichTextTags(text.text) ?? "").Trim();
+                if (!string.IsNullOrWhiteSpace(caption))
+                    return caption;
+
+                DebugLogger.Log($"{LogTag} Caption: m_captionPanel.m_text.text was empty");
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Error reading m_captionPanel.m_text.text: {ex.Message}");
+            }
+
+            return fallback;
         }
     }
 }

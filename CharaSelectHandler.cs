@@ -35,7 +35,7 @@ namespace DigimonNOAccess
             int gender = _panel.Gender;
             string characterInfo = GetCharacterInfo();
 
-            ScreenReader.Say(HEADER);
+            ScreenReader.Say(GetHeader());
             ScreenReader.SayQueued(characterInfo);
 
             DebugLogger.Log($"{LogTag} Opened: gender={gender}, info={characterInfo}");
@@ -67,12 +67,44 @@ namespace DigimonNOAccess
             if (!IsOpen()) return;
 
             string characterInfo = GetCharacterInfo();
-            ScreenReader.Say(HEADER);
+            ScreenReader.Say(GetHeader());
             ScreenReader.SayQueued(characterInfo);
         }
 
-        // Caption text is a texture in the title screen, not a readable text component.
-        private const string HEADER = "Choose your character. Left and right to change";
+        private const string HeaderFallback = "Choose your character. Left and right to change";
+
+        private string GetHeader()
+        {
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Header: m_panel was null");
+                    return HeaderFallback;
+                }
+
+                var captionText = _panel.m_captionText;
+                if (captionText == null)
+                {
+                    DebugLogger.Log($"{LogTag} Header: m_captionText was null");
+                    return HeaderFallback;
+                }
+
+                string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(captionText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(cleaned) || TextUtilities.IsPlaceholderText(cleaned))
+                {
+                    DebugLogger.Log($"{LogTag} Header: m_captionText.text unusable: {TextUtilities.DescribeUnusable(cleaned)}");
+                    return HeaderFallback;
+                }
+
+                return cleaned;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Header read failed: {ex.Message}");
+                return HeaderFallback;
+            }
+        }
 
         /// <summary>
         /// Builds character info string from child Text components.

@@ -107,13 +107,14 @@ namespace DigimonNOAccess
 
         private string GetCardText()
         {
+            string cardName = GetRenderedCardName();
+
             try
             {
                 var parts = new System.Collections.Generic.List<string>();
 
-                var nameText = _panel?.m_CardNameName;
-                if (nameText != null && !string.IsNullOrEmpty(nameText.text))
-                    parts.Add(TextUtilities.StripRichTextTags(nameText.text));
+                if (!string.IsNullOrEmpty(cardName))
+                    parts.Add(cardName);
 
                 var numberText = _panel?.m_CardNameNumber;
                 string numStr = numberText?.text;
@@ -150,7 +151,43 @@ namespace DigimonNOAccess
                 DebugLogger.Log($"{LogTag} Error: {ex.Message}");
             }
 
-            return "Card";
+            if (string.IsNullOrWhiteSpace(cardName))
+                return "Card";
+
+            return cardName;
+        }
+
+        private string GetRenderedCardName()
+        {
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Card name: m_panel was null");
+                    return "";
+                }
+
+                var nameText = _panel.m_CardNameName;
+                if (nameText == null)
+                {
+                    DebugLogger.Log($"{LogTag} Card name: m_CardNameName was null");
+                    return "";
+                }
+
+                string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(nameText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(cleaned) || TextUtilities.IsPlaceholderText(cleaned))
+                {
+                    DebugLogger.Log($"{LogTag} Card name: m_CardNameName.text unusable: {TextUtilities.DescribeUnusable(cleaned)}");
+                    return "";
+                }
+
+                return cleaned;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Card name read failed: {ex.Message}");
+                return "";
+            }
         }
 
         private int GetTotalCards()

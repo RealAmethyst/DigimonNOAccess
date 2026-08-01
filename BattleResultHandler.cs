@@ -262,7 +262,7 @@ namespace DigimonNOAccess
                         int value = riseValues[j];
                         if (value > 0)
                         {
-                            statParts.Add($"{statNames[j]} +{value}");
+                            statParts.Add($"{GetStatName(panel, j, statNames[j])} +{value}");
                         }
                     }
                 }
@@ -310,7 +310,7 @@ namespace DigimonNOAccess
                                 {
                                     value = "+" + value;
                                 }
-                                statParts.Add($"{statNames[j]} {value}");
+                                statParts.Add($"{GetStatName(panel, j, statNames[j])} {value}");
                             }
                         }
                     }
@@ -329,6 +329,64 @@ namespace DigimonNOAccess
             return "";
         }
 
+        private string GetStatName(uResultPanelDigimonBase panel, int statIndex, string fallback)
+        {
+            // HP and MP are not among the localized fields identified for this panel.
+            if (statIndex < 2 || statIndex > 5)
+                return fallback;
+
+            try
+            {
+                if (panel == null)
+                {
+                    DebugLogger.Log($"[BattleResultHandler] Stat label {statIndex}: result Digimon panel was null");
+                    return fallback;
+                }
+
+                UnityEngine.UI.Text label;
+                string fieldName;
+                switch (statIndex)
+                {
+                    case 2:
+                        label = panel.m_forcefulnessLangText;
+                        fieldName = "m_forcefulnessLangText";
+                        break;
+                    case 3:
+                        label = panel.m_robustnessLangText;
+                        fieldName = "m_robustnessLangText";
+                        break;
+                    case 4:
+                        label = panel.m_clevernessLangText;
+                        fieldName = "m_clevernessLangText";
+                        break;
+                    default:
+                        label = panel.m_rapidityLangText;
+                        fieldName = "m_rapidityLangText";
+                        break;
+                }
+
+                if (label == null)
+                {
+                    DebugLogger.Log($"[BattleResultHandler] Stat label: {fieldName} was null");
+                    return fallback;
+                }
+
+                string rendered = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(label.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(rendered) || TextUtilities.IsPlaceholderText(rendered))
+                {
+                    DebugLogger.Log($"[BattleResultHandler] Stat label: {fieldName}.text unusable: {TextUtilities.DescribeUnusable(rendered)}");
+                    return fallback;
+                }
+
+                return rendered;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[BattleResultHandler] Stat label {statIndex} read failed: {ex.Message}");
+                return fallback;
+            }
+        }
+
         /// <summary>
         /// Get rewards text from center panel.
         /// </summary>
@@ -342,14 +400,14 @@ namespace DigimonNOAccess
                 string tp = getPanel.m_tpText?.text;
                 if (!string.IsNullOrWhiteSpace(tp) && tp != "0")
                 {
-                    rewardParts.Add($"EXP {tp}");
+                    rewardParts.Add($"{GetRewardLabel(getPanel, true, "EXP")} {tp}");
                 }
 
                 // Bits
                 string bit = getPanel.m_bitText?.text;
                 if (!string.IsNullOrWhiteSpace(bit) && bit != "0")
                 {
-                    rewardParts.Add($"{bit} Bits");
+                    rewardParts.Add($"{bit} {GetRewardLabel(getPanel, false, "Bits")}");
                 }
 
                 // Items - use m_getItemList for actual received quantities
@@ -393,12 +451,79 @@ namespace DigimonNOAccess
             return "";
         }
 
+        private string GetRewardLabel(uResultPanelGet getPanel, bool isTp, string fallback)
+        {
+            try
+            {
+                if (getPanel == null)
+                {
+                    DebugLogger.Log($"[BattleResultHandler] Reward label {fallback}: get panel was null");
+                    return fallback;
+                }
+
+                var label = isTp ? getPanel.m_tpLangText : getPanel.m_bitLangText;
+                string fieldName = isTp ? "m_tpLangText" : "m_bitLangText";
+                if (label == null)
+                {
+                    DebugLogger.Log($"[BattleResultHandler] Reward label: {fieldName} was null");
+                    return fallback;
+                }
+
+                string rendered = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(label.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(rendered) || TextUtilities.IsPlaceholderText(rendered))
+                {
+                    DebugLogger.Log($"[BattleResultHandler] Reward label: {fieldName}.text unusable: {TextUtilities.DescribeUnusable(rendered)}");
+                    return fallback;
+                }
+
+                return rendered;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[BattleResultHandler] Reward label {fallback} read failed: {ex.Message}");
+                return fallback;
+            }
+        }
+
         /// <summary>
         /// Announce Screen 2: Confirmation that results are applied.
         /// </summary>
         private void AnnounceScreen2()
         {
-            ScreenReader.Say("Results applied. Press Continue to return to field.");
+            ScreenReader.Say($"{GetResultCaption("Results applied")}. Press Continue to return to field.");
+        }
+
+        private string GetResultCaption(string fallback)
+        {
+            try
+            {
+                if (_cachedResultPanel == null)
+                {
+                    DebugLogger.Log("[BattleResultHandler] Result caption: cached result panel was null");
+                    return fallback;
+                }
+
+                var captionText = _cachedResultPanel.m_captionLangText;
+                if (captionText == null)
+                {
+                    DebugLogger.Log("[BattleResultHandler] Result caption: m_captionLangText was null");
+                    return fallback;
+                }
+
+                string caption = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(captionText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(caption) || TextUtilities.IsPlaceholderText(caption))
+                {
+                    DebugLogger.Log($"[BattleResultHandler] Result caption: m_captionLangText.text unusable: {TextUtilities.DescribeUnusable(caption)}");
+                    return fallback;
+                }
+
+                return caption;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[BattleResultHandler] Result caption read failed: {ex.Message}");
+                return fallback;
+            }
         }
 
         public bool IsActive()
@@ -410,18 +535,18 @@ namespace DigimonNOAccess
         {
             if (_cachedResultPanel == null)
             {
-                ScreenReader.Say("Battle result");
+                ScreenReader.Say(GetResultCaption("Battle result"));
                 return;
             }
 
             bool isShowingRise = CheckIsShowingRise();
             if (isShowingRise)
             {
-                ScreenReader.Say("Battle results. Press Continue to apply.");
+                ScreenReader.Say($"{GetResultCaption("Battle results")}. Press Continue to apply.");
             }
             else
             {
-                ScreenReader.Say("Results applied. Press Continue to return to field.");
+                ScreenReader.Say($"{GetResultCaption("Results applied")}. Press Continue to return to field.");
             }
         }
     }

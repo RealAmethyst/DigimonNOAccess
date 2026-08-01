@@ -281,6 +281,17 @@ namespace DigimonNOAccess
             if (string.IsNullOrEmpty(text))
                 return;
 
+            // Append the screen's button-hint bar, if one was just read.
+            //
+            // This lives here rather than in AnnouncementBuilder because handlers
+            // build their announcements in several different ways - some through the
+            // builder, some by hand - and the hints have to land on all of them. A
+            // caption is only ever read while composing the announcement for a screen
+            // that just opened or changed state, so the next thing spoken is that
+            // announcement. TakePending is one-shot, so moving the cursor afterwards
+            // does not repeat the hints on every item.
+            text = AnnouncementBuilder.WithButtonHints(text, ButtonHintCache.TakePending());
+
             _lastMessage = text;
 
             if (!_initialized)

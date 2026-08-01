@@ -274,9 +274,15 @@ namespace DigimonNOAccess
                     {
                         info = digiName;
                         if (!string.IsNullOrEmpty(nature))
-                            info += ". Nature: " + nature;
+                        {
+                            string natureLabel = GetEggInfoLabel(_panel.m_natureText, "m_natureText", "Nature");
+                            info += $". {natureLabel}: {nature}";
+                        }
                         if (!string.IsNullOrEmpty(attr))
-                            info += ". Attribute: " + attr;
+                        {
+                            string attributeLabel = GetEggInfoLabel(_panel.m_attrText, "m_attrText", "Attribute");
+                            info += $". {attributeLabel}: {attr}";
+                        }
                     }
                 }
             }
@@ -286,6 +292,38 @@ namespace DigimonNOAccess
             }
 
             return info;
+        }
+
+        private string GetEggInfoLabel(UnityEngine.UI.Text textComponent, string fieldName, string fallback)
+        {
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log($"{LogTag} {fieldName}: m_panel was null");
+                    return fallback;
+                }
+
+                if (textComponent == null)
+                {
+                    DebugLogger.Log($"{LogTag} {fieldName} was null");
+                    return fallback;
+                }
+
+                string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(textComponent.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(cleaned) || TextUtilities.IsPlaceholderText(cleaned))
+                {
+                    DebugLogger.Log($"{LogTag} {fieldName}.text unusable: {TextUtilities.DescribeUnusable(cleaned)}");
+                    return fallback;
+                }
+
+                return cleaned.TrimEnd(':', '：').Trim();
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} {fieldName} read failed: {ex.Message}");
+                return fallback;
+            }
         }
 
         /// <summary>

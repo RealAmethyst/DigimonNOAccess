@@ -220,7 +220,7 @@ namespace DigimonNOAccess
                 string blockName = GetBlockName(blockIdx);
                 string contentName = GetContentName(contentIdx);
 
-                string announcement = "Construction, Grade Up";
+                string announcement = GetConstructionCaption(true);
                 if (!string.IsNullOrEmpty(blockName))
                     announcement += $". {blockName}";
                 if (!string.IsNullOrEmpty(contentName))
@@ -423,7 +423,7 @@ namespace DigimonNOAccess
                 string matName = GetMaterialName(matIdx);
                 string quantity = GetMaterialQuantity(matIdx);
 
-                string announcement = "Construction, Material Donation";
+                string announcement = GetConstructionCaption(false);
                 if (!string.IsNullOrEmpty(matName))
                 {
                     announcement += $". {matName}";
@@ -524,6 +524,76 @@ namespace DigimonNOAccess
         }
 
         // ---- Helpers ----
+
+        private string GetConstructionCaption(bool gradeUp)
+        {
+            string fallback = gradeUp
+                ? "Construction, Grade Up"
+                : "Construction, Material Donation";
+
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Caption: m_panel was null");
+                    return fallback;
+                }
+
+                uCaptionBase caption;
+                string fieldName;
+                if (gradeUp)
+                {
+                    var gradeUpPanel = _panel.m_gradeUpPanel;
+                    if (gradeUpPanel == null)
+                    {
+                        DebugLogger.Log($"{LogTag} Caption: m_gradeUpPanel was null");
+                        return fallback;
+                    }
+
+                    caption = gradeUpPanel.m_constructionCaption;
+                    fieldName = "m_gradeUpPanel.m_constructionCaption";
+                }
+                else
+                {
+                    var materialPanel = _panel.m_materialPanel;
+                    if (materialPanel == null)
+                    {
+                        DebugLogger.Log($"{LogTag} Caption: m_materialPanel was null");
+                        return fallback;
+                    }
+
+                    caption = materialPanel.m_materialCaption;
+                    fieldName = "m_materialPanel.m_materialCaption";
+                }
+
+                if (caption == null)
+                {
+                    DebugLogger.Log($"{LogTag} Caption: {fieldName} was null");
+                    return fallback;
+                }
+
+                var text = caption.m_text;
+                if (text == null)
+                {
+                    DebugLogger.Log($"{LogTag} Caption: {fieldName}.m_text was null");
+                    return fallback;
+                }
+
+                string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(text.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(cleaned) || TextUtilities.IsPlaceholderText(cleaned))
+                {
+                    DebugLogger.Log($"{LogTag} Caption: {fieldName}.m_text.text unusable: {TextUtilities.DescribeUnusable(cleaned)}");
+                    return fallback;
+                }
+
+                return cleaned;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Caption read failed: {ex.Message}");
+                return fallback;
+            }
+        }
 
         private void ResetTracking()
         {

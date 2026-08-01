@@ -59,7 +59,7 @@ namespace DigimonNOAccess
                 string itemText = GetMenuItemText(cursor);
                 int total = GetMenuItemCount();
 
-                string announcement = AnnouncementBuilder.MenuOpenWithState("Colosseum", stateText, itemText, cursor, total);
+                string announcement = AnnouncementBuilder.MenuOpenWithState(GetPanelCaption(), stateText, itemText, cursor, total);
                 ScreenReader.Say(announcement);
 
                 DebugLogger.Log($"{LogTag} Panel opened, state={state}, cursor={cursor}");
@@ -95,7 +95,7 @@ namespace DigimonNOAccess
                     string itemText = GetMenuItemText(cursor);
                     int total = GetMenuItemCount();
                     string stateText = GetStateText(state);
-                    string announcement = AnnouncementBuilder.MenuOpenWithState("Colosseum", stateText, itemText, cursor, total);
+                    string announcement = AnnouncementBuilder.MenuOpenWithState(GetPanelCaption(), stateText, itemText, cursor, total);
                     ScreenReader.Say(announcement);
                     DebugLogger.Log($"{LogTag} State changed to Main, cursor={cursor}");
                     _lastCursor = cursor;
@@ -228,7 +228,13 @@ namespace DigimonNOAccess
                         ruleText = descUI.m_ruleValue.text;
                 }
                 if (!string.IsNullOrEmpty(ruleText))
-                    parts.Add($"Rule: {TextUtilities.StripRichTextTags(ruleText)}");
+                {
+                    string ruleTitle = GetDescriptionTitle(
+                        _panel.m_colosseumDescription,
+                        true,
+                        "Rule");
+                    parts.Add($"{ruleTitle}: {TextUtilities.StripRichTextTags(ruleText)}");
+                }
 
                 var descPanel = _panel.m_colosseumDescription;
                 if (descPanel != null)
@@ -237,16 +243,8 @@ namespace DigimonNOAccess
                     if (limitValue != null && !string.IsNullOrEmpty(limitValue.text))
                     {
                         string limitText = TextUtilities.StripRichTextTags(limitValue.text);
-                        var limitTitle = descPanel.m_limitTitle;
-                        if (limitTitle != null && !string.IsNullOrEmpty(limitTitle.text))
-                        {
-                            string titleText = TextUtilities.StripRichTextTags(limitTitle.text).TrimEnd(':');
-                            parts.Add($"{titleText}: {limitText}");
-                        }
-                        else
-                        {
-                            parts.Add($"Limit: {limitText}");
-                        }
+                        string limitTitle = GetDescriptionTitle(descPanel, false, "Limit");
+                        parts.Add($"{limitTitle}: {limitText}");
                     }
                 }
 
@@ -323,7 +321,84 @@ namespace DigimonNOAccess
                 case uColosseumPanelCommand.State.Wait:
                     return "Please wait";
                 default:
-                    return "Colosseum";
+                    return GetPanelCaption();
+            }
+        }
+
+        private string GetPanelCaption()
+        {
+            const string fallback = "Colosseum";
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Caption: m_panel was null");
+                    return fallback;
+                }
+
+                var caption = _panel.m_colosseumCaption;
+                if (caption == null)
+                {
+                    DebugLogger.Log($"{LogTag} Caption: m_colosseumCaption was null");
+                    return fallback;
+                }
+
+                return GetRenderedText(caption.m_text, "m_colosseumCaption.m_text.text", fallback);
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Caption read failed: {ex.Message}");
+                return fallback;
+            }
+        }
+
+        private string GetDescriptionTitle(
+            uColosseumPanelCommand.ColosseumDescription description,
+            bool isRule,
+            string fallback)
+        {
+            if (_panel == null)
+            {
+                DebugLogger.Log($"{LogTag} {fallback} title: m_panel was null");
+                return fallback;
+            }
+
+            if (description == null)
+            {
+                DebugLogger.Log($"{LogTag} {fallback} title: m_colosseumDescription was null");
+                return fallback;
+            }
+
+            var title = isRule ? description.m_ruleTitle : description.m_limitTitle;
+            string fieldName = isRule ? "m_ruleTitle.text" : "m_limitTitle.text";
+            return GetRenderedText(title, $"m_colosseumDescription.{fieldName}", fallback)
+                .TrimEnd(':', '：')
+                .Trim();
+        }
+
+        private string GetRenderedText(UnityEngine.UI.Text textComponent, string fieldName, string fallback)
+        {
+            if (textComponent == null)
+            {
+                DebugLogger.Log($"{LogTag} {fieldName} was null");
+                return fallback;
+            }
+
+            try
+            {
+                string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(textComponent.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(cleaned) || TextUtilities.IsPlaceholderText(cleaned))
+                {
+                    DebugLogger.Log($"{LogTag} {fieldName} unusable: {TextUtilities.DescribeUnusable(cleaned)}");
+                    return fallback;
+                }
+
+                return cleaned;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} {fieldName} read failed: {ex.Message}");
+                return fallback;
             }
         }
 
@@ -338,7 +413,7 @@ namespace DigimonNOAccess
             string itemText = GetMenuItemText(cursor);
             int total = GetMenuItemCount();
 
-            string announcement = AnnouncementBuilder.MenuOpenWithState("Colosseum", stateText, itemText, cursor, total);
+            string announcement = AnnouncementBuilder.MenuOpenWithState(GetPanelCaption(), stateText, itemText, cursor, total);
             ScreenReader.Say(announcement);
         }
     }

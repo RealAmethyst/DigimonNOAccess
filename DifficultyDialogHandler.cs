@@ -98,40 +98,65 @@ namespace DigimonNOAccess
 
         private string GetDifficultyName(int cursor)
         {
+            string fallback = cursor switch
+            {
+                0 => "Easy",
+                1 => "Normal",
+                2 => "Hard",
+                3 => "Very Hard",
+                _ => AnnouncementBuilder.FallbackItem("Option", cursor)
+            };
+
             if (_dialog == null)
-                return AnnouncementBuilder.FallbackItem("Option", cursor);
+            {
+                DebugLogger.Log("[DifficultyDialog] Difficulty name: m_dialog was null");
+                return fallback;
+            }
 
             try
             {
-                // Try to read from m_difficlutItems.m_difficultText array
                 var difficultItems = _dialog.m_difficlutItems;
-                if (difficultItems != null)
+                if (difficultItems == null)
                 {
-                    var textArray = difficultItems.m_difficultText;
-                    if (textArray != null && cursor < textArray.Length)
-                    {
-                        var text = textArray[cursor];
-                        if (text != null && !string.IsNullOrEmpty(text.text))
-                        {
-                            return text.text.Trim();
-                        }
-                    }
+                    DebugLogger.Log("[DifficultyDialog] Difficulty name: m_difficlutItems was null");
+                    return fallback;
                 }
+
+                var textArray = difficultItems.m_difficultText;
+                if (textArray == null)
+                {
+                    DebugLogger.Log("[DifficultyDialog] Difficulty name: m_difficultText was null");
+                    return fallback;
+                }
+
+                if (cursor < 0 || cursor >= textArray.Length)
+                {
+                    DebugLogger.Log($"[DifficultyDialog] Difficulty name: cursor {cursor} was outside m_difficultText length {textArray.Length}");
+                    return fallback;
+                }
+
+                var text = textArray[cursor];
+                if (text == null)
+                {
+                    DebugLogger.Log($"[DifficultyDialog] Difficulty name: m_difficultText[{cursor}] was null");
+                    return fallback;
+                }
+
+                string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(text.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(cleaned) || TextUtilities.IsPlaceholderText(cleaned))
+                {
+                    DebugLogger.Log($"[DifficultyDialog] Difficulty name: m_difficultText[{cursor}].text unusable: {TextUtilities.DescribeUnusable(cleaned)}");
+                    return fallback;
+                }
+
+                return cleaned;
             }
             catch (System.Exception ex)
             {
                 DebugLogger.Log($"[DifficultyDialog] Error getting difficulty name: {ex.Message}");
             }
 
-            // Fallback: common difficulty names
-            switch (cursor)
-            {
-                case 0: return "Easy";
-                case 1: return "Normal";
-                case 2: return "Hard";
-                case 3: return "Very Hard";
-                default: return AnnouncementBuilder.FallbackItem("Option", cursor);
-            }
+            return fallback;
         }
 
         private int GetTotalOptions()

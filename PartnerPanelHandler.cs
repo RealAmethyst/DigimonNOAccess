@@ -102,18 +102,19 @@ namespace DigimonNOAccess
             }
 
             string announcement;
+            string panelTitle = GetPanelTitle();
             if (state == uPartnerPanel.State.Top)
             {
                 // At Top level, announce panel name and current cursor position
                 string cmdName = GetCommandName(_lastTopCommand >= 0 ? _lastTopCommand : 0);
-                announcement = $"Partner. {cmdName}, {(_lastTopCommand >= 0 ? _lastTopCommand : 0) + 1} of {TOP_COMMAND_COUNT}";
+                announcement = $"{panelTitle}. {cmdName}, {(_lastTopCommand >= 0 ? _lastTopCommand : 0) + 1} of {TOP_COMMAND_COUNT}";
             }
             else
             {
                 // Opening directly into a subpanel - include digimon name
                 string tabName = GetTabName(state);
                 string partnerName = GetPartnerName();
-                announcement = $"Partner, {tabName}";
+                announcement = $"{panelTitle}, {tabName}";
                 if (!string.IsNullOrEmpty(partnerName))
                     announcement += $". {partnerName}";
             }
@@ -373,11 +374,10 @@ namespace DigimonNOAccess
             catch { }
 
             // Get full info for current slot including Power/MP/Range
-            var skillCtrl = command?.m_SkillCtrl;
-            if (skillCtrl?.m_Skill != null && cursorIndex >= 0 && cursorIndex < skillCtrl.m_Skill.Length)
+            uPartnerAttackPanelSkill selectedSkill = GetSelectedSkillRow(command, cursorIndex, "attack summary");
+            if (selectedSkill != null)
             {
-                var skillUI = skillCtrl.m_Skill[cursorIndex];
-                string fullInfo = GetSkillFullInfo(skillUI);
+                string fullInfo = GetSkillFullInfo(selectedSkill);
                 if (!string.IsNullOrEmpty(fullInfo))
                 {
                     // Also include description from caption
@@ -395,7 +395,7 @@ namespace DigimonNOAccess
                 }
             }
 
-            return "No skill set";
+            return GetNoSkillText(selectedSkill);
         }
 
         private string GetSkillName(Il2Cpp.uPartnerAttackPanelCommand command, int cursorIndex)
@@ -456,7 +456,7 @@ namespace DigimonNOAccess
 
                 string power = skillUI.m_Power?.text;
                 if (!string.IsNullOrEmpty(power))
-                    parts.Add($"Power {power}");
+                    parts.Add($"{GetSkillLabel(skillUI, true, "Power")} {power}");
 
                 string mp = skillUI.m_MP?.text;
                 if (!string.IsNullOrEmpty(mp))
@@ -470,7 +470,7 @@ namespace DigimonNOAccess
                     {
                         string range = GetRangeLetter(attackData.m_range);
                         if (!string.IsNullOrEmpty(range))
-                            parts.Add($"Range {range}");
+                            parts.Add($"{GetSkillLabel(skillUI, false, "Range")} {range}");
                     }
                 }
                 catch { }
@@ -480,6 +480,134 @@ namespace DigimonNOAccess
             catch (System.Exception ex)
             {
                 DebugLogger.Log($"[PartnerPanel] Error getting skill full info: {ex.Message}");
+                return null;
+            }
+        }
+
+        private string GetSkillLabel(uPartnerAttackPanelSkill skillUI, bool power, string fallback)
+        {
+            try
+            {
+                if (skillUI == null)
+                {
+                    DebugLogger.Log($"[PartnerPanel] {fallback} label: selected skill row was null");
+                    return fallback;
+                }
+
+                var label = power ? skillUI.m_powerLangText : skillUI.m_rangeLangText;
+                string fieldName = power ? "m_powerLangText" : "m_rangeLangText";
+                if (label == null)
+                {
+                    DebugLogger.Log($"[PartnerPanel] {fallback} label: {fieldName} was null");
+                    return fallback;
+                }
+
+                string rendered = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(label.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(rendered) || TextUtilities.IsPlaceholderText(rendered))
+                {
+                    DebugLogger.Log($"[PartnerPanel] {fallback} label: {fieldName}.text unusable: {TextUtilities.DescribeUnusable(rendered)}");
+                    return fallback;
+                }
+
+                return rendered;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[PartnerPanel] {fallback} label read failed: {ex.Message}");
+                return fallback;
+            }
+        }
+
+        private string GetNoSkillText(uPartnerAttackPanelSkill skillUI)
+        {
+            const string fallback = "No skill set";
+
+            try
+            {
+                if (skillUI == null)
+                {
+                    DebugLogger.Log("[PartnerPanel] No-skill label: selected skill row was null");
+                    return fallback;
+                }
+
+                var noSetText = skillUI.m_NoSet;
+                if (noSetText == null)
+                {
+                    DebugLogger.Log("[PartnerPanel] No-skill label: m_NoSet was null");
+                }
+                else
+                {
+                    string rendered = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(noSetText.text))?.Trim();
+                    if (!string.IsNullOrWhiteSpace(rendered))
+                        return rendered;
+
+                    DebugLogger.Log("[PartnerPanel] No-skill label: m_NoSet.text was empty");
+                }
+
+                var noSkillText = skillUI.m_noskillText;
+                if (noSkillText == null)
+                {
+                    DebugLogger.Log("[PartnerPanel] No-skill label: m_noskillText was null");
+                    return fallback;
+                }
+
+                string noSkillRendered = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(noSkillText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(noSkillRendered) || TextUtilities.IsPlaceholderText(noSkillRendered))
+                {
+                    DebugLogger.Log($"[PartnerPanel] No-skill label: m_noskillText.text unusable: {TextUtilities.DescribeUnusable(noSkillRendered)}");
+                    return fallback;
+                }
+
+                return noSkillRendered;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[PartnerPanel] No-skill label read failed: {ex.Message}");
+                return fallback;
+            }
+        }
+
+        private uPartnerAttackPanelSkill GetSelectedSkillRow(
+            uPartnerAttackPanelCommand command,
+            int index,
+            string context)
+        {
+            try
+            {
+                if (command == null)
+                {
+                    DebugLogger.Log($"[PartnerPanel] No-skill row ({context}): attack command was null");
+                    return null;
+                }
+
+                var skillCtrl = command.m_SkillCtrl;
+                if (skillCtrl == null)
+                {
+                    DebugLogger.Log($"[PartnerPanel] No-skill row ({context}): m_SkillCtrl was null");
+                    return null;
+                }
+
+                var skills = skillCtrl.m_Skill;
+                if (skills == null)
+                {
+                    DebugLogger.Log($"[PartnerPanel] No-skill row ({context}): m_SkillCtrl.m_Skill was null");
+                    return null;
+                }
+
+                if (index < 0 || index >= skills.Length)
+                {
+                    DebugLogger.Log($"[PartnerPanel] No-skill row ({context}): index {index} was outside m_SkillCtrl.m_Skill");
+                    return null;
+                }
+
+                var skill = skills[index];
+                if (skill == null)
+                    DebugLogger.Log($"[PartnerPanel] No-skill row ({context}): m_SkillCtrl.m_Skill[{index}] was null");
+                return skill;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[PartnerPanel] No-skill row ({context}) read failed: {ex.Message}");
                 return null;
             }
         }
@@ -557,25 +685,19 @@ namespace DigimonNOAccess
                 parts.Add(digimonInfo);
 
             // Get generation info
-            var generationText = genealogy.m_GenerationText;
-            if (generationText != null)
+            string gen = GetHistoryFieldText(genealogy, true, false, null);
+            if (!string.IsNullOrEmpty(gen))
             {
-                string gen = generationText.text;
-                if (!string.IsNullOrEmpty(gen))
-                {
-                    parts.Add($"Generation {gen}");
-                }
+                string generationUnit = GetHistoryFieldText(genealogy, true, true, "Generation");
+                parts.Add($"{generationUnit} {gen}");
             }
 
             // Get time spent info
-            var spendDayText = genealogy.m_SpendDayText;
-            if (spendDayText != null)
+            string days = GetHistoryFieldText(genealogy, false, false, null);
+            if (!string.IsNullOrEmpty(days))
             {
-                string days = spendDayText.text;
-                if (!string.IsNullOrEmpty(days))
-                {
-                    parts.Add($"{days} days");
-                }
+                string dayUnit = GetHistoryFieldText(genealogy, false, true, "days");
+                parts.Add($"{days} {dayUnit}");
             }
 
             // Get evolution count
@@ -586,6 +708,48 @@ namespace DigimonNOAccess
             }
 
             return parts.Count > 0 ? string.Join(", ", parts) : "Evolution history";
+        }
+
+        private string GetHistoryFieldText(uHistoryUI genealogy, bool generation, bool unit, string fallback)
+        {
+            string fieldName = generation
+                ? (unit ? "m_GenerationUnit" : "m_GenerationText")
+                : (unit ? "m_SpendDayUnit" : "m_SpendDayText");
+
+            try
+            {
+                if (genealogy == null)
+                {
+                    DebugLogger.Log($"[PartnerPanel] History text {fieldName}: genealogy UI was null");
+                    return fallback;
+                }
+
+                UnityEngine.UI.Text textComponent;
+                if (generation)
+                    textComponent = unit ? genealogy.m_GenerationUnit : genealogy.m_GenerationText;
+                else
+                    textComponent = unit ? genealogy.m_SpendDayUnit : genealogy.m_SpendDayText;
+
+                if (textComponent == null)
+                {
+                    DebugLogger.Log($"[PartnerPanel] History text: {fieldName} was null");
+                    return fallback;
+                }
+
+                string rendered = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(textComponent.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(rendered) || TextUtilities.IsPlaceholderText(rendered))
+                {
+                    DebugLogger.Log($"[PartnerPanel] History text: {fieldName}.text unusable: {TextUtilities.DescribeUnusable(rendered)}");
+                    return fallback;
+                }
+
+                return rendered;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[PartnerPanel] History text {fieldName} read failed: {ex.Message}");
+                return fallback;
+            }
         }
 
         private void CheckPartnerChange()
@@ -799,8 +963,11 @@ namespace DigimonNOAccess
                             catch { }
 
                             string fullInfo = null;
-                            if (skillCtrl?.m_Skill != null && slotIndex >= 0 && slotIndex < skillCtrl.m_Skill.Length)
-                                fullInfo = GetSkillFullInfo(skillCtrl.m_Skill[slotIndex]);
+                            uPartnerAttackPanelSkill selectedSkill = GetSelectedSkillRow(command, slotIndex, "skill selection exit");
+                            if (selectedSkill != null)
+                            {
+                                fullInfo = GetSkillFullInfo(selectedSkill);
+                            }
 
                             string slotAnnouncement;
                             if (!string.IsNullOrEmpty(fullInfo))
@@ -819,7 +986,7 @@ namespace DigimonNOAccess
                             }
                             else
                             {
-                                slotAnnouncement = $"No skill set, {slotIndex + 1} of {totalSlots}";
+                                slotAnnouncement = $"{GetNoSkillText(selectedSkill)}, {slotIndex + 1} of {totalSlots}";
                             }
                             ScreenReader.Say(slotAnnouncement);
                         }
@@ -874,9 +1041,10 @@ namespace DigimonNOAccess
 
                     // Get full skill info with Power/MP/Range
                     string fullInfo = null;
-                    if (skillCtrl?.m_Skill != null && currentCursor >= 0 && currentCursor < skillCtrl.m_Skill.Length)
+                    uPartnerAttackPanelSkill selectedSkill = GetSelectedSkillRow(command, currentCursor, "attack cursor");
+                    if (selectedSkill != null)
                     {
-                        fullInfo = GetSkillFullInfo(skillCtrl.m_Skill[currentCursor]);
+                        fullInfo = GetSkillFullInfo(selectedSkill);
                     }
 
                     string content;
@@ -907,10 +1075,11 @@ namespace DigimonNOAccess
                             if (!string.IsNullOrEmpty(captionText))
                                 lockMsg = TextUtilities.StripRichTextTags(captionText);
                         }
+                        string noSkillText = GetNoSkillText(selectedSkill);
                         if (!string.IsNullOrEmpty(lockMsg))
-                            content = $"No skill set, {currentCursor + 1} of {totalSlots}. {lockMsg}";
+                            content = $"{noSkillText}, {currentCursor + 1} of {totalSlots}. {lockMsg}";
                         else
-                            content = $"No skill set, {currentCursor + 1} of {totalSlots}";
+                            content = $"{noSkillText}, {currentCursor + 1} of {totalSlots}";
                     }
 
                     ScreenReader.Say(content);
@@ -1173,11 +1342,11 @@ namespace DigimonNOAccess
             {
                 string nature = ReadTextSafe(genelogyInfo.m_Nature);
                 if (!string.IsNullOrEmpty(nature))
-                    parts.Add($"Nature {nature}");
+                    parts.Add($"{GetGenealogyTitle(genelogyInfo, false, true, "Nature")} {nature}");
 
                 string property = ReadTextSafe(genelogyInfo.m_Property);
                 if (!string.IsNullOrEmpty(property))
-                    parts.Add($"Attribute {property}");
+                    parts.Add($"{GetGenealogyTitle(genelogyInfo, false, false, "Attribute")} {property}");
 
                 string desc = ReadTextSafe(genelogyInfo.m_Description);
                 if (!string.IsNullOrEmpty(desc))
@@ -1201,11 +1370,11 @@ namespace DigimonNOAccess
                 // Nature and attribute for the evo target
                 string nature = ReadTextSafe(genelogyInfo.m_Nature_Evo);
                 if (!string.IsNullOrEmpty(nature))
-                    parts.Add($"Nature {nature}");
+                    parts.Add($"{GetGenealogyTitle(genelogyInfo, true, true, "Nature")} {nature}");
 
                 string property = ReadTextSafe(genelogyInfo.m_Property_Evo);
                 if (!string.IsNullOrEmpty(property))
-                    parts.Add($"Attribute {property}");
+                    parts.Add($"{GetGenealogyTitle(genelogyInfo, true, false, "Attribute")} {property}");
 
                 // Description (shared field)
                 string desc = ReadTextSafe(genelogyInfo.m_Description);
@@ -1219,6 +1388,52 @@ namespace DigimonNOAccess
             }
 
             return parts.Count > 0 ? string.Join(", ", parts) : null;
+        }
+
+        private string GetGenealogyTitle(
+            uGenelogyInformationUI genelogyInfo,
+            bool evolution,
+            bool nature,
+            string fallback)
+        {
+            string fieldName = evolution
+                ? (nature ? "m_NatureTitle_Evo" : "m_PropertyTitle_Evo")
+                : (nature ? "m_NatureTitle" : "m_PropertyTitle");
+
+            try
+            {
+                if (genelogyInfo == null)
+                {
+                    DebugLogger.Log($"[PartnerPanel] Genealogy label {fieldName}: m_GenelogyInfo was null");
+                    return fallback;
+                }
+
+                UnityEngine.UI.Text title;
+                if (evolution)
+                    title = nature ? genelogyInfo.m_NatureTitle_Evo : genelogyInfo.m_PropertyTitle_Evo;
+                else
+                    title = nature ? genelogyInfo.m_NatureTitle : genelogyInfo.m_PropertyTitle;
+
+                if (title == null)
+                {
+                    DebugLogger.Log($"[PartnerPanel] Genealogy label: {fieldName} was null");
+                    return fallback;
+                }
+
+                string rendered = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(title.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(rendered) || TextUtilities.IsPlaceholderText(rendered))
+                {
+                    DebugLogger.Log($"[PartnerPanel] Genealogy label: {fieldName}.text unusable: {TextUtilities.DescribeUnusable(rendered)}");
+                    return fallback;
+                }
+
+                return rendered;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[PartnerPanel] Genealogy label {fieldName} read failed: {ex.Message}");
+                return fallback;
+            }
         }
 
         private string GetEvolutionConditions(Il2Cpp.uGenelogyInformationUI genelogyInfo)
@@ -1300,17 +1515,17 @@ namespace DigimonNOAccess
             return state switch
             {
                 uPartnerPanel.State.Top => "Overview",
-                uPartnerPanel.State.Status => "Status",
-                uPartnerPanel.State.Attack => "Moves",
-                uPartnerPanel.State.Tactics => "Tactics",
-                uPartnerPanel.State.History => "History",
-                _ => "Partner"
+                uPartnerPanel.State.Status => GetCommandName(0),
+                uPartnerPanel.State.Attack => GetCommandName(1),
+                uPartnerPanel.State.Tactics => GetCommandName(2),
+                uPartnerPanel.State.History => GetCommandName(3),
+                _ => GetPanelTitle()
             };
         }
 
         private string GetCommandName(int commandIndex)
         {
-            return commandIndex switch
+            string fallback = commandIndex switch
             {
                 0 => "Status",
                 1 => "Moves",
@@ -1318,6 +1533,119 @@ namespace DigimonNOAccess
                 3 => "History",
                 _ => AnnouncementBuilder.FallbackItem("Option", commandIndex)
             };
+
+            if (commandIndex < 0 || commandIndex >= TOP_COMMAND_COUNT)
+            {
+                DebugLogger.Log($"[PartnerPanel] Top command label: index {commandIndex} has no rendered command field");
+                return fallback;
+            }
+
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log($"[PartnerPanel] Top command label {commandIndex}: partner panel was null");
+                    return fallback;
+                }
+
+                var topPanel = _panel.m_TopPanel;
+                if (topPanel == null)
+                {
+                    DebugLogger.Log($"[PartnerPanel] Top command label {commandIndex}: m_TopPanel was null");
+                    return fallback;
+                }
+
+                UnityEngine.UI.Text commandText;
+                string fieldName;
+                switch (commandIndex)
+                {
+                    case 0:
+                        commandText = topPanel.m_statusLangText;
+                        fieldName = "m_statusLangText";
+                        break;
+                    case 1:
+                        commandText = topPanel.m_attackLangText;
+                        fieldName = "m_attackLangText";
+                        break;
+                    case 2:
+                        commandText = topPanel.m_tacticsLangText;
+                        fieldName = "m_tacticsLangText";
+                        break;
+                    default:
+                        commandText = topPanel.m_historyLangText;
+                        fieldName = "m_historyLangText";
+                        break;
+                }
+
+                if (commandText == null)
+                {
+                    DebugLogger.Log($"[PartnerPanel] Top command label {commandIndex}: {fieldName} was null");
+                    return fallback;
+                }
+
+                string rendered = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(commandText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(rendered) || TextUtilities.IsPlaceholderText(rendered))
+                {
+                    DebugLogger.Log($"[PartnerPanel] Top command label {commandIndex}: {fieldName}.text unusable: {TextUtilities.DescribeUnusable(rendered)}");
+                    return fallback;
+                }
+
+                return rendered;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[PartnerPanel] Top command label {commandIndex} read failed: {ex.Message}");
+                return fallback;
+            }
+        }
+
+        private string GetPanelTitle()
+        {
+            const string fallback = "Partner";
+
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log("[PartnerPanel] Panel title: partner panel was null");
+                    return fallback;
+                }
+
+                var topPanel = _panel.m_TopPanel;
+                if (topPanel == null)
+                {
+                    DebugLogger.Log("[PartnerPanel] Panel title: m_TopPanel was null");
+                    return fallback;
+                }
+
+                var headLine = topPanel.m_HeadLine;
+                if (headLine == null)
+                {
+                    DebugLogger.Log("[PartnerPanel] Panel title: m_TopPanel.m_HeadLine was null");
+                    return fallback;
+                }
+
+                var titleText = headLine.m_Text;
+                if (titleText == null)
+                {
+                    DebugLogger.Log("[PartnerPanel] Panel title: m_TopPanel.m_HeadLine.m_Text was null");
+                    return fallback;
+                }
+
+                string rendered = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(titleText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(rendered) || TextUtilities.IsPlaceholderText(rendered))
+                {
+                    DebugLogger.Log($"[PartnerPanel] Panel title: m_TopPanel.m_HeadLine.m_Text.text unusable: {TextUtilities.DescribeUnusable(rendered)}");
+                    return fallback;
+                }
+
+                return rendered;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[PartnerPanel] Panel title read failed: {ex.Message}");
+                return fallback;
+            }
         }
 
         private string GetPartnerName()
@@ -1364,7 +1692,7 @@ namespace DigimonNOAccess
             string tabName = GetTabName(state);
             string partnerName = GetPartnerName();
 
-            string announcement = $"Partner, {tabName}";
+            string announcement = $"{GetPanelTitle()}, {tabName}";
             if (!string.IsNullOrEmpty(partnerName))
             {
                 announcement += $". {partnerName}";

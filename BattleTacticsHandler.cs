@@ -201,20 +201,39 @@ namespace DigimonNOAccess
         /// </summary>
         private string GetTabName(int index)
         {
-            // Try the parent panel's title text (updates when switching tabs)
+            string fallback = index >= 0 && index < TabNames.Length
+                ? TabNames[index]
+                : AnnouncementBuilder.FallbackItem("Tab", index);
+
             try
             {
-                string title = _cachedTacticsPanel?.m_titleLangText?.text;
-                if (!string.IsNullOrWhiteSpace(title) && !title.Contains("ランゲージ"))
-                    return TextUtilities.StripRichTextTags(title);
+                if (_cachedTacticsPanel == null)
+                {
+                    DebugLogger.Log("[BattleTacticsHandler] Tab title: cached tactics panel was null");
+                    return fallback;
+                }
+
+                var titleText = _cachedTacticsPanel.m_titleLangText;
+                if (titleText == null)
+                {
+                    DebugLogger.Log("[BattleTacticsHandler] Tab title: m_titleLangText was null");
+                    return fallback;
+                }
+
+                string title = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(titleText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(title) || TextUtilities.IsPlaceholderText(title))
+                {
+                    DebugLogger.Log($"[BattleTacticsHandler] Tab title: m_titleLangText.text unusable: {TextUtilities.DescribeUnusable(title)}");
+                    return fallback;
+                }
+
+                return title;
             }
-            catch { }
-
-            // Use known tab names
-            if (index >= 0 && index < TabNames.Length)
-                return TabNames[index];
-
-            return AnnouncementBuilder.FallbackItem("Tab", index);
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[BattleTacticsHandler] Tab title read failed: {ex.Message}");
+                return fallback;
+            }
         }
 
         /// <summary>
@@ -260,7 +279,7 @@ namespace DigimonNOAccess
             }
             catch { }
 
-            return "Select enemy target";
+            return GetCaptionText("Select enemy target");
         }
 
         /// <summary>
@@ -269,7 +288,7 @@ namespace DigimonNOAccess
         private void AnnounceTargetSelection()
         {
             _lastTargetName = "";
-            string announcement = "Select target";
+            string announcement = GetCaptionText("Select target");
 
             try
             {
@@ -284,6 +303,39 @@ namespace DigimonNOAccess
             catch { }
 
             ScreenReader.Say(announcement);
+        }
+
+        private string GetCaptionText(string fallback)
+        {
+            try
+            {
+                if (_cachedTacticsPanel == null)
+                {
+                    DebugLogger.Log("[BattleTacticsHandler] Target caption: cached tactics panel was null");
+                    return fallback;
+                }
+
+                var captionText = _cachedTacticsPanel.m_captionLangText;
+                if (captionText == null)
+                {
+                    DebugLogger.Log("[BattleTacticsHandler] Target caption: m_captionLangText was null");
+                    return fallback;
+                }
+
+                string caption = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(captionText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(caption) || TextUtilities.IsPlaceholderText(caption))
+                {
+                    DebugLogger.Log($"[BattleTacticsHandler] Target caption: m_captionLangText.text unusable: {TextUtilities.DescribeUnusable(caption)}");
+                    return fallback;
+                }
+
+                return caption;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[BattleTacticsHandler] Target caption read failed: {ex.Message}");
+                return fallback;
+            }
         }
 
         /// <summary>

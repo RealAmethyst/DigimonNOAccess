@@ -58,7 +58,7 @@ namespace DigimonNOAccess
             if (_panel == null)
                 return;
 
-            ScreenReader.Say("Storage");
+            ScreenReader.Say(GetStorageCaption());
 
             // Determine which side is initially focused and announce it
             try
@@ -73,7 +73,8 @@ namespace DigimonNOAccess
             var focusedPanel = leftFocused ? _panel.m_itemPanelL : _panel.m_itemPanelR;
             if (focusedPanel != null)
             {
-                string sectionName = GetStorageTypeName(focusedPanel.m_storageType);
+                var focusedSide = leftFocused ? uStoragePanelInfo.Type.LEFT : uStoragePanelInfo.Type.RIGHT;
+                string sectionName = GetStorageTypeName(focusedPanel, focusedSide);
                 string itemInfo = GetItemInfo(focusedPanel);
                 int cursor = focusedPanel.m_selectNo;
                 int total = GetItemCount(focusedPanel);
@@ -130,7 +131,7 @@ namespace DigimonNOAccess
 
                 if (leftChanged || leftJustFocused)
                 {
-                    AnnounceItemChange(leftPanel, "Left", leftJustFocused);
+                    AnnounceItemChange(leftPanel, uStoragePanelInfo.Type.LEFT, "Left", leftJustFocused);
                     _lastCursorL = cursorL;
                 }
             }
@@ -144,13 +145,17 @@ namespace DigimonNOAccess
 
                 if (rightChanged || rightJustFocused)
                 {
-                    AnnounceItemChange(rightPanel, "Right", rightJustFocused);
+                    AnnounceItemChange(rightPanel, uStoragePanelInfo.Type.RIGHT, "Right", rightJustFocused);
                     _lastCursorR = cursorR;
                 }
             }
         }
 
-        private void AnnounceItemChange(uStoragePanelItem panel, string side, bool includeSectionName)
+        private void AnnounceItemChange(
+            uStoragePanelItem panel,
+            uStoragePanelInfo.Type panelSide,
+            string side,
+            bool includeSectionName)
         {
             if (panel == null)
                 return;
@@ -159,7 +164,7 @@ namespace DigimonNOAccess
             {
                 int cursor = panel.m_selectNo;
                 int total = GetItemCount(panel);
-                string sectionName = GetStorageTypeName(panel.m_storageType);
+                string sectionName = GetStorageTypeName(panel, panelSide);
                 string itemInfo = GetItemInfo(panel);
 
                 string announcement;
@@ -190,20 +195,23 @@ namespace DigimonNOAccess
             var leftPanel = _panel?.m_itemPanelL;
             var rightPanel = _panel?.m_itemPanelR;
 
-            string leftInfo = GetPanelSummary(leftPanel, "Left");
-            string rightInfo = GetPanelSummary(rightPanel, "Right");
+            string leftInfo = GetPanelSummary(leftPanel, uStoragePanelInfo.Type.LEFT, "Left");
+            string rightInfo = GetPanelSummary(rightPanel, uStoragePanelInfo.Type.RIGHT, "Right");
 
-            return $"Storage. {leftInfo}. {rightInfo}";
+            return $"{GetStorageCaption()}. {leftInfo}. {rightInfo}";
         }
 
-        private string GetPanelSummary(uStoragePanelItem panel, string side)
+        private string GetPanelSummary(
+            uStoragePanelItem panel,
+            uStoragePanelInfo.Type panelSide,
+            string side)
         {
             if (panel == null)
                 return $"{side} panel unavailable";
 
             try
             {
-                string storageType = GetStorageTypeName(panel.m_storageType);
+                string storageType = GetStorageTypeName(panel, panelSide);
                 int total = GetItemCount(panel);
 
                 if (total == 0)
@@ -222,7 +230,69 @@ namespace DigimonNOAccess
             }
         }
 
-        private string GetStorageTypeName(ItemStorageData.StorageType type)
+        private string GetStorageTypeName(uStoragePanelItem itemPanel, uStoragePanelInfo.Type panelSide)
+        {
+            string fallback = "Items";
+
+            try
+            {
+                if (itemPanel == null)
+                {
+                    DebugLogger.Log("[StoragePanel] Section title: item panel was null");
+                    return fallback;
+                }
+
+                fallback = GetStorageTypeFallback(itemPanel.m_storageType);
+
+                if (_panel == null)
+                {
+                    DebugLogger.Log("[StoragePanel] Section title: _panel was null");
+                    return fallback;
+                }
+
+                var infoPanel = _panel.m_infoPanel;
+                if (infoPanel == null)
+                {
+                    DebugLogger.Log("[StoragePanel] Section title: m_infoPanel was null");
+                    return fallback;
+                }
+
+                var titleTexts = infoPanel.m_titleText;
+                if (titleTexts == null)
+                {
+                    DebugLogger.Log("[StoragePanel] Section title: m_infoPanel.m_titleText was null");
+                    return fallback;
+                }
+
+                int index = (int)panelSide;
+                if (index < 0 || index >= titleTexts.Length)
+                {
+                    DebugLogger.Log($"[StoragePanel] Section title: m_titleText index {index} was out of range");
+                    return fallback;
+                }
+
+                var titleText = titleTexts[index];
+                if (titleText == null)
+                {
+                    DebugLogger.Log($"[StoragePanel] Section title: m_titleText[{index}] was null");
+                    return fallback;
+                }
+
+                string title = (TextUtilities.StripRichTextTags(titleText.text) ?? "").Trim();
+                if (!string.IsNullOrWhiteSpace(title))
+                    return title;
+
+                DebugLogger.Log($"[StoragePanel] Section title: m_titleText[{index}].text was empty");
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[StoragePanel] Error reading m_infoPanel.m_titleText: {ex.Message}");
+            }
+
+            return fallback;
+        }
+
+        private static string GetStorageTypeFallback(ItemStorageData.StorageType type)
         {
             return type switch
             {
@@ -255,15 +325,46 @@ namespace DigimonNOAccess
         {
             try
             {
-                var paramData = panel?.GetSelectItemParam();
+                if (panel == null)
+                {
+                    DebugLogger.Log("[StoragePanel] Item name: item panel was null");
+                    return "Unknown Item";
+                }
+
+                var paramData = panel.GetSelectItemParam();
                 if (paramData != null)
                 {
-                    string name = paramData.GetName();
-                    if (!string.IsNullOrEmpty(name))
-                    {
+                    string name = (TextUtilities.StripRichTextTags(paramData.GetName()) ?? "").Trim();
+                    if (!string.IsNullOrWhiteSpace(name))
                         return name;
-                    }
+
+                    DebugLogger.Log("[StoragePanel] Item name: ParameterItemData.GetName() was empty");
                 }
+                else
+                {
+                    DebugLogger.Log("[StoragePanel] Item name: GetSelectItemParam() returned null");
+                }
+
+                int logicalIndex = panel.selectNo;
+                var itemParts = panel.GetSelectItemParts(logicalIndex);
+                if (itemParts == null)
+                {
+                    DebugLogger.Log($"[StoragePanel] Item name: GetSelectItemParts({logicalIndex}) returned null");
+                    return "Unknown Item";
+                }
+
+                var nameText = itemParts.m_name;
+                if (nameText == null)
+                {
+                    DebugLogger.Log("[StoragePanel] Item name: selected uItemParts.m_name was null");
+                    return "Unknown Item";
+                }
+
+                string renderedName = (TextUtilities.StripRichTextTags(nameText.text) ?? "").Trim();
+                if (!string.IsNullOrWhiteSpace(renderedName))
+                    return renderedName;
+
+                DebugLogger.Log("[StoragePanel] Item name: selected uItemParts.m_name.text was empty");
             }
             catch (System.Exception ex)
             {
@@ -271,6 +372,44 @@ namespace DigimonNOAccess
             }
 
             return "Unknown Item";
+        }
+
+        private string GetStorageCaption()
+        {
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log("[StoragePanel] Caption: _panel was null");
+                    return "Storage";
+                }
+
+                var captionPanel = _panel.m_captionPanel;
+                if (captionPanel == null)
+                {
+                    DebugLogger.Log("[StoragePanel] Caption: m_captionPanel was null");
+                    return "Storage";
+                }
+
+                var text = captionPanel.m_text;
+                if (text == null)
+                {
+                    DebugLogger.Log("[StoragePanel] Caption: m_captionPanel.m_text was null");
+                    return "Storage";
+                }
+
+                string caption = (TextUtilities.StripRichTextTags(text.text) ?? "").Trim();
+                if (!string.IsNullOrWhiteSpace(caption))
+                    return caption;
+
+                DebugLogger.Log("[StoragePanel] Caption: m_captionPanel.m_text.text was empty");
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[StoragePanel] Error reading m_captionPanel.m_text.text: {ex.Message}");
+            }
+
+            return "Storage";
         }
 
         private void UpdateLastCursors()

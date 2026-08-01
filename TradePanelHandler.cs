@@ -124,10 +124,10 @@ namespace DigimonNOAccess
         private string BuildAnnouncement(bool includeMenuTitle)
         {
             if (_panel == null)
-                return "Stock Market";
+                return GetTradeTitleText();
 
             var state = _panel.m_state;
-            string prefix = includeMenuTitle ? "Stock Market. " : "";
+            string prefix = includeMenuTitle ? $"{GetTradeTitleText()}. " : "";
 
             switch (state)
             {
@@ -143,14 +143,16 @@ namespace DigimonNOAccess
                     string item = GetSelectedItemName(uTradePanelCommand.State.Buy);
                     int num = GetBuyNum();
                     string quantity = num >= 0 ? BuildBuyQuantityText(num) : "";
+                    string action = GetTradeActionText(state);
                     return string.IsNullOrEmpty(quantity)
-                        ? $"{prefix}Buy {item}"
-                        : $"{prefix}Buy {item}. {quantity}";
+                        ? $"{prefix}{action} {item}"
+                        : $"{prefix}{action} {item}. {quantity}";
                 }
                 case uTradePanelCommand.State.Sale:
                 {
                     string item = GetSelectedItemName(uTradePanelCommand.State.Sale);
-                    return $"{prefix}Sell {item}";
+                    string action = GetTradeActionText(state);
+                    return $"{prefix}{action} {item}";
                 }
                 case uTradePanelCommand.State.Wait:
                     return $"{prefix}Please wait";
@@ -210,24 +212,47 @@ namespace DigimonNOAccess
         private string GetMainItemText(int index)
         {
             if (index < 0)
+            {
+                DebugLogger.Log($"{LogTag} Item name: logical index {index} was invalid");
                 return AnnouncementBuilder.FallbackItem("Item", 0);
+            }
 
             try
             {
-                var contents = _panel?.m_tradeContents;
-                if (contents != null && index < contents.Length)
+                if (_panel == null)
                 {
-                    var content = contents[index];
-                    string name = GetContentName(content);
-                    if (!string.IsNullOrEmpty(name))
+                    DebugLogger.Log($"{LogTag} Item name: _panel was null");
+                    return AnnouncementBuilder.FallbackItem("Item", index);
+                }
+
+                var contents = _panel.m_tradeContents;
+                if (contents == null)
+                {
+                    DebugLogger.Log($"{LogTag} Item name: m_tradeContents was null");
+                    return AnnouncementBuilder.FallbackItem("Item", index);
+                }
+
+                if (index >= contents.Length)
+                {
+                    DebugLogger.Log($"{LogTag} Item name: m_tradeContents index {index} was out of range");
+                    return AnnouncementBuilder.FallbackItem("Item", index);
+                }
+
+                var content = contents[index];
+                string name = GetContentName(content, $"m_tradeContents[{index}]");
+                if (string.IsNullOrEmpty(name) && content != null)
+                {
+                    name = GetParameterItemName(content.id, $"m_tradeContents[{index}].id");
+                }
+
+                if (!string.IsNullOrEmpty(name))
+                {
+                    if (content.m_today != null && !string.IsNullOrEmpty(content.m_today.text))
                     {
-                        if (content.m_today != null && !string.IsNullOrEmpty(content.m_today.text))
-                        {
-                            string price = TextUtilities.StripRichTextTags(content.m_today.text);
-                            return $"{name}, {price} bits";
-                        }
-                        return name;
+                        string price = TextUtilities.StripRichTextTags(content.m_today.text);
+                        return $"{name}, {price} bits";
                     }
+                    return name;
                 }
             }
             catch (System.Exception ex)
@@ -257,7 +282,7 @@ namespace DigimonNOAccess
                         continue;
                     if (c.gameObject != null && !c.gameObject.activeInHierarchy)
                         continue;
-                    if (!string.IsNullOrEmpty(GetContentName(c)))
+                    if (!string.IsNullOrEmpty(GetContentName(c, $"m_tradeContents[{i}]")))
                         visible++;
                 }
                 return visible > 0 ? visible : contents.Length;
@@ -273,13 +298,35 @@ namespace DigimonNOAccess
         {
             try
             {
-                uint selectId = 0;
-                if (state == uTradePanelCommand.State.Buy && _panel?.m_tradePanelBuy != null)
-                    selectId = _panel.m_tradePanelBuy.m_selectId;
-                else if (state == uTradePanelCommand.State.Sale && _panel?.m_tradePanelSale != null)
-                    selectId = _panel.m_tradePanelSale.m_selectId;
+                if (_panel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Selected item: _panel was null");
+                    return "item";
+                }
 
-                var contents = _panel?.m_tradeContents;
+                uint selectId = 0;
+                if (state == uTradePanelCommand.State.Buy)
+                {
+                    var buyPanel = _panel.m_tradePanelBuy;
+                    if (buyPanel == null)
+                    {
+                        DebugLogger.Log($"{LogTag} Selected item: m_tradePanelBuy was null");
+                        return "item";
+                    }
+                    selectId = buyPanel.m_selectId;
+                }
+                else if (state == uTradePanelCommand.State.Sale)
+                {
+                    var salePanel = _panel.m_tradePanelSale;
+                    if (salePanel == null)
+                    {
+                        DebugLogger.Log($"{LogTag} Selected item: m_tradePanelSale was null");
+                        return "item";
+                    }
+                    selectId = salePanel.m_selectId;
+                }
+
+                var contents = _panel.m_tradeContents;
                 if (contents != null)
                 {
                     for (int i = 0; i < contents.Length; i++)
@@ -287,35 +334,165 @@ namespace DigimonNOAccess
                         var c = contents[i];
                         if (c != null && c.id == selectId)
                         {
-                            string name = GetContentName(c);
+                            string name = GetContentName(c, $"m_tradeContents[{i}]");
                             if (!string.IsNullOrEmpty(name))
                                 return name;
                         }
                     }
+
+                    string selectedParameterName = GetParameterItemName(selectId, "selected item ID");
+                    if (!string.IsNullOrEmpty(selectedParameterName))
+                        return selectedParameterName;
+
                     int cursorIdx = GetMainCursor();
                     if (cursorIdx >= 0 && cursorIdx < contents.Length)
                     {
-                        string name = GetContentName(contents[cursorIdx]);
+                        string name = GetContentName(contents[cursorIdx], $"m_tradeContents[{cursorIdx}]");
                         if (!string.IsNullOrEmpty(name))
                             return name;
                     }
+                }
+                else
+                {
+                    DebugLogger.Log($"{LogTag} Selected item: m_tradeContents was null");
+                    string selectedParameterName = GetParameterItemName(selectId, "selected item ID");
+                    if (!string.IsNullOrEmpty(selectedParameterName))
+                        return selectedParameterName;
                 }
             }
             catch (System.Exception ex)
             {
                 DebugLogger.Log($"{LogTag} Error getting selected item: {ex.Message}");
             }
+            DebugLogger.Log($"{LogTag} Selected item: localized name unavailable; using English fallback");
             return "item";
         }
 
-        private static string GetContentName(uTradeContents content)
+        private string GetParameterItemName(uint itemId, string context)
         {
-            if (content == null || content.m_name == null)
+            var itemParam = ParameterItemData.GetParam(itemId);
+            if (itemParam == null)
+            {
+                DebugLogger.Log($"{LogTag} Item name: ParameterItemData.GetParam({itemId}) returned null for {context}");
                 return null;
-            string name = content.m_name.text;
-            if (string.IsNullOrEmpty(name))
+            }
+
+            string name = (TextUtilities.StripRichTextTags(itemParam.GetName()) ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(name))
+                return name;
+
+            DebugLogger.Log($"{LogTag} Item name: ParameterItemData.GetName() was empty for {context}");
+            return null;
+        }
+
+        private string GetContentName(uTradeContents content, string context)
+        {
+            if (content == null)
+            {
+                DebugLogger.Log($"{LogTag} Item name: {context} was null");
                 return null;
-            return TextUtilities.StripRichTextTags(name);
+            }
+
+            var nameText = content.m_name;
+            if (nameText == null)
+            {
+                DebugLogger.Log($"{LogTag} Item name: {context}.m_name was null");
+                return null;
+            }
+
+            string name = (TextUtilities.StripRichTextTags(nameText.text) ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(name))
+                return name;
+
+            DebugLogger.Log($"{LogTag} Item name: {context}.m_name.text was empty");
+            return null;
+        }
+
+        private string GetTradeTitleText()
+        {
+            const string fallback = "Stock Market";
+
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Headline: _panel was null");
+                    return fallback;
+                }
+
+                var tradePanel = _panel.m_tradePanel;
+                if (tradePanel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Headline: m_tradePanel was null");
+                    return fallback;
+                }
+
+                var headline = tradePanel.m_tradePanelHeadLine;
+                if (headline == null)
+                {
+                    DebugLogger.Log($"{LogTag} Headline: m_tradePanel.m_tradePanelHeadLine was null");
+                    return fallback;
+                }
+
+                var text = headline.m_headLineText;
+                if (text == null)
+                {
+                    DebugLogger.Log($"{LogTag} Headline: m_tradePanelHeadLine.m_headLineText was null");
+                    return fallback;
+                }
+
+                string title = (TextUtilities.StripRichTextTags(text.text) ?? "").Trim();
+                if (!string.IsNullOrWhiteSpace(title))
+                    return title;
+
+                DebugLogger.Log($"{LogTag} Headline: m_tradePanelHeadLine.m_headLineText.text was empty");
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Error reading m_tradePanelHeadLine.m_headLineText.text: {ex.Message}");
+            }
+
+            return fallback;
+        }
+
+        private string GetTradeActionText(uTradePanelCommand.State state)
+        {
+            string fallback = state == uTradePanelCommand.State.Sale ? "Sell" : "Buy";
+
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Action caption: _panel was null");
+                    return fallback;
+                }
+
+                var caption = _panel.m_tradePanelCaption;
+                if (caption == null)
+                {
+                    DebugLogger.Log($"{LogTag} Action caption: m_tradePanelCaption was null");
+                    return fallback;
+                }
+
+                var text = caption.m_text;
+                if (text == null)
+                {
+                    DebugLogger.Log($"{LogTag} Action caption: m_tradePanelCaption.m_text was null");
+                    return fallback;
+                }
+
+                string action = (TextUtilities.StripRichTextTags(text.text) ?? "").Trim();
+                if (!string.IsNullOrWhiteSpace(action))
+                    return action;
+
+                DebugLogger.Log($"{LogTag} Action caption: m_tradePanelCaption.m_text.text was empty");
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Error reading m_tradePanelCaption.m_text.text: {ex.Message}");
+            }
+
+            return fallback;
         }
 
         public override void AnnounceStatus()

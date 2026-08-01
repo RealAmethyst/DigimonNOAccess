@@ -254,27 +254,65 @@ namespace DigimonNOAccess
 
         private string GetItemInfo()
         {
+            const string fallback = "Unknown Item";
+
+            if (_panel == null)
+            {
+                DebugLogger.Log($"{LogTag} Item name: m_panel was null");
+                return fallback;
+            }
+
             try
             {
-                var paramData = _panel?.GetSelectItemParam();
+                var paramData = _panel.GetSelectItemParam();
                 if (paramData != null)
                 {
-                    string name = paramData.GetName();
-                    if (!string.IsNullOrEmpty(name))
+                    string name = TextUtilities.StripRichTextTags(paramData.GetName())?.Trim();
+                    if (!string.IsNullOrWhiteSpace(name))
                     {
                         int qty = GetSelectedItemQuantity();
                         if (qty > 0)
                             return $"{qty} {name}";
                         return name;
                     }
+
+                    DebugLogger.Log($"{LogTag} Item name: ParameterItemData.GetName() was empty");
                 }
+                else
+                {
+                    DebugLogger.Log($"{LogTag} Item name: GetSelectItemParam() returned null");
+                }
+
+                int logicalIndex = _panel.m_selectNo;
+                var itemParts = _panel.GetSelectItemParts(logicalIndex);
+                if (itemParts == null)
+                {
+                    DebugLogger.Log($"{LogTag} Item name: GetSelectItemParts({logicalIndex}) returned null");
+                    return fallback;
+                }
+
+                var nameText = itemParts.m_name;
+                if (nameText == null)
+                {
+                    DebugLogger.Log($"{LogTag} Item name: selected uItemParts.m_name was null");
+                    return fallback;
+                }
+
+                string renderedName = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(nameText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(renderedName) || TextUtilities.IsPlaceholderText(renderedName))
+                {
+                    DebugLogger.Log($"{LogTag} Item name: selected uItemParts.m_name.text unusable: {TextUtilities.DescribeUnusable(renderedName)}");
+                    return fallback;
+                }
+
+                return renderedName;
             }
             catch (System.Exception ex)
             {
                 DebugLogger.Log($"{LogTag} Error getting item info: {ex.Message}");
             }
 
-            return "Unknown Item";
+            return fallback;
         }
 
         private int GetSelectedItemQuantity()

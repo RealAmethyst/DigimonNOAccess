@@ -282,12 +282,92 @@ namespace DigimonNOAccess
         {
             return state switch
             {
-                uSavePanel.State.SAVE_CHECK => "Confirm save?",
-                uSavePanel.State.LOAD_CHECK => "Confirm load?",
-                uSavePanel.State.SAVE => "Saving...",
-                uSavePanel.State.LOAD => "Loading...",
+                uSavePanel.State.SAVE_CHECK => GetConfirmationText(state, "Confirm save?"),
+                uSavePanel.State.LOAD_CHECK => GetConfirmationText(state, "Confirm load?"),
+                uSavePanel.State.SAVE => GetSaveLoadCaptionText(state, "Saving..."),
+                uSavePanel.State.LOAD => GetSaveLoadCaptionText(state, "Loading..."),
                 _ => ""
             };
+        }
+
+        private string GetConfirmationText(uSavePanel.State state, string fallback)
+        {
+            try
+            {
+                if (_parentPanel == null)
+                {
+                    DebugLogger.Log($"[SavePanel] {state}: parent panel is null");
+                    return fallback;
+                }
+
+                var window = _parentPanel.m_YesNoWindow;
+                if (window == null)
+                {
+                    DebugLogger.Log($"[SavePanel] {state}: m_YesNoWindow is null");
+                    return fallback;
+                }
+
+                var message = window.m_message;
+                if (message == null)
+                {
+                    DebugLogger.Log($"[SavePanel] {state}: m_YesNoWindow.m_message is null");
+                    return fallback;
+                }
+
+                string text = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(message.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(text) || TextUtilities.IsPlaceholderText(text))
+                {
+                    DebugLogger.Log($"[SavePanel] {state}: m_YesNoWindow.m_message.text is empty");
+                    return fallback;
+                }
+
+                return text;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[SavePanel] {state}: confirmation text read failed: {ex.Message}");
+                return fallback;
+            }
+        }
+
+        private string GetSaveLoadCaptionText(uSavePanel.State state, string fallback)
+        {
+            try
+            {
+                if (_parentPanel == null)
+                {
+                    DebugLogger.Log($"[SavePanel] {state}: parent panel is null");
+                    return fallback;
+                }
+
+                var caption = _parentPanel.m_uLoadPanelCaption;
+                if (caption == null)
+                {
+                    DebugLogger.Log($"[SavePanel] {state}: m_uLoadPanelCaption is null");
+                    return fallback;
+                }
+
+                var captionText = caption.m_Caption;
+                if (captionText == null)
+                {
+                    DebugLogger.Log($"[SavePanel] {state}: m_uLoadPanelCaption.m_Caption is null");
+                    return fallback;
+                }
+
+                string text = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(captionText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(text) || TextUtilities.IsPlaceholderText(text))
+                {
+                    DebugLogger.Log($"[SavePanel] {state}: m_uLoadPanelCaption.m_Caption.text is empty");
+                    return fallback;
+                }
+
+                return text;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[SavePanel] {state}: caption text read failed: {ex.Message}");
+                return fallback;
+            }
         }
 
         private int GetCursorPosition()
@@ -323,13 +403,31 @@ namespace DigimonNOAccess
         {
             try
             {
-                var headline = Object.FindObjectOfType<uSavePanelHeadLine>();
-                if (headline?.m_HeadLine != null)
+                if (_parentPanel == null)
                 {
-                    string text = headline.m_HeadLine.text;
-                    if (!string.IsNullOrEmpty(text))
-                        return text;
+                    DebugLogger.Log("[SavePanel] Headline: parent panel is null");
+                    return "Save/Load Menu";
                 }
+
+                var headline = _parentPanel.m_uLoadPanelHeadLine;
+                if (headline == null)
+                {
+                    DebugLogger.Log("[SavePanel] Headline: m_uLoadPanelHeadLine is null");
+                    return "Save/Load Menu";
+                }
+
+                var headlineText = headline.m_HeadLine;
+                if (headlineText == null)
+                {
+                    DebugLogger.Log("[SavePanel] Headline: m_uLoadPanelHeadLine.m_HeadLine is null");
+                    return "Save/Load Menu";
+                }
+
+                string text = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(headlineText.text))?.Trim();
+                if (!string.IsNullOrWhiteSpace(text))
+                    return text;
+
+                DebugLogger.Log("[SavePanel] Headline: m_uLoadPanelHeadLine.m_HeadLine.text is empty");
             }
             catch (System.Exception ex)
             {
@@ -343,19 +441,40 @@ namespace DigimonNOAccess
         {
             try
             {
-                var items = _panel?.m_items;
-                if (items != null && slotIndex >= 0 && slotIndex < items.Length)
+                if (_panel == null)
                 {
-                    var item = items[slotIndex];
-                    if (item != null)
-                    {
-                        var saveItem = item.TryCast<uSavePanelItemSaveItem>();
-                        if (saveItem != null)
-                        {
-                            return GetSaveItemDetails(saveItem);
-                        }
-                    }
+                    DebugLogger.Log("[SavePanel] Slot: panel is null");
+                    return AnnouncementBuilder.FallbackItem("Slot", slotIndex);
                 }
+
+                var items = _panel.m_items;
+                if (items == null)
+                {
+                    DebugLogger.Log("[SavePanel] Slot: m_items is null");
+                    return AnnouncementBuilder.FallbackItem("Slot", slotIndex);
+                }
+
+                if (slotIndex < 0 || slotIndex >= items.Length)
+                {
+                    DebugLogger.Log($"[SavePanel] Slot: index {slotIndex} is outside m_items");
+                    return AnnouncementBuilder.FallbackItem("Slot", slotIndex);
+                }
+
+                var item = items[slotIndex];
+                if (item == null)
+                {
+                    DebugLogger.Log($"[SavePanel] Slot: m_items[{slotIndex}] is null");
+                    return AnnouncementBuilder.FallbackItem("Slot", slotIndex);
+                }
+
+                var saveItem = item.TryCast<uSavePanelItemSaveItem>();
+                if (saveItem == null)
+                {
+                    DebugLogger.Log($"[SavePanel] Slot: m_items[{slotIndex}] is not a uSavePanelItemSaveItem");
+                    return AnnouncementBuilder.FallbackItem("Slot", slotIndex);
+                }
+
+                return GetSaveItemDetails(saveItem);
             }
             catch (System.Exception ex)
             {
@@ -371,12 +490,26 @@ namespace DigimonNOAccess
             {
                 // Check for empty slot
                 var noDataText = item.m_NoDataText;
-                if (noDataText != null && noDataText.gameObject.activeInHierarchy)
+                if (noDataText == null)
                 {
-                    string noData = noDataText.text;
-                    if (!string.IsNullOrEmpty(noData))
-                        return noData;
-                    return "No Data";
+                    DebugLogger.Log("[SavePanel] Slot: m_NoDataText is null");
+                }
+                else
+                {
+                    var noDataObject = noDataText.gameObject;
+                    if (noDataObject == null)
+                    {
+                        DebugLogger.Log("[SavePanel] Slot: m_NoDataText.gameObject is null");
+                    }
+                    else if (noDataObject.activeInHierarchy)
+                    {
+                        string noData = TextUtilities.StripRichTextTags(noDataText.text)?.Trim();
+                        if (!string.IsNullOrWhiteSpace(noData))
+                            return noData;
+
+                        DebugLogger.Log("[SavePanel] Slot: m_NoDataText.text is empty");
+                        return "No Data";
+                    }
                 }
 
                 // Build slot details from available text fields
@@ -386,9 +519,36 @@ namespace DigimonNOAccess
                 if (playerName != null && !string.IsNullOrEmpty(playerName.text))
                     parts.Add(playerName.text);
 
-                var level = item.m_tamarLavelText;
-                if (level != null && !string.IsNullOrEmpty(level.text))
-                    parts.Add($"Level {level.text}");
+                var levelText = item.m_tamarLavelText;
+                if (levelText == null)
+                {
+                    DebugLogger.Log("[SavePanel] Slot: m_tamarLavelText is null");
+                }
+                else
+                {
+                    string level = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(levelText.text))?.Trim();
+                    if (string.IsNullOrWhiteSpace(level) || TextUtilities.IsPlaceholderText(level))
+                    {
+                        DebugLogger.Log("[SavePanel] Slot: m_tamarLavelText.text is empty");
+                    }
+                    else
+                    {
+                        string label = null;
+                        var labelText = item.m_tamarLavelLabelText;
+                        if (labelText == null)
+                        {
+                            DebugLogger.Log("[SavePanel] Slot: m_tamarLavelLabelText is null");
+                        }
+                        else
+                        {
+                            label = TextUtilities.StripRichTextTags(labelText.text)?.Trim();
+                            if (string.IsNullOrWhiteSpace(label))
+                                DebugLogger.Log("[SavePanel] Slot: m_tamarLavelLabelText.text is empty");
+                        }
+
+                        parts.Add($"{(string.IsNullOrWhiteSpace(label) ? "Level" : label)} {level}");
+                    }
+                }
 
                 var area = item.m_areaText;
                 if (area != null && !string.IsNullOrEmpty(area.text))
@@ -420,17 +580,19 @@ namespace DigimonNOAccess
 
             if (_parentPanel == null || _parentPanel.m_State != uSavePanel.State.MAIN_SETTING)
             {
+                string stateHeadline = GetHeadlineText();
+
                 // During save/load operation, announce the parent state
                 if (_parentPanel != null)
                 {
                     string stateMsg = GetStateAnnouncement(_parentPanel.m_State);
                     if (!string.IsNullOrEmpty(stateMsg))
                     {
-                        ScreenReader.Say($"Save/Load Menu. {stateMsg}");
+                        ScreenReader.Say($"{stateHeadline}. {stateMsg}");
                         return;
                     }
                 }
-                ScreenReader.Say("Save/Load Menu");
+                ScreenReader.Say(stateHeadline);
                 return;
             }
 

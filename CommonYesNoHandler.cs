@@ -188,18 +188,72 @@ namespace DigimonNOAccess
 
         private string GetYesText()
         {
-            if (_window == null || _window.m_yes == null)
-                return "Yes";
-            string text = TextUtilities.CleanText(_window.m_yes.text);
-            return string.IsNullOrEmpty(text) ? "Yes" : text;
+            const string fallback = "Yes";
+
+            try
+            {
+                if (_window == null)
+                {
+                    DebugLogger.Log("[YesNo] Yes label: window was null");
+                    return fallback;
+                }
+
+                var yesText = _window.m_yes;
+                if (yesText == null)
+                {
+                    DebugLogger.Log("[YesNo] Yes label: m_yes was null");
+                    return fallback;
+                }
+
+                string text = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(yesText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(text) || TextUtilities.IsPlaceholderText(text))
+                {
+                    DebugLogger.Log($"[YesNo] Yes label: m_yes.text unusable: {TextUtilities.DescribeUnusable(text)}");
+                    return fallback;
+                }
+
+                return text;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[YesNo] Yes label read failed: {ex.Message}");
+                return fallback;
+            }
         }
 
         private string GetNoText()
         {
-            if (_window == null || _window.m_no == null)
-                return "No";
-            string text = TextUtilities.CleanText(_window.m_no.text);
-            return string.IsNullOrEmpty(text) ? "No" : text;
+            const string fallback = "No";
+
+            try
+            {
+                if (_window == null)
+                {
+                    DebugLogger.Log("[YesNo] No label: window was null");
+                    return fallback;
+                }
+
+                var noText = _window.m_no;
+                if (noText == null)
+                {
+                    DebugLogger.Log("[YesNo] No label: m_no was null");
+                    return fallback;
+                }
+
+                string text = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(noText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(text) || TextUtilities.IsPlaceholderText(text))
+                {
+                    DebugLogger.Log($"[YesNo] No label: m_no.text unusable: {TextUtilities.DescribeUnusable(text)}");
+                    return fallback;
+                }
+
+                return text;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[YesNo] No label read failed: {ex.Message}");
+                return fallback;
+            }
         }
 
         private uCommonYesNoWindow.CursorIndex GetCursorIndex()

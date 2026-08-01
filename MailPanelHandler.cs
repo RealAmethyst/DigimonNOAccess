@@ -21,6 +21,10 @@ namespace DigimonNOAccess
         private int _lastTab = -1;
         private bool _bodyAnnounced;
         private bool _pendingFirstMail;
+        private UnityEngine.UI.Text _mailMenuNameText;
+        private string _mailMenuNameFailure;
+        private float _nextMailMenuNameLookupTime;
+        private const float MailMenuNameLookupInterval = 0.5f;
         private DigitalMessengerManager.SortType _lastSortType = DigitalMessengerManager.SortType.NEW;
 
         public bool IsOpen()
@@ -43,6 +47,8 @@ namespace DigimonNOAccess
 
         public void Update()
         {
+            TryCacheMailMenuName();
+
             if (_digimePanel == null)
             {
                 try
@@ -82,7 +88,8 @@ namespace DigimonNOAccess
             var state = _digimePanel.m_CurrentState;
             _lastState = state;
 
-            string announcement = "Mail";
+            string mailMenuName = GetMailMenuName();
+            string announcement = mailMenuName;
 
             if (state == uDigiviceDigimePanel.State.SELECT_FOLDER && _mailPanel != null)
             {
@@ -90,7 +97,7 @@ namespace DigimonNOAccess
                 _lastTab = tab;
                 var (pos, total) = GetTabPosition(tab);
                 string tabName = GetTabName(tab);
-                announcement = $"Mail, {tabName}, {pos} of {total}";
+                announcement = $"{mailMenuName}, {tabName}, {pos} of {total}";
             }
             else if (state == uDigiviceDigimePanel.State.SELECT_MAIL && _mailPanel != null)
             {
@@ -222,15 +229,31 @@ namespace DigimonNOAccess
         {
             try
             {
-                var sortText = _mailPanel?.m_SortText;
-                if (sortText != null)
+                if (_mailPanel == null)
                 {
-                    string text = sortText.text;
-                    if (!string.IsNullOrEmpty(text))
-                        return TextUtilities.StripRichTextTags(text);
+                    DebugLogger.Log($"{LogTag} Sort: mail panel is null");
+                }
+                else
+                {
+                    var sortText = _mailPanel.m_SortText;
+                    if (sortText == null)
+                    {
+                        DebugLogger.Log($"{LogTag} Sort: m_SortText is null");
+                    }
+                    else
+                    {
+                        string text = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(sortText.text))?.Trim();
+                        if (!string.IsNullOrWhiteSpace(text))
+                            return text;
+
+                        DebugLogger.Log($"{LogTag} Sort: m_SortText.text is empty");
+                    }
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Sort text read failed: {ex.Message}");
+            }
 
             return _mailPanel?.m_SortType switch
             {
@@ -520,18 +543,43 @@ namespace DigimonNOAccess
         {
             try
             {
-                var tabInfoTbl = _mailPanel?.m_SelectTabInfoTbl;
-                if (tabInfoTbl != null && tabIndex >= 0 && tabIndex < tabInfoTbl.Length)
+                if (_mailPanel == null)
                 {
-                    var tabInfo = tabInfoTbl[tabIndex];
-                    if (tabInfo != null)
+                    DebugLogger.Log($"{LogTag} Folder {tabIndex}: mail panel is null");
+                }
+                else
+                {
+                    var tabInfoTbl = _mailPanel.m_SelectTabInfoTbl;
+                    if (tabInfoTbl == null)
                     {
-                        var tabText = tabInfo.m_TabText;
-                        if (tabText != null)
+                        DebugLogger.Log($"{LogTag} Folder {tabIndex}: m_SelectTabInfoTbl is null");
+                    }
+                    else if (tabIndex < 0 || tabIndex >= tabInfoTbl.Length)
+                    {
+                        DebugLogger.Log($"{LogTag} Folder {tabIndex}: index is outside m_SelectTabInfoTbl");
+                    }
+                    else
+                    {
+                        var tabInfo = tabInfoTbl[tabIndex];
+                        if (tabInfo == null)
                         {
-                            string text = tabText.text;
-                            if (!string.IsNullOrEmpty(text))
-                                return TextUtilities.StripRichTextTags(text);
+                            DebugLogger.Log($"{LogTag} Folder {tabIndex}: SelectTabInfo is null");
+                        }
+                        else
+                        {
+                            var tabText = tabInfo.m_TabText;
+                            if (tabText == null)
+                            {
+                                DebugLogger.Log($"{LogTag} Folder {tabIndex}: m_TabText is null");
+                            }
+                            else
+                            {
+                                string text = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(tabText.text))?.Trim();
+                                if (!string.IsNullOrWhiteSpace(text))
+                                    return text;
+
+                                DebugLogger.Log($"{LogTag} Folder {tabIndex}: m_TabText.text is empty");
+                            }
                         }
                     }
                 }
@@ -549,6 +597,137 @@ namespace DigimonNOAccess
                 3 => "Daily Quest",
                 _ => AnnouncementBuilder.FallbackItem("Folder", tabIndex)
             };
+        }
+
+        private void TryCacheMailMenuName()
+        {
+            if (_mailMenuNameText != null)
+            {
+                try
+                {
+                    if (_mailMenuNameText.gameObject != null)
+                        return;
+
+                    LogMailMenuNameFailure("cached DigiMessenger m_headText.gameObject is null");
+                }
+                catch (System.Exception ex)
+                {
+                    LogMailMenuNameFailure($"cached DigiMessenger m_headText validation failed: {ex.Message}");
+                }
+
+                _mailMenuNameText = null;
+            }
+
+            float now = Time.unscaledTime;
+            if (now < _nextMailMenuNameLookupTime)
+                return;
+            _nextMailMenuNameLookupTime = now + MailMenuNameLookupInterval;
+
+            try
+            {
+                var topPanel = Object.FindObjectOfType<uDigiviceTopPanel>();
+                if (topPanel == null)
+                {
+                    LogMailMenuNameFailure("no uDigiviceTopPanel was found");
+                    return;
+                }
+
+                var command = topPanel.m_Command;
+                if (command == null)
+                {
+                    LogMailMenuNameFailure("top panel m_Command is null");
+                    return;
+                }
+
+                var items = command.m_items;
+                if (items == null)
+                {
+                    LogMailMenuNameFailure("m_Command.m_items is null");
+                    return;
+                }
+
+                int index = (int)uDigiviceTopPanelCommand.Command.DigiMessenger;
+                if (index < 0 || index >= items.Length)
+                {
+                    LogMailMenuNameFailure($"DigiMessenger index {index} is outside m_items");
+                    return;
+                }
+
+                var item = items[index];
+                if (item == null)
+                {
+                    LogMailMenuNameFailure("DigiMessenger item is null");
+                    return;
+                }
+
+                var headText = item.m_headText;
+                if (headText == null)
+                {
+                    LogMailMenuNameFailure("DigiMessenger m_headText is null");
+                    return;
+                }
+
+                var headTextObject = headText.gameObject;
+                if (headTextObject == null)
+                {
+                    LogMailMenuNameFailure("DigiMessenger m_headText.gameObject is null");
+                    return;
+                }
+
+                _mailMenuNameText = headText;
+                _mailMenuNameFailure = null;
+            }
+            catch (System.Exception ex)
+            {
+                LogMailMenuNameFailure($"read failed: {ex.Message}");
+            }
+        }
+
+        private void LogMailMenuNameFailure(string reason)
+        {
+            if (_mailMenuNameFailure == reason)
+                return;
+
+            _mailMenuNameFailure = reason;
+            DebugLogger.Log($"{LogTag} Menu name: {reason}");
+        }
+
+        private string GetMailMenuName()
+        {
+            const string fallback = "Mail";
+
+            try
+            {
+                if (_mailMenuNameText == null)
+                {
+                    LogMailMenuNameFailure("DigiMessenger m_headText reference is unavailable");
+                    return fallback;
+                }
+
+                var headTextObject = _mailMenuNameText.gameObject;
+                if (headTextObject == null)
+                {
+                    LogMailMenuNameFailure("cached DigiMessenger m_headText.gameObject is null");
+                    _mailMenuNameText = null;
+                    return fallback;
+                }
+
+                string text = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(_mailMenuNameText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(text) || TextUtilities.IsPlaceholderText(text))
+                {
+                    LogMailMenuNameFailure("DigiMessenger m_headText.text is empty");
+                    return fallback;
+                }
+
+                _mailMenuNameFailure = null;
+                return text;
+            }
+            catch (System.Exception ex)
+            {
+                LogMailMenuNameFailure($"cached DigiMessenger m_headText read failed: {ex.Message}");
+                _mailMenuNameText = null;
+                return fallback;
+            }
         }
 
         private int GetMailCount()
@@ -581,13 +760,13 @@ namespace DigimonNOAccess
 
             if (state == uDigiviceDigimePanel.State.LOOK_BODY)
             {
-                ScreenReader.Say("Mail, reading message");
+                ScreenReader.Say($"{GetMailMenuName()}, reading message");
                 return;
             }
 
             if (_mailPanel == null)
             {
-                ScreenReader.Say("Mail");
+                ScreenReader.Say(GetMailMenuName());
                 return;
             }
 
@@ -597,7 +776,7 @@ namespace DigimonNOAccess
             if (state == uDigiviceDigimePanel.State.SELECT_FOLDER)
             {
                 var (pos, total) = GetTabPosition(tab);
-                ScreenReader.Say($"Mail, {tabName}, {pos} of {total}");
+                ScreenReader.Say($"{GetMailMenuName()}, {tabName}, {pos} of {total}");
                 return;
             }
 
@@ -606,15 +785,15 @@ namespace DigimonNOAccess
 
             if (mailTotal == 0)
             {
-                ScreenReader.Say($"Mail, {tabName}, empty");
+                ScreenReader.Say($"{GetMailMenuName()}, {tabName}, empty");
             }
             else
             {
                 string mailInfo = GetCurrentMailInfo();
                 if (!string.IsNullOrEmpty(mailInfo))
-                    ScreenReader.Say($"Mail, {tabName}. {mailInfo}, {cursor + 1} of {mailTotal}");
+                    ScreenReader.Say($"{GetMailMenuName()}, {tabName}. {mailInfo}, {cursor + 1} of {mailTotal}");
                 else
-                    ScreenReader.Say($"Mail, {tabName}. {cursor + 1} of {mailTotal}");
+                    ScreenReader.Say($"{GetMailMenuName()}, {tabName}. {cursor + 1} of {mailTotal}");
             }
         }
     }

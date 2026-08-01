@@ -217,7 +217,7 @@ namespace DigimonNOAccess
         {
             string caption = GetPanelCaption(state);
             if (!string.IsNullOrWhiteSpace(caption))
-                return TextUtilities.StripRichTextTags(caption).Trim();
+                return caption;
 
             switch (state)
             {
@@ -249,7 +249,10 @@ namespace DigimonNOAccess
             try
             {
                 if (_optionPanel == null)
+                {
+                    DebugLogger.Log("[OptionsMenu] Caption: option panel was null");
                     return null;
+                }
 
                 var commandPanels = _optionPanel.m_uOptionPanelCommand;
                 if (commandPanels == null)
@@ -260,11 +263,17 @@ namespace DigimonNOAccess
 
                 int index = (int)state;
                 if (index < 0 || index >= commandPanels.Length)
+                {
+                    DebugLogger.Log($"[OptionsMenu] Caption: state {state} index {index} was outside the command panel array");
                     return null;
+                }
 
                 var panel = commandPanels[index];
                 if (panel == null)
+                {
+                    DebugLogger.Log($"[OptionsMenu] Caption: state {state} command panel was null");
                     return null;
+                }
 
                 var captionPanel = panel.m_Caption;
                 if (captionPanel == null)
@@ -280,7 +289,14 @@ namespace DigimonNOAccess
                     return null;
                 }
 
-                return text.text;
+                string caption = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(text.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(caption) || TextUtilities.IsPlaceholderText(caption))
+                {
+                    DebugLogger.Log($"[OptionsMenu] Caption: state {state} m_Caption.m_Caption.text unusable: {TextUtilities.DescribeUnusable(caption)}");
+                    return null;
+                }
+
+                return caption;
             }
             catch (System.Exception ex)
             {
@@ -410,32 +426,65 @@ namespace DigimonNOAccess
 
             try
             {
-                // TOP panel: m_CommandInfoArray maps directly to m_items (no scrolling)
-                // Read from m_CommandInfoArray for displayed text
-                var commandInfoArray = panel.m_CommandInfoArray;
-                if (commandInfoArray != null && dataIndex >= 0 && dataIndex < commandInfoArray.Length)
+                if (panel == null)
                 {
-                    var info = commandInfoArray[dataIndex];
-                    if (info != null)
-                    {
-                        if (info.m_CommandName != null && !string.IsNullOrEmpty(info.m_CommandName.text))
-                            name = info.m_CommandName.text;
-                        if (info.m_CommandNum != null && !string.IsNullOrEmpty(info.m_CommandNum.text))
-                            value = info.m_CommandNum.text;
-                    }
+                    DebugLogger.Log("[OptionsMenu] Top command: top panel was null");
+                    return (name, value);
                 }
 
-                // Fallback: if name is empty, check item type from m_items
-                if (string.IsNullOrEmpty(name) && panel.m_items != null && dataIndex >= 0 && dataIndex < panel.m_items.Count)
+                string fallbackName = "";
+                if (panel.m_items != null && dataIndex >= 0 && dataIndex < panel.m_items.Count)
                 {
                     var item = panel.m_items[dataIndex];
                     if (item != null)
                     {
                         var voidItem = item.TryCast<uOptionPanelItemVoid>();
                         if (voidItem != null)
-                            name = GetSettingStateName(voidItem.m_settingState);
+                            fallbackName = GetSettingStateName(voidItem.m_settingState);
                     }
                 }
+
+                var commandInfoArray = panel.m_CommandInfoArray;
+                if (commandInfoArray == null)
+                {
+                    DebugLogger.Log("[OptionsMenu] Top command: m_CommandInfoArray was null");
+                    return (fallbackName, value);
+                }
+
+                if (dataIndex < 0 || dataIndex >= commandInfoArray.Length)
+                {
+                    DebugLogger.Log($"[OptionsMenu] Top command: logical index {dataIndex} was outside m_CommandInfoArray");
+                    return (fallbackName, value);
+                }
+
+                var info = commandInfoArray[dataIndex];
+                if (info == null)
+                {
+                    DebugLogger.Log($"[OptionsMenu] Top command: m_CommandInfoArray[{dataIndex}] was null");
+                    return (fallbackName, value);
+                }
+
+                var commandName = info.m_CommandName;
+                if (commandName == null)
+                {
+                    DebugLogger.Log($"[OptionsMenu] Top command: m_CommandInfoArray[{dataIndex}].m_CommandName was null");
+                }
+                else
+                {
+                    name = TextUtilities.StripRichTextTags(commandName.text)?.Trim();
+                    if (string.IsNullOrWhiteSpace(name))
+                    {
+                        DebugLogger.Log($"[OptionsMenu] Top command: m_CommandInfoArray[{dataIndex}].m_CommandName.text was empty");
+                        name = fallbackName;
+                    }
+                }
+
+                var commandNum = info.m_CommandNum;
+                if (commandNum != null)
+                    value = TextUtilities.StripRichTextTags(commandNum.text)?.Trim() ?? "";
+
+                if (string.IsNullOrWhiteSpace(name))
+                    name = fallbackName;
             }
             catch (System.Exception ex)
             {
@@ -471,6 +520,12 @@ namespace DigimonNOAccess
 
             try
             {
+                if (panel == null)
+                {
+                    DebugLogger.Log("[Settings] Localized row: settings panel was null");
+                    return (name, value);
+                }
+
                 // Settings panel has different item types, each with their own text fields.
                 // We must check the actual item type first to read from the correct field.
                 //
@@ -490,6 +545,61 @@ namespace DigimonNOAccess
 
                 DebugLogger.Log($"[Settings] Reading dataIndex={dataIndex}, itemCount={itemCount}, visibleSlots={visibleSlotCount}");
 
+                // Keep the handler's established logical-index-to-visible-slot
+                // mapping for this recycled row array.
+                if (commandInfoArray == null)
+                {
+                    DebugLogger.Log("[Settings] Localized row: m_CommandInfoArray was null");
+                }
+                else if (dataIndex < 0)
+                {
+                    DebugLogger.Log($"[Settings] Localized row: logical index {dataIndex} was invalid");
+                }
+                else
+                {
+                    int scrollOffset = System.Math.Max(0, dataIndex - (visibleSlotCount - 1));
+                    int visibleSlot = dataIndex - scrollOffset;
+
+                    if (visibleSlot < 0 || visibleSlot >= visibleSlotCount)
+                    {
+                        DebugLogger.Log($"[Settings] Localized row: logical index {dataIndex} mapped outside m_CommandInfoArray (slot {visibleSlot})");
+                    }
+                    else
+                    {
+                        var renderedInfo = commandInfoArray[visibleSlot];
+                        if (renderedInfo == null)
+                        {
+                            DebugLogger.Log($"[Settings] Localized row: m_CommandInfoArray[{visibleSlot}] was null for logical index {dataIndex}");
+                        }
+                        else
+                        {
+                            var renderedName = renderedInfo.m_CommandName;
+                            if (renderedName == null)
+                            {
+                                DebugLogger.Log($"[Settings] Localized row: m_CommandInfoArray[{visibleSlot}].m_CommandName was null");
+                            }
+                            else
+                            {
+                                name = TextUtilities.StripRichTextTags(renderedName.text)?.Trim() ?? "";
+                                if (string.IsNullOrWhiteSpace(name))
+                                    DebugLogger.Log($"[Settings] Localized row: m_CommandInfoArray[{visibleSlot}].m_CommandName.text was empty");
+                            }
+
+                            var renderedValue = renderedInfo.m_CommandNum;
+                            if (renderedValue == null)
+                            {
+                                DebugLogger.Log($"[Settings] Localized row: m_CommandInfoArray[{visibleSlot}].m_CommandNum was null");
+                            }
+                            else
+                            {
+                                value = TextUtilities.StripRichTextTags(renderedValue.text)?.Trim() ?? "";
+                                if (string.IsNullOrWhiteSpace(value))
+                                    DebugLogger.Log($"[Settings] Localized row: m_CommandInfoArray[{visibleSlot}].m_CommandNum.text was empty");
+                            }
+                        }
+                    }
+                }
+
                 // First, check if we can read from the actual item in m_items
                 // This is more reliable for special item types like VoiceLanguage
                 if (panel.m_items != null && dataIndex >= 0 && dataIndex < itemCount)
@@ -501,10 +611,11 @@ namespace DigimonNOAccess
                         var voiceLangItem = item.TryCast<uOptionPanelItemVoiceLanguage>();
                         if (voiceLangItem != null)
                         {
-                            name = "Voice Language";
-                            if (voiceLangItem.m_languageType != null)
+                            if (string.IsNullOrWhiteSpace(name))
+                                name = "Voice Language";
+                            if (string.IsNullOrWhiteSpace(value) && voiceLangItem.m_languageType != null)
                             {
-                                value = voiceLangItem.m_languageType.text ?? "";
+                                value = TextUtilities.StripRichTextTags(voiceLangItem.m_languageType.text)?.Trim() ?? "";
                             }
                             DebugLogger.Log($"[Settings] VoiceLanguage item: value=\"{value}\"");
                             return (name, value);
@@ -513,10 +624,11 @@ namespace DigimonNOAccess
                         var bgmItem = item.TryCast<uOptionPanelItemBgmVolume>();
                         if (bgmItem != null)
                         {
-                            name = "Music Volume";
+                            if (string.IsNullOrWhiteSpace(name))
+                                name = "Music Volume";
                             var sliderItem = item.TryCast<uOptionPanelItemSlider>();
-                            if (sliderItem?.m_sliderNum != null)
-                                value = sliderItem.m_sliderNum.text ?? "";
+                            if (string.IsNullOrWhiteSpace(value) && sliderItem?.m_sliderNum != null)
+                                value = TextUtilities.StripRichTextTags(sliderItem.m_sliderNum.text)?.Trim() ?? "";
                             DebugLogger.Log($"[Settings] BgmVolume item: value=\"{value}\"");
                             return (name, value);
                         }
@@ -524,10 +636,11 @@ namespace DigimonNOAccess
                         var voiceVolItem = item.TryCast<uOptionPanelItemVoiceVolume>();
                         if (voiceVolItem != null)
                         {
-                            name = "Voice Volume";
+                            if (string.IsNullOrWhiteSpace(name))
+                                name = "Voice Volume";
                             var sliderItem = item.TryCast<uOptionPanelItemSlider>();
-                            if (sliderItem?.m_sliderNum != null)
-                                value = sliderItem.m_sliderNum.text ?? "";
+                            if (string.IsNullOrWhiteSpace(value) && sliderItem?.m_sliderNum != null)
+                                value = TextUtilities.StripRichTextTags(sliderItem.m_sliderNum.text)?.Trim() ?? "";
                             DebugLogger.Log($"[Settings] VoiceVolume item: value=\"{value}\"");
                             return (name, value);
                         }
@@ -535,10 +648,11 @@ namespace DigimonNOAccess
                         var seVolItem = item.TryCast<uOptionPanelItemSeVolume>();
                         if (seVolItem != null)
                         {
-                            name = "SFX Volume";
+                            if (string.IsNullOrWhiteSpace(name))
+                                name = "SFX Volume";
                             var sliderItem = item.TryCast<uOptionPanelItemSlider>();
-                            if (sliderItem?.m_sliderNum != null)
-                                value = sliderItem.m_sliderNum.text ?? "";
+                            if (string.IsNullOrWhiteSpace(value) && sliderItem?.m_sliderNum != null)
+                                value = TextUtilities.StripRichTextTags(sliderItem.m_sliderNum.text)?.Trim() ?? "";
                             DebugLogger.Log($"[Settings] SeVolume item: value=\"{value}\"");
                             return (name, value);
                         }
@@ -546,9 +660,11 @@ namespace DigimonNOAccess
                         var cameraVItem = item.TryCast<uOptionPanelItemCameraV>();
                         if (cameraVItem != null)
                         {
-                            name = "Camera Up/Down";
+                            if (string.IsNullOrWhiteSpace(name))
+                                name = "Camera Up/Down";
                             // Value comes from toggle state: Normal or Reverse
-                            value = item.Value == 0 ? "Normal" : "Reverse";
+                            if (string.IsNullOrWhiteSpace(value))
+                                value = item.Value == 0 ? "Normal" : "Reverse";
                             DebugLogger.Log($"[Settings] CameraV item: value=\"{value}\"");
                             return (name, value);
                         }
@@ -556,8 +672,10 @@ namespace DigimonNOAccess
                         var cameraHItem = item.TryCast<uOptionPanelItemCameraH>();
                         if (cameraHItem != null)
                         {
-                            name = "Camera L/R";
-                            value = item.Value == 0 ? "Normal" : "Reverse";
+                            if (string.IsNullOrWhiteSpace(name))
+                                name = "Camera L/R";
+                            if (string.IsNullOrWhiteSpace(value))
+                                value = item.Value == 0 ? "Normal" : "Reverse";
                             DebugLogger.Log($"[Settings] CameraH item: value=\"{value}\"");
                             return (name, value);
                         }
@@ -565,10 +683,11 @@ namespace DigimonNOAccess
                         var sensItem = item.TryCast<uOptionPanelItemSensitivity>();
                         if (sensItem != null)
                         {
-                            name = "Camera Sensitivity";
+                            if (string.IsNullOrWhiteSpace(name))
+                                name = "Camera Sensitivity";
                             var sliderItem = item.TryCast<uOptionPanelItemSlider>();
-                            if (sliderItem?.m_sliderNum != null)
-                                value = sliderItem.m_sliderNum.text ?? "";
+                            if (string.IsNullOrWhiteSpace(value) && sliderItem?.m_sliderNum != null)
+                                value = TextUtilities.StripRichTextTags(sliderItem.m_sliderNum.text)?.Trim() ?? "";
                             DebugLogger.Log($"[Settings] Sensitivity item: value=\"{value}\"");
                             return (name, value);
                         }
@@ -576,43 +695,10 @@ namespace DigimonNOAccess
                         var voidItem = item.TryCast<uOptionPanelItemVoid>();
                         if (voidItem != null)
                         {
-                            name = "Back";
+                            if (string.IsNullOrWhiteSpace(name))
+                                name = "Back";
                             DebugLogger.Log($"[Settings] Void (Back) item");
                             return (name, value);
-                        }
-                    }
-                }
-
-                // Fallback: read from m_CommandInfoArray (visible UI slots)
-                // This is used if we couldn't identify the specific item type
-                DebugLogger.Log($"[Settings] Using CommandInfoArray fallback");
-
-                if (commandInfoArray != null && visibleSlotCount > 0)
-                {
-                    // Calculate which visible slot shows the current item
-                    int scrollOffset = System.Math.Max(0, dataIndex - (visibleSlotCount - 1));
-                    int visibleSlot = dataIndex - scrollOffset;
-
-                    DebugLogger.Log($"[Settings] scrollOffset={scrollOffset}, visibleSlot={visibleSlot}");
-
-                    if (visibleSlot >= 0 && visibleSlot < visibleSlotCount)
-                    {
-                        var cmdInfo = commandInfoArray[visibleSlot];
-                        DebugLogger.Log($"[Settings] cmdInfo[{visibleSlot}] null? {cmdInfo == null}");
-
-                        if (cmdInfo != null)
-                        {
-                            if (cmdInfo.m_CommandName != null)
-                            {
-                                name = cmdInfo.m_CommandName.text ?? "";
-                                DebugLogger.Log($"[Settings] m_CommandName.text = \"{name}\"");
-                            }
-
-                            if (cmdInfo.m_CommandNum != null)
-                            {
-                                value = cmdInfo.m_CommandNum.text ?? "";
-                                DebugLogger.Log($"[Settings] m_CommandNum.text = \"{value}\"");
-                            }
                         }
                     }
                 }
@@ -921,14 +1007,31 @@ namespace DigimonNOAccess
             try
             {
                 if (_agreeWindow == null)
-                    return "";
+                {
+                    DebugLogger.Log("[OptionsMenu] Agree header: agreement window was null");
+                    return "Agreement";
+                }
 
                 var header = _agreeWindow.m_Header;
-                if (header != null && header.m_headerText != null)
+                if (header == null)
                 {
-                    string text = header.m_headerText.text;
-                    if (!string.IsNullOrEmpty(text))
-                        return TextUtilities.StripRichTextTags(text);
+                    DebugLogger.Log("[OptionsMenu] Agree header: m_Header was null");
+                }
+                else
+                {
+                    var headerText = header.m_headerText;
+                    if (headerText == null)
+                    {
+                        DebugLogger.Log("[OptionsMenu] Agree header: m_Header.m_headerText was null");
+                    }
+                    else
+                    {
+                        string text = TextUtilities.StripRichTextTags(headerText.text)?.Trim();
+                        if (!string.IsNullOrWhiteSpace(text))
+                            return text;
+
+                        DebugLogger.Log("[OptionsMenu] Agree header: m_Header.m_headerText.text was empty");
+                    }
                 }
             }
             catch (System.Exception ex)
@@ -950,7 +1053,10 @@ namespace DigimonNOAccess
                         return "Usage Data Agreement";
                 }
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[OptionsMenu] Agree header fallback type read failed: {ex.Message}");
+            }
 
             return "Agreement";
         }
@@ -959,14 +1065,29 @@ namespace DigimonNOAccess
         {
             try
             {
-                if (_agreeWindow?.m_yes != null)
+                if (_agreeWindow == null)
                 {
-                    string text = _agreeWindow.m_yes.text;
-                    if (!string.IsNullOrEmpty(text))
-                        return TextUtilities.StripRichTextTags(text);
+                    DebugLogger.Log("[OptionsMenu] Agree Yes label: agreement window was null");
+                    return "Yes";
                 }
+
+                var yesText = _agreeWindow.m_yes;
+                if (yesText == null)
+                {
+                    DebugLogger.Log("[OptionsMenu] Agree Yes label: m_yes was null");
+                    return "Yes";
+                }
+
+                string text = TextUtilities.StripRichTextTags(yesText.text)?.Trim();
+                if (!string.IsNullOrWhiteSpace(text))
+                    return text;
+
+                DebugLogger.Log("[OptionsMenu] Agree Yes label: m_yes.text was empty");
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[OptionsMenu] Agree Yes label read failed: {ex.Message}");
+            }
             return "Yes";
         }
 
@@ -974,14 +1095,29 @@ namespace DigimonNOAccess
         {
             try
             {
-                if (_agreeWindow?.m_no != null)
+                if (_agreeWindow == null)
                 {
-                    string text = _agreeWindow.m_no.text;
-                    if (!string.IsNullOrEmpty(text))
-                        return TextUtilities.StripRichTextTags(text);
+                    DebugLogger.Log("[OptionsMenu] Agree No label: agreement window was null");
+                    return "No";
                 }
+
+                var noText = _agreeWindow.m_no;
+                if (noText == null)
+                {
+                    DebugLogger.Log("[OptionsMenu] Agree No label: m_no was null");
+                    return "No";
+                }
+
+                string text = TextUtilities.StripRichTextTags(noText.text)?.Trim();
+                if (!string.IsNullOrWhiteSpace(text))
+                    return text;
+
+                DebugLogger.Log("[OptionsMenu] Agree No label: m_no.text was empty");
             }
-            catch { }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[OptionsMenu] Agree No label read failed: {ex.Message}");
+            }
             return "No";
         }
 

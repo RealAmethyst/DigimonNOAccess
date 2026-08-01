@@ -195,23 +195,45 @@ namespace DigimonNOAccess
         private string GetMenuItemText(int index)
         {
             if (_titlePanel == null)
+            {
+                DebugLogger.Log($"[TitleMenu] Menu item: _titlePanel was null for index {index}");
                 return GetFallbackText(index);
+            }
 
             // Only try to read from UI if localization is ready
             if (!IsLocalizationReady())
+            {
+                DebugLogger.Log($"[TitleMenu] Menu item: m_Text[{index}] unavailable because localization was not ready");
                 return GetFallbackText(index);
+            }
 
             try
             {
                 var textArray = _titlePanel.m_Text;
-                if (textArray != null && index >= 0 && index < textArray.Length)
+                if (textArray == null)
                 {
-                    var textComponent = textArray[index];
-                    if (textComponent != null && !string.IsNullOrEmpty(textComponent.text))
-                    {
-                        return textComponent.text;
-                    }
+                    DebugLogger.Log("[TitleMenu] Menu item: m_Text was null");
+                    return GetFallbackText(index);
                 }
+
+                if (index < 0 || index >= textArray.Length)
+                {
+                    DebugLogger.Log($"[TitleMenu] Menu item: m_Text index {index} was out of range");
+                    return GetFallbackText(index);
+                }
+
+                var textComponent = textArray[index];
+                if (textComponent == null)
+                {
+                    DebugLogger.Log($"[TitleMenu] Menu item: m_Text[{index}] was null");
+                    return GetFallbackText(index);
+                }
+
+                string menuText = (TextUtilities.StripRichTextTags(textComponent.text) ?? "").Trim();
+                if (!string.IsNullOrWhiteSpace(menuText))
+                    return menuText;
+
+                DebugLogger.Log($"[TitleMenu] Menu item: m_Text[{index}].text was empty");
             }
             catch (System.Exception ex)
             {

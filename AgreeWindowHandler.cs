@@ -125,7 +125,7 @@ namespace DigimonNOAccess
         {
             string header = GetHeaderText();
             if (!string.IsNullOrWhiteSpace(header))
-                return TextUtilities.StripRichTextTags(header).Trim();
+                return header;
 
             switch (type)
             {
@@ -150,7 +150,10 @@ namespace DigimonNOAccess
             try
             {
                 if (_window == null)
+                {
+                    DebugLogger.Log("[AgreeWindow] Header: window is unavailable");
                     return null;
+                }
 
                 var header = _window.m_Header;
                 if (header == null)
@@ -166,7 +169,14 @@ namespace DigimonNOAccess
                     return null;
                 }
 
-                return text.text;
+                string rendered = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(text.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(rendered) || TextUtilities.IsPlaceholderText(rendered))
+                {
+                    DebugLogger.Log($"[AgreeWindow] Header: m_Header.m_headerText.text unusable: {TextUtilities.DescribeUnusable(rendered)}");
+                    return null;
+                }
+
+                return rendered;
             }
             catch (System.Exception ex)
             {
@@ -178,23 +188,51 @@ namespace DigimonNOAccess
         private string GetSelectionName(int cursor)
         {
             if (_window == null)
+            {
+                DebugLogger.Log("[AgreeWindow] Selection: window is unavailable");
                 return cursor == 0 ? "Yes" : "No";
+            }
 
             try
             {
-                // Try to get text from the UI components
-                if (cursor == 0 && _window.m_yes != null && !string.IsNullOrEmpty(_window.m_yes.text))
+                if (cursor == (int)uAgreeWindow.CursorIndex.Yes)
                 {
-                    return TextUtilities.CleanText(_window.m_yes.text);
+                    var yesText = _window.m_yes;
+                    if (yesText == null)
+                    {
+                        DebugLogger.Log("[AgreeWindow] Selection: m_yes was null");
+                        return "Yes";
+                    }
+
+                    string rendered = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(yesText.text))?.Trim();
+                    if (string.IsNullOrWhiteSpace(rendered) || TextUtilities.IsPlaceholderText(rendered))
+                    {
+                        DebugLogger.Log($"[AgreeWindow] Selection: m_yes.text unusable: {TextUtilities.DescribeUnusable(rendered)}");
+                        return "Yes";
+                    }
+
+                    return rendered;
                 }
-                else if (cursor == 1 && _window.m_no != null && !string.IsNullOrEmpty(_window.m_no.text))
+
+                var noText = _window.m_no;
+                if (noText == null)
                 {
-                    return TextUtilities.CleanText(_window.m_no.text);
+                    DebugLogger.Log("[AgreeWindow] Selection: m_no was null");
+                    return "No";
                 }
+
+                string noRendered = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(noText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(noRendered) || TextUtilities.IsPlaceholderText(noRendered))
+                {
+                    DebugLogger.Log($"[AgreeWindow] Selection: m_no.text unusable: {TextUtilities.DescribeUnusable(noRendered)}");
+                    return "No";
+                }
+
+                return noRendered;
             }
             catch (System.Exception ex)
             {
-                DebugLogger.Log($"[AgreeWindow] Error getting selection text: {ex.Message}");
+                DebugLogger.Log($"[AgreeWindow] Selection text read failed for cursor {cursor}: {ex.Message}");
             }
 
             // Fallback to Yes/No based on CursorIndex enum

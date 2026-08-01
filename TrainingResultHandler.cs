@@ -14,7 +14,7 @@ namespace DigimonNOAccess
         public void AnnounceStatus()
         {
             if (!IsOpen()) return;
-            ScreenReader.Say("Training results");
+            ScreenReader.Say(GetCaptionText());
         }
 
         private uTrainingPanelResult _panel;
@@ -161,7 +161,7 @@ namespace DigimonNOAccess
                         if (i == 6)
                             continue;
 
-                        gains.Add($"{statNames[i]} plus {value}");
+                        gains.Add($"{GetStatName(panel, i, statNames[i])} plus {value}");
                     }
                 }
 
@@ -174,6 +174,105 @@ namespace DigimonNOAccess
             {
                 DebugLogger.Log($"[TrainingResult] Error reading partner {index}: {ex.Message}");
                 return "";
+            }
+        }
+
+        private string GetCaptionText()
+        {
+            const string fallback = "Training results";
+
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log("[TrainingResult] Caption: result panel was null");
+                    return fallback;
+                }
+
+                var caption = _panel.m_caption;
+                if (caption == null)
+                {
+                    DebugLogger.Log("[TrainingResult] Caption: m_caption was null");
+                    return fallback;
+                }
+
+                var captionText = caption.m_text;
+                if (captionText == null)
+                {
+                    DebugLogger.Log("[TrainingResult] Caption: m_caption.m_text was null");
+                    return fallback;
+                }
+
+                string rendered = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(captionText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(rendered) || TextUtilities.IsPlaceholderText(rendered))
+                {
+                    DebugLogger.Log($"[TrainingResult] Caption: m_caption.m_text.text unusable: {TextUtilities.DescribeUnusable(rendered)}");
+                    return fallback;
+                }
+
+                return rendered;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[TrainingResult] Caption read failed: {ex.Message}");
+                return fallback;
+            }
+        }
+
+        private string GetStatName(uResultPanelDigimonBase panel, int statIndex, string fallback)
+        {
+            if (statIndex < 2 || statIndex > 5)
+                return fallback;
+
+            try
+            {
+                if (panel == null)
+                {
+                    DebugLogger.Log($"[TrainingResult] Stat label {statIndex}: result Digimon panel was null");
+                    return fallback;
+                }
+
+                UnityEngine.UI.Text label;
+                string fieldName;
+                switch (statIndex)
+                {
+                    case 2:
+                        label = panel.m_forcefulnessLangText;
+                        fieldName = "m_forcefulnessLangText";
+                        break;
+                    case 3:
+                        label = panel.m_robustnessLangText;
+                        fieldName = "m_robustnessLangText";
+                        break;
+                    case 4:
+                        label = panel.m_clevernessLangText;
+                        fieldName = "m_clevernessLangText";
+                        break;
+                    default:
+                        label = panel.m_rapidityLangText;
+                        fieldName = "m_rapidityLangText";
+                        break;
+                }
+
+                if (label == null)
+                {
+                    DebugLogger.Log($"[TrainingResult] Stat label: {fieldName} was null");
+                    return fallback;
+                }
+
+                string rendered = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(label.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(rendered) || TextUtilities.IsPlaceholderText(rendered))
+                {
+                    DebugLogger.Log($"[TrainingResult] Stat label: {fieldName}.text unusable: {TextUtilities.DescribeUnusable(rendered)}");
+                    return fallback;
+                }
+
+                return rendered;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[TrainingResult] Stat label {statIndex} read failed: {ex.Message}");
+                return fallback;
             }
         }
     }

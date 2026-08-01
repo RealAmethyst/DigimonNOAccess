@@ -257,17 +257,18 @@ namespace DigimonNOAccess
 
             if (_commandPanel == null)
             {
-                ScreenReader.Say("Praise or Scold");
+                ScreenReader.Say(GetPanelTitle());
                 return;
             }
 
             int cursor = _commandPanel.m_selectNo;
             int total = _commandPanel.m_selectMax;
             string itemText = GetCommandName(cursor);
+            string panelTitle = GetPanelTitle();
 
             string announcement = total > 0
-                ? AnnouncementBuilder.MenuOpen("Praise or Scold", itemText, cursor, total)
-                : $"Praise or Scold. {itemText}";
+                ? AnnouncementBuilder.MenuOpen(panelTitle, itemText, cursor, total)
+                : $"{panelTitle}. {itemText}";
 
             ScreenReader.Say(announcement);
             DebugLogger.Log($"[Education] Command menu: {itemText} ({cursor + 1}/{total})");
@@ -385,7 +386,7 @@ namespace DigimonNOAccess
         {
             if (_educationPanel == null)
             {
-                ScreenReader.Say("Praise or Scold");
+                ScreenReader.Say(GetPanelTitle());
                 return;
             }
 
@@ -396,10 +397,11 @@ namespace DigimonNOAccess
                 int cursor = _commandPanel.m_selectNo;
                 int total = _commandPanel.m_selectMax;
                 string itemText = GetCommandName(cursor);
+                string panelTitle = GetPanelTitle();
 
                 string announcement = total > 0
-                    ? AnnouncementBuilder.MenuOpen("Praise or Scold", itemText, cursor, total)
-                    : $"Praise or Scold. {itemText}";
+                    ? AnnouncementBuilder.MenuOpen(panelTitle, itemText, cursor, total)
+                    : $"{panelTitle}. {itemText}";
 
                 ScreenReader.Say(announcement);
             }
@@ -409,7 +411,48 @@ namespace DigimonNOAccess
                 if (!string.IsNullOrEmpty(text))
                     ScreenReader.Say(text);
                 else
-                    ScreenReader.Say("Praise or Scold");
+                    ScreenReader.Say(GetPanelTitle());
+            }
+        }
+
+        private string GetPanelTitle()
+        {
+            const string fallback = "Praise or Scold";
+            try
+            {
+                if (_educationPanel == null)
+                {
+                    DebugLogger.Log("[Education] Title: m_educationPanel was null");
+                    return fallback;
+                }
+
+                var captionPanel = _educationPanel.m_captionPanel;
+                if (captionPanel == null)
+                {
+                    DebugLogger.Log("[Education] Title: m_captionPanel was null");
+                    return fallback;
+                }
+
+                var text = captionPanel.m_text;
+                if (text == null)
+                {
+                    DebugLogger.Log("[Education] Title: m_captionPanel.m_text was null");
+                    return fallback;
+                }
+
+                string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(text.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(cleaned) || TextUtilities.IsPlaceholderText(cleaned))
+                {
+                    DebugLogger.Log($"[Education] Title: m_captionPanel.m_text.text unusable: {TextUtilities.DescribeUnusable(cleaned)}");
+                    return fallback;
+                }
+
+                return cleaned;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[Education] Title read failed: {ex.Message}");
+                return fallback;
             }
         }
     }

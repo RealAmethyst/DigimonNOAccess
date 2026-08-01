@@ -18,7 +18,7 @@ namespace DigimonNOAccess
 
         public void AnnounceStatus()
         {
-            ScreenReader.Say("Battle items");
+            ScreenReader.Say(GetHeadlineText("Battle items"));
         }
 
         private uBattlePanelItemBox _cachedItemBox;
@@ -116,7 +116,7 @@ namespace DigimonNOAccess
 
         private void AnnounceMenuItem()
         {
-            ScreenReader.Say("Battle Items");
+            ScreenReader.Say(GetHeadlineText("Battle Items"));
         }
 
         private void AnnounceCurrentItem(bool includePosition)
@@ -124,18 +124,8 @@ namespace DigimonNOAccess
             if (_cachedItemBox == null)
                 return;
 
-            string itemName = "Unknown Item";
+            string itemName = GetSelectedItemName();
             int cursor = _cachedItemBox.m_selectNo;
-
-            try
-            {
-                var itemParam = _cachedItemBox.GetSelectItemParam();
-                if (itemParam != null)
-                {
-                    itemName = itemParam.GetName() ?? "Unknown Item";
-                }
-            }
-            catch { }
 
             if (includePosition)
             {
@@ -153,7 +143,130 @@ namespace DigimonNOAccess
                 return;
 
             string targetName = GetTargetName(_cachedItemBox.m_target);
-            ScreenReader.Say($"Select target: {targetName}");
+            ScreenReader.Say($"{GetCaptionText("Select target")}: {targetName}");
+        }
+
+        private string GetHeadlineText(string fallback)
+        {
+            try
+            {
+                if (_cachedItemBox == null)
+                {
+                    DebugLogger.Log("[BattleItemHandler] Headline: cached item box was null");
+                    return fallback;
+                }
+
+                var headlineText = _cachedItemBox.m_MainHeadLineText;
+                if (headlineText == null)
+                {
+                    DebugLogger.Log("[BattleItemHandler] Headline: m_MainHeadLineText was null");
+                    return fallback;
+                }
+
+                string headline = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(headlineText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(headline) || TextUtilities.IsPlaceholderText(headline))
+                {
+                    DebugLogger.Log($"[BattleItemHandler] Headline: m_MainHeadLineText.text unusable: {TextUtilities.DescribeUnusable(headline)}");
+                    return fallback;
+                }
+
+                return headline;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[BattleItemHandler] Headline read failed: {ex.Message}");
+                return fallback;
+            }
+        }
+
+        private string GetSelectedItemName()
+        {
+            const string fallback = "Unknown Item";
+
+            try
+            {
+                if (_cachedItemBox == null)
+                {
+                    DebugLogger.Log("[BattleItemHandler] Item name: cached item box was null");
+                    return fallback;
+                }
+
+                var itemParam = _cachedItemBox.GetSelectItemParam();
+                if (itemParam != null)
+                {
+                    string itemName = TextUtilities.StripRichTextTags(itemParam.GetName())?.Trim();
+                    if (!string.IsNullOrWhiteSpace(itemName))
+                        return itemName;
+
+                    DebugLogger.Log("[BattleItemHandler] Item name: ParameterItemData.GetName returned empty");
+                }
+                else
+                {
+                    DebugLogger.Log("[BattleItemHandler] Item name: GetSelectItemParam returned null");
+                }
+
+                int logicalIndex = _cachedItemBox.m_selectNo;
+                var itemParts = _cachedItemBox.GetSelectItemParts(logicalIndex);
+                if (itemParts == null)
+                {
+                    DebugLogger.Log($"[BattleItemHandler] Item name: GetSelectItemParts({logicalIndex}) returned null");
+                    return fallback;
+                }
+
+                var nameText = itemParts.m_name;
+                if (nameText == null)
+                {
+                    DebugLogger.Log("[BattleItemHandler] Item name: selected uItemParts.m_name was null");
+                    return fallback;
+                }
+
+                string renderedName = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(nameText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(renderedName) || TextUtilities.IsPlaceholderText(renderedName))
+                {
+                    DebugLogger.Log($"[BattleItemHandler] Item name: selected uItemParts.m_name.text unusable: {TextUtilities.DescribeUnusable(renderedName)}");
+                    return fallback;
+                }
+
+                return renderedName;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[BattleItemHandler] Item name read failed: {ex.Message}");
+                return fallback;
+            }
+        }
+
+        private string GetCaptionText(string fallback)
+        {
+            try
+            {
+                if (_cachedItemBox == null)
+                {
+                    DebugLogger.Log("[BattleItemHandler] Target caption: cached item box was null");
+                    return fallback;
+                }
+
+                var captionText = _cachedItemBox.m_CaptionText;
+                if (captionText == null)
+                {
+                    DebugLogger.Log("[BattleItemHandler] Target caption: m_CaptionText was null");
+                    return fallback;
+                }
+
+                string caption = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(captionText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(caption) || TextUtilities.IsPlaceholderText(caption))
+                {
+                    DebugLogger.Log($"[BattleItemHandler] Target caption: m_CaptionText.text unusable: {TextUtilities.DescribeUnusable(caption)}");
+                    return fallback;
+                }
+
+                return caption;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"[BattleItemHandler] Target caption read failed: {ex.Message}");
+                return fallback;
+            }
         }
 
         private string GetTargetName(MainGameManager.ORDER_UNIT target)

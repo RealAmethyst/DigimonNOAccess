@@ -46,7 +46,7 @@ namespace DigimonNOAccess
 
             string commandName = GetCommandName(commandIndex);
             int total = 8; // Partner, Tamer, Item, Map, DigiMessenger, Library, System, Save
-            ScreenReader.Say($"Digivice menu, {AnnouncementBuilder.CursorPosition(commandName, commandIndex, total)}");
+            ScreenReader.Say($"{GetPanelTitle()}, {AnnouncementBuilder.CursorPosition(commandName, commandIndex, total)}");
             DebugLogger.Log($"{LogTag} Opened, command={commandIndex} ({commandName})");
         }
 
@@ -97,26 +97,106 @@ namespace DigimonNOAccess
 
         private string GetCommandName(int commandIndex)
         {
+            string fallback = AnnouncementBuilder.FallbackItem("Option", commandIndex);
+
+            if (_panel == null)
+            {
+                DebugLogger.Log($"{LogTag} Command name: m_panel was null");
+                return fallback;
+            }
+
             try
             {
-                var command = _panel?.m_Command;
-                if (command?.m_items != null && commandIndex >= 0 && commandIndex < command.m_items.Length)
+                var command = _panel.m_Command;
+                if (command == null)
                 {
-                    var item = command.m_items[commandIndex];
-                    if (item?.m_headText != null)
-                    {
-                        string text = item.m_headText.text;
-                        if (!string.IsNullOrEmpty(text))
-                            return TextUtilities.StripRichTextTags(text);
-                    }
+                    DebugLogger.Log($"{LogTag} Command name: m_Command was null");
+                    return fallback;
                 }
+
+                var items = command.m_items;
+                if (items == null)
+                {
+                    DebugLogger.Log($"{LogTag} Command name: m_items was null");
+                    return fallback;
+                }
+
+                if (commandIndex < 0 || commandIndex >= items.Length)
+                {
+                    DebugLogger.Log($"{LogTag} Command name: index {commandIndex} was outside m_items length {items.Length}");
+                    return fallback;
+                }
+
+                var item = items[commandIndex];
+                if (item == null)
+                {
+                    DebugLogger.Log($"{LogTag} Command name: m_items[{commandIndex}] was null");
+                    return fallback;
+                }
+
+                var headText = item.m_headText;
+                if (headText == null)
+                {
+                    DebugLogger.Log($"{LogTag} Command name: m_items[{commandIndex}].m_headText was null");
+                    return fallback;
+                }
+
+                string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(headText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(cleaned) || TextUtilities.IsPlaceholderText(cleaned))
+                {
+                    DebugLogger.Log($"{LogTag} Command name: m_items[{commandIndex}].m_headText.text unusable: {TextUtilities.DescribeUnusable(cleaned)}");
+                    return fallback;
+                }
+
+                return cleaned;
             }
             catch (System.Exception ex)
             {
                 DebugLogger.Log($"{LogTag} Error getting command name: {ex.Message}");
             }
 
-            return AnnouncementBuilder.FallbackItem("Option", commandIndex);
+            return fallback;
+        }
+
+        private string GetPanelTitle()
+        {
+            const string fallback = "Digivice menu";
+            try
+            {
+                if (_panel == null)
+                {
+                    DebugLogger.Log($"{LogTag} Title: m_panel was null");
+                    return fallback;
+                }
+
+                var headLine = _panel.m_HeadLine;
+                if (headLine == null)
+                {
+                    DebugLogger.Log($"{LogTag} Title: m_HeadLine was null");
+                    return fallback;
+                }
+
+                var headLineText = headLine.m_HeadLineText;
+                if (headLineText == null)
+                {
+                    DebugLogger.Log($"{LogTag} Title: m_HeadLine.m_HeadLineText was null");
+                    return fallback;
+                }
+
+                string cleaned = TextUtilities.StripRichTextTags(ButtonHintCache.Filter(headLineText.text))?.Trim();
+                if (string.IsNullOrWhiteSpace(cleaned) || TextUtilities.IsPlaceholderText(cleaned))
+                {
+                    DebugLogger.Log($"{LogTag} Title: m_HeadLine.m_HeadLineText.text unusable: {TextUtilities.DescribeUnusable(cleaned)}");
+                    return fallback;
+                }
+
+                return cleaned;
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Log($"{LogTag} Title read failed: {ex.Message}");
+                return fallback;
+            }
         }
 
         public override void AnnounceStatus()
@@ -127,7 +207,7 @@ namespace DigimonNOAccess
             int commandIndex = GetCurrentCommandIndex();
             string commandName = GetCommandName(commandIndex);
             int total = 8;
-            ScreenReader.Say($"Digivice menu, {AnnouncementBuilder.CursorPosition(commandName, commandIndex, total)}");
+            ScreenReader.Say($"{GetPanelTitle()}, {AnnouncementBuilder.CursorPosition(commandName, commandIndex, total)}");
         }
     }
 }
